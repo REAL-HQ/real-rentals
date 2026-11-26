@@ -23,3 +23,20 @@ describe("unit number is not shown in vehicle lists", () => {
     expect(readFileSync("src/components/admin/VehicleCell.tsx", "utf8")).not.toContain("showUnit");
   });
 });
+
+describe("first table row is not covered at scroll 0", () => {
+  test("sticky bars no longer pull the table up with a negative margin", () => {
+    const rule = css.slice(css.indexOf(".admin-sticky-bar.admin-sticky-bar {"));
+    const body = rule.slice(0, rule.indexOf("}"));
+    expect(body).toContain("margin-bottom: 0");
+    expect(body).not.toContain("margin-bottom: -");
+  });
+});
+
+describe("booking modal and vehicle picker are wide enough for plates", () => {
+  test("booking modal is max-w-6xl; picker popover has a 28rem floor", () => {
+    expect(readFileSync("src/components/admin/BookingDetails.tsx", "utf8")).toContain("w-full max-w-6xl");
+    const combo = readFileSync("src/components/admin/VehicleCombobox.tsx", "utf8");
+    expect(combo).toContain("min-w-[min(28rem,calc(100vw-2rem))]");
+  });
+});

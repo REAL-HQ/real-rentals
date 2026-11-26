@@ -66,6 +66,9 @@ async function loadFacts(admin: Admin, rentalId: string) {
       ? admin.from("agreements").select("id,status,signed_at,voided_at,rental_id").eq("application_id", appId).eq("status", "signed")
       : Promise.resolve({ data: [] }),
   ]);
+  // Unlinked signed agreements still count. A pending, reserved, or on-hold
+  // rental does not stamp rental_id (booking-links.server.ts), so confirmation
+  // must keep reading rental_id null as this reservation's agreement.
   const signed = ((agRes?.data ?? []) as any[]).filter((a) => !a.voided_at && a.signed_at && (!a.rental_id || a.rental_id === r.id));
   signed.sort((a, b) => String(b.signed_at).localeCompare(String(a.signed_at)));
   return { rental: r, app: appRes?.data ?? null, vehicle: vehRes?.data ?? null, agreement: signed[0] ?? null };

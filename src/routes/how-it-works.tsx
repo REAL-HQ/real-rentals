@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
+import { MIN_RENTER_AGE } from "@/lib/renter-age";
+import { ADDITIONAL_DRIVER_INSURANCE_LINE } from "@/lib/additional-driver-copy";
 import { Check, X, FileText, ClipboardCheck, KeyRound, Zap, ArrowRight, Shield, Wrench, LifeBuoy, FileCheck, Headphones, Fuel, Sparkles, Receipt, RotateCcw, CalendarClock, IdCard, CarFront, UserCheck, Wallet, CreditCard, Briefcase, Gauge } from "lucide-react";
 
 export const Route = createFileRoute("/how-it-works")({
@@ -84,11 +86,11 @@ function HowItWorks() {
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
-              { I: UserCheck, t: "21 Years Or Older", d: "Minimum Age Requirement For All Drivers In Our Program." },
+              { I: UserCheck, t: `${MIN_RENTER_AGE} Years Or Older`, d: "Minimum Age Requirement For All Drivers In Our Program." },
               { I: IdCard, t: "Valid US Driver's License", d: "Held For At Least One Year With No Major Restrictions." },
               { I: CarFront, t: "Clean Driving Record", d: "Reasonably Clean MVR. We'll Let You Know If You Qualify." },
               { I: Briefcase, t: "Active Gig Account", d: "Or Willingness To Sign Up For Uber, Lyft, DoorDash, Or Instacart." },
-              { I: Shield, t: "Insurance Included", d: "Insurance is included, with the policy in your name. One less bill to worry about." },
+              { I: Shield, t: "Insurance Included", d: ADDITIONAL_DRIVER_INSURANCE_LINE },
               { I: Wrench, t: "Maintenance Included", d: "We Cover Scheduled Maintenance And Repairs. Keep The Car Clean And Drive." },
               { I: Gauge, t: "Unlimited Miles", d: "Unlimited Miles On Every Rental. Drive As Much As Your Gig Work Needs." },
               { I: Wallet, t: "No Deposit", d: "$0 Security Deposit. We Keep A Payment Card On File For Tolls, Citations, Damage, And Unpaid Rent Per Your Rental Agreement." },

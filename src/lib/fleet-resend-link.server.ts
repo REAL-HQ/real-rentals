@@ -3,17 +3,20 @@
  * upload link for missing files.
  *
  *   POST /api/public/fleet/resend-link   (Bearer FLEET_API_KEY, JSON)
- *     { "kind": "signing", "agreement_id"|"lead_id": "…", "idempotency_key": "optional" }
+ *     { "kind": "signing", "agreement_id"|"lead_id": "…", "signer_id": "optional",
+ *       "channels": "email"|"email_and_sms", "idempotency_key": "optional" }
  *     { "kind": "upload",  "lead_id": "…",                "idempotency_key": "optional" }
  *
- * Same wording renters already get: the signing link goes out exactly as the
- * staff "Resend" button sends it (same email, same text), and the upload link
- * uses the approved Missing-Items step-1 message. Texts come from the 888 line
- * through sendSms (consent and STOP always checked).
+ * Signing resend is the same operation as the staff Resend button
+ * (resendAgreementSigners). Each signer keeps their own link. Omit signer_id
+ * to reach every unsigned signer, or pass one signer id. channels defaults to
+ * email_and_sms (a text only when that signer has SMS consent). "email" sends
+ * no text. The upload link uses the approved Missing-Items step-1 message.
+ * Texts come from the company line through sendSms (consent and STOP always checked).
  *
  * Refused (nothing sent) when:
  *   - the Automations switch "FLEET Link Resends" (fleet_link_resends) is not On  → 409 switched_off (Off by default)
- *   - outside 8 AM–9 PM ET                                                        → 409 quiet_hours
+ *   - outside 8 AM–9 PM ET, unless channels is email (no text is sent)            → 409 quiet_hours
  *   - the person is handed off to staff (bots paused)                              → 423
  *   - signing: the agreement is not sent/viewed (draft, being signed, signed, voided),
  *     was prepared without required details, was (re)sent under 4 hours ago, or
@@ -24,6 +27,7 @@
  * Every resend is audited ("FLEET (automated)"). See docs/fleet-resend-link.md.
  */
 import { fleetAdmin, fleetAudit, fleetJson, fleetRequestBody, idempotencyKey, UUID_RE, type FleetDeps } from "@/lib/fleet-api.server";
+import { parseResendChannels, resendAgreementSigners, SignerResendError, maskEmail } from "@/lib/agreement-resend.server";
 import { withinTextingHours } from "@/lib/failed-payment-link";
 import { firstNameOf, missingItems, outreachEmail, outreachSms, MISSING_ITEMS_KIND } from "@/lib/missing-items";
 import { notDrivingGigYet } from "@/lib/fleet-review";
@@ -46,7 +50,8 @@ export const SIGNING_REQUIRED_KEYS = [
 
 export type ResendDeps = FleetDeps & {
   gate?: (admin: Admin, key: string) => Promise<"send" | "off" | "held">;
-  deliverSigning?: (admin: Admin, args: { id: string; url: string; email: string | null; phone: string | null; name: string | null; vehicle: string | null; applicationId: string | null; actor: null }) => Promise<{ email: string; sms: string; delivered: boolean }>;
+  deliverSigning?: (admin: Admin, args: { id: string; url: string; email: string | null; phone: string | null; name: string | null; vehicle: string | null; applicationId: string | null; actor: null; allowSms?: boolean }) => Promise<{ email: string; sms: string; delivered: boolean }>;
+  sendAgreementEmail?: (a: { to: string; firstName: string | null; url: string; vehicle: string | null }) => Promise<{ ok: boolean; error?: string }>;
   mintUploadLink?: (admin: Admin, applicationId: string) => Promise<string>;
   sendEmail?: (a: { to: string; subject: string; html: string; track: { workflow: string } }) => Promise<{ ok: boolean; error?: string; blocked?: string }>;
   sendSms?: (a: { to: string; body: string; kind: string; applicationId: string }) => Promise<{ ok: boolean; reason?: string; error?: string; skipped?: boolean }>;
@@ -59,21 +64,11 @@ async function defaultGate(admin: Admin, key: string) {
   return gateFor(await loadAutomationControls(admin), key);
 }
 
-function randomToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-async function hashToken(token: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function common(admin: Admin, deps: ResendDeps, now: Date, leadId: string | null): Promise<Response | null> {
+async function common(admin: Admin, deps: ResendDeps, now: Date, leadId: string | null, opts?: { texts?: boolean }): Promise<Response | null> {
   const gate = await (deps.gate ?? defaultGate)(admin, FLEET_LINK_RESENDS_KEY).catch(() => "held" as const);
   if (gate === "off") return fleetJson(409, { ok: false, error: "The FLEET Link Resends switch is Off (Back Office → Automations).", reason: "switched_off" });
   if (gate !== "send") return fleetJson(503, { ok: false, error: "Automation switches could not be read; try again later.", reason: "controls_unreadable" });
-  if (!withinTextingHours(now)) return fleetJson(409, { ok: false, error: "Links are only resent 8 AM to 9 PM Eastern.", reason: "quiet_hours" });
+  if (opts?.texts !== false && !withinTextingHours(now)) return fleetJson(409, { ok: false, error: "Links are only resent 8 AM to 9 PM Eastern.", reason: "quiet_hours" });
   if (leadId) {
     const { activeHandoff } = await import("@/lib/fleet-handoff.server");
     const h = await activeHandoff(admin, leadId);
@@ -84,6 +79,13 @@ async function common(admin: Admin, deps: ResendDeps, now: Date, leadId: string 
 }
 
 async function resendSigning(admin: Admin, body: Record<string, any>, deps: ResendDeps, now: Date): Promise<Response> {
+  const channels = parseResendChannels(body.channels);
+  if (channels === "invalid") return fleetJson(400, { ok: false, error: "channels must be email or email_and_sms." });
+  let signerId: string | null = null;
+  if (body.signer_id != null && body.signer_id !== "") {
+    if (!UUID_RE.test(String(body.signer_id))) return fleetJson(400, { ok: false, error: "signer_id must be a UUID." });
+    signerId = String(body.signer_id);
+  }
   let ag: any = null;
   if (body.agreement_id != null) {
     if (!UUID_RE.test(String(body.agreement_id))) return fleetJson(400, { ok: false, error: "agreement_id must be a UUID." });
@@ -101,7 +103,7 @@ async function resendSigning(admin: Admin, body: Record<string, any>, deps: Rese
     return fleetJson(409, { ok: false, error: `The agreement is ${ag.status}; only a sent or viewed agreement can be resent.`, status: ag.status });
   }
 
-  const blocked = await common(admin, deps, now, ag.application_id ?? null);
+  const blocked = await common(admin, deps, now, ag.application_id ?? null, { texts: channels !== "email" });
   if (blocked) return blocked;
 
   const md = (ag.merge_data ?? {}) as Record<string, unknown>;
@@ -113,39 +115,51 @@ async function resendSigning(admin: Admin, body: Record<string, any>, deps: Rese
     return fleetJson(429, { ok: false, error: "Sent less than 4 hours ago.", retry_after: retry });
   }
   const since = new Date(now.getTime() - 7 * 86400_000).toISOString();
-  const prior = await admin.from("audit_log").select("id,metadata").eq("action", "document.resent").eq("entity_id", ag.id).gte("created_at", since).limit(20);
-  const fleetResends = ((prior.data ?? []) as any[]).filter((r) => r?.metadata?.by === "FLEET").length;
+  const prior = await admin.from("audit_log").select("id,metadata,created_at").eq("action", "document.resent").eq("entity_id", ag.id).gte("created_at", since).order("created_at", { ascending: false }).limit(50);
+  const fleetResends = ((prior.data ?? []) as any[]).filter((r) => r?.metadata?.by === "FLEET" && r?.metadata?.cap !== false).length;
   if (fleetResends >= SIGNING_MAX_FLEET_RESENDS_7D) return fleetJson(429, { ok: false, error: "FLEET already resent this 3 times this week. Staff should call.", reason: "resend_cap" });
 
-  const token = randomToken();
-  const tokenHash = await hashToken(token);
-  const stamp = now.toISOString();
-  const exp = new Date(now.getTime() + 30 * 86400_000).toISOString();
-  // Conditional: never resurrect a draft, a signing/signed/voided document. The old link stops working.
-  const upd = await admin.from("agreements").update({ token_hash: tokenHash, token_expires_at: exp, sent_at: stamp }).eq("id", ag.id).in("status", ["sent", "viewed"]).is("voided_at", null).select("id");
-  if (upd.error || !(upd.data ?? []).length) return fleetJson(409, { ok: false, error: "The agreement changed while resending; nothing sent." });
-  await admin.from("esign_recipients").update({ token_hash: tokenHash, token_expires_at: exp, sent_at: stamp }).eq("document_id", ag.id).eq("role", "signer");
-  await fleetAudit(deps)({ action: "document.resent", summary: "Signing link reissued by FLEET (automated)", entityType: "esign_document", entityId: ag.id, metadata: { by: "FLEET", lead_id: ag.application_id ?? null } });
-
-  let phone: string | null = null;
-  if (ag.application_id) {
-    const a = await admin.from("applications").select("phone").eq("id", ag.application_id).maybeSingle();
-    phone = (a.data?.phone as string | null) ?? null;
-  }
   const site = (deps.siteUrl ?? (() => String(process.env.SITE_URL || "https://drivereal.com").replace(/\/$/, "")))();
-  const deliver = deps.deliverSigning ?? (async (a, args) => (await import("@/lib/esign.server")).deliverSigningLink(a, args));
-  const delivery = await deliver(admin, {
-    id: ag.id,
-    url: `${site}/sign/${token}`,
-    email: (ag.signer_email as string | null) ?? null,
-    phone,
-    name: (md.driver_name as string | null) ?? null,
-    vehicle: (md.vehicle as string | null) || null,
-    applicationId: ag.application_id ?? null,
-    actor: null,
-  });
-  // The raw link is never returned or logged.
-  return fleetJson(200, { ok: true, kind: "signing", agreement_id: ag.id, lead_id: ag.application_id ?? null, email: delivery.email, sms: delivery.sms, delivered: delivery.delivered, link_expires_at: exp });
+  try {
+    const result = await resendAgreementSigners(admin, {
+      agreementId: ag.id,
+      signerId,
+      channels,
+      actor: null,
+      source: "fleet",
+      now,
+      siteUrl: site,
+      deliverSigning: deps.deliverSigning as any,
+      sendAgreementEmail: deps.sendAgreementEmail,
+      sendSms: deps.sendSms as any,
+      audit: fleetAudit(deps),
+      statuses: ["sent", "viewed"],
+      requireVoidedNull: true,
+      setStatusSent: false,
+    });
+    // The raw link is never returned or logged.
+    return fleetJson(200, {
+      ok: true,
+      kind: "signing",
+      agreement_id: ag.id,
+      lead_id: ag.application_id ?? null,
+      email: result.delivery.email,
+      sms: result.delivery.sms,
+      delivered: result.delivery.delivered,
+      link_expires_at: result.linkExpiresAt,
+      signers: result.signers.map((s) => ({
+        id: s.id,
+        name: s.name,
+        email: maskEmail(s.email),
+        action: s.action,
+        email_status: s.emailStatus,
+        sms_status: s.smsStatus,
+      })),
+    });
+  } catch (e) {
+    if (e instanceof SignerResendError) return fleetJson(e.status, { ok: false, error: e.message, ...e.extra });
+    throw e;
+  }
 }
 
 async function resendUpload(admin: Admin, body: Record<string, any>, deps: ResendDeps, now: Date): Promise<Response> {

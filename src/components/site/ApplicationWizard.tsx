@@ -23,11 +23,15 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { CONTACT_PEOPLE_FIELDS, contactPeopleFromRow, type ContactPeople } from "@/lib/application-contacts";
+import { CONTACT_PEOPLE_FIELDS, contactPeopleFromRow, contactPeopleSchema, hasAnyContactPeople, type ContactPeople } from "@/lib/application-contacts";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { toast } from "sonner";
 import { DocumentCapture } from "./DocumentCapture";
 import { Logo } from "./Logo";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
+import { saveApplicantAdditionalDrivers } from "@/lib/additional-drivers.functions";
+import { AdditionalDriversQuestion } from "@/components/site/AdditionalDriversQuestion";
+import type { AdditionalDriverInput } from "@/lib/additional-drivers";
 import { INSURANCE_CONSENT_ITEMS, INSURANCE_CONSENT_LABEL } from "@/lib/insurance-consent";
 import { uploadApplicantFile, UploadTooLarge } from "@/lib/applicant-upload";
 import { clearResumeToken } from "@/lib/resume-token";
@@ -708,6 +712,7 @@ function WizardSteps({
       )}
       {phase === "driving" && (
         <DrivingStep
+          token={token}
           state={state}
           update={update}
           saving={saving}
@@ -1214,12 +1219,13 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
 // ------------------------------------------------------- Part 1, step two
 
 function DrivingStep({
+  token,
   state,
   update,
   saving,
   onBack,
   onSubmit,
-}: StepProps & { onBack: () => void; onSubmit: () => void }) {
+}: StepProps & { token: string; onBack: () => void; onSubmit: () => void }) {
   // Everything that establishes eligibility is answered here; trips, rating
   // and platforms are genuinely optional. A blank trip count means we do not
   // know it, and a driver who has not counted their trips is not turned away
@@ -1227,6 +1233,8 @@ function DrivingStep({
   // Unchecked by default, and never restored from a previous visit: the
   // authorization is an act the applicant performs when they submit.
   const [insuranceConsent, setInsuranceConsent] = useState(false);
+  const [extraDrivers, setExtraDrivers] = useState<AdditionalDriverInput[]>([]);
+  const saveDrivers = useServerFn(saveApplicantAdditionalDrivers);
   const canSubmit = !!state.gig_status && !!state.drive_type && insuranceConsent;
   const toggle = (p: string) => {
     update(
@@ -1329,6 +1337,8 @@ function DrivingStep({
           onChange={(v) => update("drive_type", v)}
         />
 
+        <AdditionalDriversQuestion token={token} onDrivers={setExtraDrivers} />
+
         <div className="rounded-xl border border-border bg-soft p-4">
           <div className="flex items-start gap-3">
             <ShieldCheck className="h-5 w-5 text-real-red shrink-0 mt-0.5" />
@@ -1364,7 +1374,18 @@ function DrivingStep({
       </div>
       <NavRow
         onBack={onBack}
-        onNext={onSubmit}
+        onNext={() => {
+          void (async () => {
+            if (extraDrivers.length) {
+              const saved = await saveDrivers({ data: { token, drivers: extraDrivers } });
+              if (!saved.ok) {
+                toast.error(saved.error);
+                return;
+              }
+            }
+            onSubmit();
+          })();
+        }}
         saving={saving}
         canNext={canSubmit}
         nextLabel="Submit Application"
@@ -1651,7 +1672,7 @@ function DriverProfile({
         title: "Reference And Emergency Contact (Optional)",
         blurb: "Someone who knows you, and who to call in an emergency.",
         icon: <Users className="h-5 w-5" />,
-        done: Boolean(state.reference_name || state.emergency_contact_name),
+        done: hasAnyContactPeople(state),
         optional: true,
       },
     ],
@@ -1743,6 +1764,7 @@ function DriverProfile({
                         hint="A screenshot of your profile screen showing your name and rating."
                         tips={["Your rating should be readable", "Any app is fine"]}
                         kind="gig_profile"
+                        allowMore
                         token={token}
                         onFile={state.profile_screenshot_on_file}
                         onChange={(v) =>
@@ -1765,6 +1787,7 @@ function DriverProfile({
                         hint="A screenshot of a recent weekly earnings summary from your gig app, or a pay stub."
                         tips={["Your name and the dates should be readable", "Any app is fine"]}
                         kind="income"
+                        allowMore
                         token={token}
                         onFile={state.income_proof_on_file}
                         onChange={(v) =>
@@ -1881,19 +1904,23 @@ function DriverProfile({
                             onChange={(v) => update(nameKey, v || null)}
                           />
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <TextField
-                              label="Phone"
-                              name={`${id}-phone`}
-                              autoComplete="off"
-                              inputMode="tel"
-                              value={state[phoneKey] ?? ""}
-                              onChange={(v) => update(phoneKey, v || null)}
-                            />
+                            <label className="block">
+                              <span className="text-xs tracking-wide text-muted-foreground font-semibold">Phone</span>
+                              <PhoneInput
+                                mode="us"
+                                name={`${id}-phone`}
+                                autoComplete="off"
+                                placeholder="Phone Number"
+                                value={state[phoneKey] ?? ""}
+                                onValueChange={(v) => update(phoneKey, v || null)}
+                                className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
+                              />
+                            </label>
                             <TextField
                               label="Relationship"
                               name={`${id}-relationship`}
                               autoComplete="off"
-                              placeholder="Friend, Coworker, Sister…"
+                              placeholder="Friend, Coworker, Sister"
                               value={state[relKey] ?? ""}
                               onChange={(v) => update(relKey, v || null)}
                             />
@@ -1902,12 +1929,15 @@ function DriverProfile({
                       ))}
                       <SectionSave
                         busy={savingSection === s.key}
-                        onSave={() =>
-                          saveSection(
-                            s.key,
-                            Object.fromEntries(CONTACT_PEOPLE_FIELDS.map((k) => [k, state[k] ?? null])),
-                          )
-                        }
+                        onSave={() => {
+                          const raw = Object.fromEntries(CONTACT_PEOPLE_FIELDS.map((k) => [k, state[k] ?? null]));
+                          const parsed = contactPeopleSchema.safeParse(raw);
+                          if (!parsed.success) {
+                            toast.error(parsed.error.issues[0]?.message ?? "Check The Contact Fields.");
+                            return;
+                          }
+                          void saveSection(s.key, parsed.data);
+                        }}
                       />
                     </>
                   )}

@@ -14,9 +14,13 @@ import {
 import { DOCUMENT_CONTENT_SHA256_ENABLED } from "@/lib/document-content-sha";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
+import { maskEmailOnFile } from "@/lib/email-on-file-mask";
 import { z } from "zod";
 import { SAVE_BUSY_CODE, SAVE_BUSY_MESSAGE } from "@/lib/wizard-save";
 import type { ApprovalEmailStatus } from "@/lib/approval-email";
+
+/** Longest the applicant's submit waits on the alert when the runtime has no waitUntil. */
+const LEAD_ALERT_WAIT_MS = 6000;
 
 const nullableString = z.string().trim().max(255).nullable().optional();
 
@@ -530,9 +534,27 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           resubmission_count: (existing.resubmission_count ?? 0) + 1,
           updated_at: new Date().toISOString(),
         } as any).eq("id", primaryId);
+        // The address on file is masked here and nowhere else in this response.
+        const maskedEmailOnFile = maskEmailOnFile(existing.email);
+        try {
+          const { sendPhoneMatchEmailDiffersAlert } = await import("@/lib/phone-match-alert.server");
+          const { keepAlive } = await import("@/lib/after-response.server");
+          await keepAlive(
+            sendPhoneMatchEmailDiffersAlert(supabaseAdmin, {
+              leadId: primaryId,
+              applicantName: data.full_name,
+              newEmail: emailLower,
+              phoneLast4: String(data.phone ?? "").replace(/\D/g, "").slice(-4),
+            }),
+            { maxWaitMs: LEAD_ALERT_WAIT_MS },
+          );
+        } catch (e) {
+          console.error("[phone-match] team alert failed", e);
+        }
         return {
           id: null as string | null, token: null as string | null, existing: true as const,
           linkStatus: "review" as const, linkOk: true, retryAfterSeconds: 0,
+          maskedEmailOnFile,
         };
       }
       // Same email. Resume it only if there is something to resume: a closed,
@@ -702,21 +724,27 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           .maybeSingle();
         marketName = m?.name ?? null;
       }
-      void sendLeadAlertEmail({
-        event: "new",
-        applicationId: row.id,
-        full_name: data.full_name,
-        phone: data.phone,
-        email: data.email,
-        city: data.city ?? null,
-        state: data.state ?? null,
-        market: marketName,
-        pickup_date: data.pickup_date ?? null,
-        return_date: null,
-        platforms: null,
-        sms_consent: data.sms_consent,
-        source: data.source,
-      }).catch((e) => console.error("[lead-email] new failed", e));
+      const { keepAlive } = await import("@/lib/after-response.server");
+      // Awaited (bounded), never fire-and-forget: a bare `void` was cut off when
+      // the response went out, so alerts stuck at "sending" or never sent.
+      await keepAlive(
+        sendLeadAlertEmail({
+          event: "new",
+          applicationId: row.id,
+          full_name: data.full_name,
+          phone: data.phone,
+          email: data.email,
+          city: data.city ?? null,
+          state: data.state ?? null,
+          market: marketName,
+          pickup_date: data.pickup_date ?? null,
+          return_date: null,
+          platforms: null,
+          sms_consent: data.sms_consent,
+          source: data.source,
+        }).catch((e) => console.error("[lead-email] new failed", e)),
+        { maxWaitMs: LEAD_ALERT_WAIT_MS },
+      );
     } catch (e) {
       console.error("[lead-email] new setup failed", e);
     }
@@ -994,21 +1022,27 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
             .maybeSingle();
           marketName = m?.name ?? null;
         }
-        void sendLeadAlertEmail({
-          event: "complete",
-          applicationId: row.id,
-          full_name: row.full_name ?? null,
-          phone: row.phone ?? null,
-          email: row.email ?? null,
-          city: row.city ?? null,
-          state: row.state ?? null,
-          market: marketName,
-          pickup_date: row.pickup_date ?? null,
-          return_date: null,
-          platforms: Array.isArray(row.platforms) ? row.platforms : null,
-          sms_consent: row.sms_consent ?? null,
-          source: row.source ?? null,
-        }).catch((e) => console.error("[lead-email] complete failed", e));
+        const { keepAlive } = await import("@/lib/after-response.server");
+        // Awaited (bounded), never fire-and-forget: a bare `void` was cut off when
+        // the response went out, so alerts stuck at "sending" or never sent.
+        await keepAlive(
+          sendLeadAlertEmail({
+            event: "complete",
+            applicationId: row.id,
+            full_name: row.full_name ?? null,
+            phone: row.phone ?? null,
+            email: row.email ?? null,
+            city: row.city ?? null,
+            state: row.state ?? null,
+            market: marketName,
+            pickup_date: row.pickup_date ?? null,
+            return_date: null,
+            platforms: Array.isArray(row.platforms) ? row.platforms : null,
+            sms_consent: row.sms_consent ?? null,
+            source: row.source ?? null,
+          }).catch((e) => console.error("[lead-email] complete failed", e)),
+          { maxWaitMs: LEAD_ALERT_WAIT_MS },
+        );
       } catch (e) {
         console.error("[lead-email] complete setup failed", e);
       }
@@ -1096,7 +1130,7 @@ const RESUME_COLUMNS = [
   "state",
   "address",
   "zip",
-  // Optional reference + emergency contact (20261120130000_application_references.sql).
+  // Optional reference + emergency contact (20261126213000_application_references.sql, not applied).
   "reference_name",
   "reference_phone",
   "reference_relationship",
@@ -1338,6 +1372,28 @@ export const replaceApplicantDocument = createServerFn({ method: "POST" })
     const id = await resolveResumeToken(supabaseAdmin, data.token);
     const { replaceApplicantDocumentCore } = await import("@/lib/applicant-document-replace.server");
     return replaceApplicantDocumentCore(supabaseAdmin as any, id, { kind: data.kind, path: data.path });
+  });
+
+/**
+ * Add another file to a section through the secure link. Keeps every file
+ * already there; Replace (above) is the explicit swap.
+ */
+export const addApplicantDocument = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        token: z.string().min(20).max(200),
+        kind: z.enum(["license", "insurance", "gig_profile", "trip_history", "income"]),
+        path: z.string().min(40).max(200),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
+    const id = await resolveResumeToken(supabaseAdmin, data.token);
+    const { addApplicantDocumentCore } = await import("@/lib/applicant-document-replace.server");
+    return addApplicantDocumentCore(supabaseAdmin as any, id, { kind: data.kind, path: data.path });
   });
 
 /**
@@ -1662,7 +1718,7 @@ export async function approveApplicationCore(args: {
           applicationId: data.id,
           agreementComing: data.sendAgreement === true,
         });
-        approvalEmail = result.ok ? "sent" : result.blocked === "blacklisted" ? "not_sent" : result.blocked ?? "failed";
+        approvalEmail = result.ok ? "sent" : result.blocked === "blacklisted" ? "not_sent" : result.blocked === "bounced" ? "bad_email" : result.blocked ?? "failed";
       } catch {
         // Approval is already durable; never undo it because a notice failed.
         approvalEmail = "failed";

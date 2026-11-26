@@ -10,10 +10,17 @@
  *   rejected upload stops being current; the verified card stays on file.
  * Staff uploads keep the old behaviour (replace immediately).
  */
-export const HOLD_VERIFIED_CATEGORIES = ["insurance"] as const;
+export const HOLD_VERIFIED_CATEGORIES: readonly string[] = [];
+/*
+ * Insurance used to be the one single-slot category with this hold. Every
+ * category except agreements and applications now keeps all its files active
+ * (documents.functions.ts MULTI_FILE_CATEGORIES), so a renter's new card no
+ * longer supersedes the verified one and nothing is demoted on review. The
+ * helpers stay for the single-slot paths and return their no-op answers.
+ */
 
 export function holdsVerifiedUntilReview(category: string, uploadedByRole: string | null | undefined): boolean {
-  return (HOLD_VERIFIED_CATEGORIES as readonly string[]).includes(category) && (uploadedByRole ?? "driver") === "driver";
+  return HOLD_VERIFIED_CATEGORIES.includes(category) && (uploadedByRole ?? "driver") === "driver";
 }
 
 /** Apply the supersede filter: the query builder gets `.neq("review_status","verified")` when holding. */
@@ -29,7 +36,7 @@ export function reviewFollowUp(
   doc: { is_current: boolean },
   otherVerifiedCurrent: boolean,
 ): ReviewFollowUp {
-  if (!(HOLD_VERIFIED_CATEGORIES as readonly string[]).includes(category)) return "none";
+  if (!HOLD_VERIFIED_CATEGORIES.includes(category)) return "none";
   if (status === "verified" && doc.is_current) return "supersede_others";
   if (status === "rejected" && doc.is_current && otherVerifiedCurrent) return "demote_rejected";
   return "none";

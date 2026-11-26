@@ -53,7 +53,7 @@ describe("shared picker wiring", () => {
     expect(photo).toContain("No Confirmed Car Photo");
   });
   test("photo list matches trigger width (no dialog overhang) with plate and VIN on a second line at every size", () => {
-    expect(combo).toContain("w-[var(--radix-popover-trigger-width)] min-w-0 max-w-[calc(100vw-2rem)]");
+    expect(combo).toContain("w-[var(--radix-popover-trigger-width)] min-w-[min(28rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]");
     expect(combo).not.toContain("48rem");
     expect(combo).not.toContain("sm:grid-cols-[1rem_3rem_minmax(0,1fr)_5rem_5rem_6rem]");
     expect(combo).toContain('VIN …{vinLast6(v.vin)');
@@ -99,6 +99,7 @@ describe("no vehicle dropdown is left as a plain select", () => {
   test("replacement-vehicle swap field is a picker, still validated as a vehicle id", () => {
     const b = read("src/components/admin/BookingVehicleHistory.tsx");
     expect(b).toContain('aria-label="Replacement Vehicle"');
-    expect(b).toContain("Replacement Vehicle must be the vehicle id");
+    expect(read("src/lib/vehicle-swap.functions.ts")).toContain("toVehicleId: z.string().uuid()");
+    expect(read("src/lib/vehicle-swap.server.ts")).toContain('if (!UUID_RE.test(toVehicleId)) return fail(400, "Choose the replacement vehicle.");');
   });
 });

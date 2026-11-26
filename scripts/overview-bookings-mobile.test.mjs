@@ -183,7 +183,6 @@ const pairs = [
     "w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm lg:w-auto lg:min-w-[200px] lg:flex-1",
     "bookings search at lg",
   ],
-  ["inline-flex items-center gap-2", "inline-flex max-lg:shrink-0 items-center gap-2", "phase chips at lg"],
   ["h-9 w-[150px] bg-white text-foreground text-sm", "h-9 w-[150px] max-lg:shrink-0 bg-white text-foreground text-sm", "bookings sort at lg"],
   [
     "text-sm text-muted-foreground hover:text-foreground px-2",
@@ -196,8 +195,8 @@ const pairs = [
     "bookings pager at lg",
   ],
   [
-    "bg-[#FAFAFB] w-full max-w-5xl rounded-none sm:rounded-2xl min-h-full sm:min-h-0 sm:my-2 overflow-hidden shadow-2xl",
-    "min-w-0 w-full max-w-5xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]",
+    "bg-[#FAFAFB] w-full max-w-6xl rounded-none sm:rounded-2xl min-h-full sm:min-h-0 sm:my-2 overflow-hidden shadow-2xl",
+    "min-w-0 w-full max-w-6xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]",
     "booking drawer at lg",
   ],
   [
@@ -244,7 +243,8 @@ check(!overview.includes("text-transform"), "overview does not add a text-transf
 check(bookings.includes('aria-label="Search rentals"'), "the bookings search stays");
 check(bookings.includes("max-lg:w-full") && !bookings.includes("flex w-full max-lg:min-w-0"), "the bookings filter group is full width only below lg");
 check(bookings.includes("lg:flex-row lg:items-center lg:gap-3"), "the bookings toolbar stacks only below lg");
-check(bookings.includes('data-testid="booking-phases"'), "the phase chips stay");
+check(!bookings.includes('data-testid="booking-phases"'), "the phase chips are gone; the tabs replace them");
+check(bookings.includes('data-testid="booking-count"'), "completed and cancelled rows keep a count");
 check(bookings.includes("hidden md:block") && bookings.includes("md:hidden grid grid-cols-1"), "the table and the phone cards both remain");
 const cards = bookings.slice(bookings.indexOf("md:hidden grid grid-cols-1"), bookings.indexOf("data-booking-card") + 400);
 check(cards.includes('className="shrink-0"') || bookings.includes('StatusPill className="shrink-0"'), "a phone card keeps the status from shrinking");
@@ -253,6 +253,6 @@ check(bookings.includes("listBookings"), "bookings still loads through the list 
 
 const payments = details.slice(details.indexOf('title="Payments"'), details.indexOf("</table>") + 8);
 check(payments.includes("overflow-x-auto") && payments.includes("min-w-[36rem]") && payments.includes('data-testid="booking-payments"'), "the payments table scrolls inside the booking");
-check(details.includes("min-w-0 w-full max-w-5xl"), "the booking drawer cannot grow past the screen");
+check(details.includes("min-w-0 w-full max-w-6xl"), "the booking drawer cannot grow past the screen");
 
 console.log(`${checks} overview and bookings mobile checks passed`);

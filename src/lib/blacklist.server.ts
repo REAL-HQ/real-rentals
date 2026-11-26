@@ -3,7 +3,7 @@
  *
  * supabaseAdmin bypasses RLS, so the role check happens in the server
  * functions (blacklist.functions.ts) AND the actor's tier is checked again
- * here: Owner / Admin to add or remove, or to clear a match; any staff to log a
+ * here: Owner / Admin / Manager to add; Owner / Admin to remove or to clear a match; any staff to log a
  * warning (strike); Owner / Admin to void one. (The Admin role is the Owner
  * tier in roles.ts; Managers and Coordinators cannot.) The database triggers in
  * 20261120040000_renter_blacklist.sql refuse approvals and rentals for a
@@ -16,6 +16,10 @@
 import {
   BLACKLIST_MATCH_CODE,
   canManageBlacklist,
+  canAddToBlacklist,
+  canEditBlacklistNote,
+  blacklistNoteBlockers,
+  blacklistNoteEditedLine,
   appendNote,
   blacklistBlockers,
   blacklistNotesLine,
@@ -183,7 +187,7 @@ export async function addToBlacklist(
   audit: AuditFn,
   today = todayEt(),
 ): Promise<{ entry: BlacklistEntry; notes: string }> {
-  requireOwnerTier(actor, "Blacklist A Renter");
+  if (!canAddToBlacklist(actor.tier)) throw new Error("Only An Owner, Admin Or Manager Can Blacklist A Renter.");
   const app = await readApplication(admin, input.applicationId);
   const strikes = await readStrikes(admin, input.applicationId);
   const blockers = blacklistBlockers({ reason: input.reason, note: input.note, date: input.date }, strikes, today);
@@ -222,6 +226,50 @@ export async function addToBlacklist(
     metadata: { blacklist_id: ins.data?.id ?? null, reason, blacklisted_on: input.date, note },
   });
   return { entry: toEntry(ins.data), notes };
+}
+
+/**
+ * Edit the Note on the renter's active blacklist entry. Owner / Admin / Manager (same as adding).
+ * Only the note changes (the reason, date and who added it stay); the old and new note go to the
+ * audit log and a "Blacklist Note Edited" line is added to the renter's Notes.
+ */
+export async function editBlacklistNote(
+  admin: any,
+  actor: BlacklistActor,
+  input: { applicationId: string; note: string },
+  audit: AuditFn,
+  now = new Date(),
+): Promise<{ entry: BlacklistEntry; notes: string }> {
+  if (!canEditBlacklistNote(actor.tier)) throw new Error("Only An Owner, Admin Or Manager Can Edit A Blacklist Note.");
+  const blockers = blacklistNoteBlockers(input.note);
+  if (blockers.length) throw new Error(blockers.map((b) => b.why).join(" "));
+  const note = input.note.trim();
+  const app = await readApplication(admin, input.applicationId);
+  const cur = await admin.from("renter_blacklist").select(ENTRY_COLUMNS).eq("application_id", app.id).is("removed_at", null);
+  if (cur.error) throw new Error(notInstalled(cur.error) ? BLACKLIST_NOT_INSTALLED : cur.error.message);
+  const before = (cur.data ?? [])[0];
+  if (!before) throw new Error("This Renter Is Not Blacklisted.");
+  const previousNote = String(before.note ?? "");
+  if (previousNote.trim() === note) return { entry: toEntry(before), notes: app.notes ?? "" };
+  const upd = await admin
+    .from("renter_blacklist")
+    .update({ note })
+    .eq("id", before.id)
+    .is("removed_at", null)
+    .select(ENTRY_COLUMNS);
+  if (upd.error) throw new Error(notInstalled(upd.error) ? BLACKLIST_NOT_INSTALLED : upd.error.message);
+  const row = (upd.data ?? [])[0];
+  if (!row) throw new Error("This Renter Is Not Blacklisted.");
+  const label = actorLabel(actor);
+  const notes = await appendToNotes(admin, app, blacklistNoteEditedLine({ date: todayEt(now), editedBy: label, note }));
+  await audit(actor, {
+    action: "renter.blacklist_note_edited",
+    summary: `Edited The Blacklist Note For ${app.full_name ?? "a renter"}`,
+    entityType: "application",
+    entityId: app.id,
+    metadata: { blacklist_id: before.id, previous_note: previousNote, note, edited_at: now.toISOString() },
+  });
+  return { entry: toEntry(row), notes };
 }
 
 export async function removeFromBlacklist(

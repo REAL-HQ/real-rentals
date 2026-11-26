@@ -37,8 +37,9 @@ repeat with the same `idempotency_key` returns `duplicate: true`. Errors:
 `400`, `401`, `404`, `409` (wrong document, key reused for another applicant),
 `503` (table not installed: nothing changed).
 
-An expired license read off the photo is a hard blocker; under 25 and expiring
-within 30 days escalate, as before. The packet shows the latest reading under
+An expired license read off the photo is a hard blocker, and so is a driver
+under 23 by the date of birth read (minimum renter age, Dolmar Nov 21 2026);
+a license expiring within 30 days escalates, as before. The packet shows the latest reading under
 `license_reading`, and the record's Activity shows "Read by FLEET from license
 photo (not verified)". Nothing here writes a review status, verified flag,
 screening, insurance or background field.

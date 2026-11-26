@@ -1,8 +1,9 @@
 import { PhoneInput } from "@/components/ui/phone-input";
-import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
+import { chargeTypeLabel, enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { initialPortalTab, rememberPayIntent, wantsPay } from "@/lib/portal-pay-link";
 import { SigningPanel } from "@/components/esign/SigningPanel";
+import { StandaloneDocumentView } from "@/components/esign/StandaloneDocumentView";
 import { layoutToText } from "@/lib/agreement-layout";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -33,6 +34,7 @@ import {
   type RentalBilling,
 } from "@/lib/rental-payments.functions";
 import { getMyAgreements, signMyAgreement, getAgreementPdf } from "@/lib/agreements.functions";
+import { recordReservationFeeSmsConsent } from "@/lib/sms-consent-signing.functions";
 import { ReservationFeeNextStep } from "@/components/esign/ReservationFeeNextStep";
 import type { ReservationFeeSigningStep } from "@/lib/reservation-fee";
 import { portalAgreementState, portalAgreementStatusLabel } from "@/lib/portal-agreement-state";
@@ -48,6 +50,8 @@ import { PaymentHistoryCard } from "@/components/portal/PaymentHistoryCard";
 import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history";
 import { DRIVER_DOC_EXPIRY_CARD_ENABLED } from "@/lib/driver-doc-expiry";
 import { DRIVER_AGREEMENT_VIEW_ENABLED } from "@/lib/driver-agreement-view";
+import { DriverStaffPhotos } from "@/components/portal/DriverStaffPhotos";
+import { getDriverStaffPhotos, openDriverStaffPhoto } from "@/lib/driver-staff-photos.functions";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import { CONDITION_SECTIONS, ROLE_SUBSECTION, groupConditionPhotos } from "@/lib/condition-photos";
 import {
@@ -181,13 +185,15 @@ function DriverAgreementGate() {
  * Maintenance tab listing nothing is worse than not showing it: it reads like
  * something is broken.
  *
- * What is left — Dashboard, Documents, Payments, Report Issue, Referrals,
- * Settings — all render truthfully with no rental: Payments shows outstanding
- * tolls and citations from any earlier rental and nothing at all otherwise,
- * Report Issue files against a null rental by design, and Referrals needs no
- * vehicle. The four below are the ones that cannot mean anything yet.
+ * What is left — Dashboard, Documents, Payments, Pictures, Report Issue,
+ * Referrals, Settings — all render truthfully with no active rental.
+ * Pictures stays because the condition photos from a returned rental are
+ * still the driver's to look at. Payments shows outstanding tolls and
+ * citations from any earlier rental and nothing at all otherwise, Report
+ * Issue files against a null rental by design, and Referrals needs no
+ * vehicle. The three below are the ones that cannot mean anything yet.
  */
-const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance", "pictures"]);
+const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance"]);
 
 
 /** Staff read-only "Viewing as" preview: the selected driver's account id, or null. */
@@ -206,6 +212,13 @@ function usePortalWrite<F extends (...a: any[]) => Promise<any>>(fn: F): F {
   const id = usePreviewDriver();
   const f = useServerFn(fn) as any;
   return (id ? async () => { throw new Error("Driver Preview is read-only."); } : f) as F;
+}
+/** Portal read that also sends the caller's payload. Preview id is added here, never trusted alone. */
+function usePortalCall<F extends (opts: { data: any }) => Promise<any>>(fn: F) {
+  const id = usePreviewDriver();
+  const f = useServerFn(fn) as any;
+  return (data: Record<string, unknown>) =>
+    f({ data: { ...data, ...(id ? { previewDriverId: id } : {}) } });
 }
 function usePreviewNull<F extends (...a: any[]) => Promise<any>>(fn: F, empty: Awaited<ReturnType<F>>): F {
   const id = usePreviewDriver();
@@ -613,6 +626,7 @@ function DocumentsView() {
 function AgreementsView() {
   const fetchAgreements = usePortalRead(getMyAgreements);
   const sign = usePortalWrite(signMyAgreement);
+  const recordFeeConsent = useServerFn(recordReservationFeeSmsConsent);
   const getPdf = useServerFn(getAgreementPdf);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-agreements"],
@@ -622,14 +636,25 @@ function AgreementsView() {
   const [name, setName] = useState("");
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [smsChecked, setSmsChecked] = useState(false);
   // $50 Reservation Fee step after a portal signature: the same Checkout the email links to.
   const [feeStep, setFeeStep] = useState<ReservationFeeSigningStep | null>(null);
+  const [feeSms, setFeeSms] = useState<{ needed: boolean; ticket: string | null }>({ needed: false, ticket: null });
 
   if (isLoading) return null;
   const feeCard = feeStep ? (
     <div className="rounded-2xl border border-border bg-white p-5">
       <h3 className="font-semibold">Agreement Signed</h3>
-      <ReservationFeeNextStep step={feeStep} />
+      <ReservationFeeNextStep
+        step={feeStep}
+        smsConsent={feeSms.needed && feeSms.ticket ? {
+          checked: smsChecked,
+          onChange: setSmsChecked,
+          onCommit: async (checked) => {
+            await recordFeeConsent({ data: { ticket: feeSms.ticket as string, consent: checked } });
+          },
+        } : null}
+      />
     </div>
   ) : null;
   // Drafts are not issued agreements and never reach the driver. Voided rows
@@ -688,21 +713,40 @@ function AgreementsView() {
 
             {openId === a.id && (a.state === "signed" || a.state === "awaiting_signature") ? (
               <div className="mt-3 rounded-xl border border-border bg-muted/30 p-4">
-                <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">
-                  {layoutToText(a.body)}
-                </pre>
+                {a.source === "standalone" && a.source_pdf ? (
+                  <StandaloneDocumentView source={a.source_pdf} />
+                ) : (
+                  <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">
+                    {layoutToText(a.body)}
+                  </pre>
+                )}
                 {a.state === "awaiting_signature" ? (
                   <div className="mt-4">
                     <SigningPanel
                       body={a.body}
                       defaultName={name}
                       busy={busy}
+                      document={a.source === "standalone"}
+                      smsConsent={a.source !== "standalone" && a.smsConsentNeeded ? { checked: smsChecked, onChange: setSmsChecked } : null}
                       onSubmit={async (v) => {
                         setBusy(true);
                         try {
-                          const res = await sign({ data: { agreementId: a.id, signerName: v.signerName, agree: true, adoption: v.adoption } });
+                          const res = await sign({
+                            data: {
+                              agreementId: a.id,
+                              signerName: v.signerName,
+                              agree: true,
+                              adoption: v.adoption,
+                              ...(a.source !== "standalone" && a.smsConsentNeeded ? { smsConsent: smsChecked } : {}),
+                            },
+                          });
                           setFeeStep((res as any)?.reservationFee ?? null);
-                          toast.success("Agreement signed");
+                          setSmsChecked(false);
+                          setFeeSms({
+                            needed: (res as { smsConsentNeeded?: boolean })?.smsConsentNeeded === true,
+                            ticket: (res as { smsConsentTicket?: string | null })?.smsConsentTicket ?? null,
+                          });
+                          toast.success(a.source === "standalone" ? "Document signed" : "Agreement signed");
                           setOpenId(null);
                           await refetch();
                         } catch (e: any) {
@@ -1182,6 +1226,8 @@ function Fact({ label, value }: { label: string; value: string }) {
 function PicturesView() {
   const picsPreviewId = usePreviewDriver();
   const fetchPics = usePortalRead(getDriverPictures);
+  const loadStaffPhotos = usePortalRead(getDriverStaffPhotos);
+  const openStaffPhoto = usePortalCall(openDriverStaffPhoto);
   const fetchCondition = usePreviewNull(listConditionMedia, [] as any);
   const fetchDashboard = usePortalRead(getDriverDashboard);
 
@@ -1214,6 +1260,11 @@ function PicturesView() {
 
   return (
     <div className="w-full space-y-5">
+      <DriverStaffPhotos
+        cacheKey={picsPreviewId ?? "self"}
+        load={() => loadStaffPhotos()}
+        open={(photo) => openStaffPhoto({ id: photo.id, kind: photo.kind })}
+      />
       <CheckoutSignOffCard />
 
       {vehicleId ? (
@@ -2206,12 +2257,13 @@ function MyChargesCard() {
           <li key={c.id} className="py-2.5 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <div className="text-sm font-medium ">
-                {enumDisplayLabel(c.charge_type)}
+                {chargeTypeLabel(c.charge_type)}
               </div>
               <div className="text-xs text-muted-foreground">
                 {fmtDate(c.occurred_at)}
                 {c.location ? ` · ${c.location}` : ""}
                 {c.agency ? ` · ${c.agency}` : ""}
+                {c.renter_pay_by ? ` · Pay By ${fmtDate(c.renter_pay_by)}` : ""}
               </div>
             </div>
             <div className="text-right shrink-0">
@@ -2369,7 +2421,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
                       className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
                         p.status === "paid"
                           ? "bg-emerald-100 text-emerald-800"
-                          : p.status === "failed"
+                          : ["failed", "unpaid", "overdue", "past_due", "late", "collections"].includes(String(p.status))
                             ? DANGER_BADGE
                             : p.status === "pending"
                               ? "bg-amber-100 text-amber-800"

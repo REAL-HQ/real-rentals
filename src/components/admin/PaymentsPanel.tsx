@@ -1,4 +1,5 @@
 import { LinkedVehicleCell } from "./VehicleCell";
+import { paymentMethodLabel } from "@/lib/stripe-payment-method";
 import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { useNavigate } from "@tanstack/react-router";
 import { rowNav } from "@/lib/row-click";
@@ -30,9 +31,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check, ListFilter } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
-import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
+import { FAILED_RECENT_FILTER, awaitingReservationFee, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, isZeroMoneyRow, rowOwed } from "@/lib/payments-summary";
+import { CollectionsPanel } from "./CollectionsPanel";
+import { PaymentSummaryCards } from "./PaymentSummaryCards";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
 import { UnmatchedStripePayments } from "./UnmatchedStripePayments";
+import { UnmatchedPaymentsQueue } from "./UnmatchedPaymentsQueue";
 import { UnmatchedRenterPayments } from "./RenterPayments";
 import { BILLING_DAY_CHANGE_ENABLED, BILLING_ONE_TIME_EXTENSION_ENABLED, BILLING_PM_UPDATE_LINK_ENABLED } from "@/lib/billing-controls-flag";
 import { BillingControls } from "./BillingControls";
@@ -40,7 +44,7 @@ import type { StaffTier } from "@/lib/roles";
 import { tierAllows } from "@/lib/roles";
 import { PAYMENT_CATEGORIES, PAYMENT_CATEGORY_LABEL, paymentCategory, paymentCategoryLabel, type PaymentCategory } from "@/lib/payment-category";
 import { isRentRowCovered, type StandingPayment } from "@/lib/rent-standing";
-import { OPEN_STATUSES, canTake, type PaymentStatusAction } from "@/lib/payment-status-rules";
+import { OPEN_STATUSES, STATUS_MENU_OPTIONS, canTake, type PaymentStatusAction } from "@/lib/payment-status-rules";
 import { changePaymentStatus } from "@/lib/payment-status.functions";
 import { releaseUnconfirmedPayment } from "@/lib/payment-unconfirmed.functions";
 import { chargeCardOnRental } from "@/lib/rental-payments.functions";
@@ -63,8 +67,8 @@ const STATUSES = [
   "refunded",
   "waived",
 ] as const;
-/** Everything the dashboard's Collections card counts: due and not received. */
-const OVERDUE_SET = new Set<string>(COLLECTIONS_WATCH_STATUSES);
+/** ?filter=collections-tab opens Payments > Collections (the renter profile's Collections card links here). */
+export const COLLECTIONS_TAB_FILTER = "collections-tab";
 const STATUS_LABEL: Record<string, string> = {
   upcoming: "Upcoming",
   pending: "Processing",
@@ -126,26 +130,32 @@ function fmtDate(iso?: string | null) {
 function isReservationFeePayment(p: { reason?: string | null; notes?: string | null }) {
   return p.reason === RESERVATION_FEE_REASON || /reservation_fee:/.test(String(p.notes ?? ""));
 }
-function paymentStatusLabel(p: { status?: string | null; reason?: string | null; notes?: string | null }) {
+function paymentStatusLabel(p: { status?: string | null; type?: string | null; reason?: string | null; notes?: string | null }) {
+  if (isUnpaidReservationFee(p)) return "Awaiting Reservation Fee";
   if (isReservationFeePayment(p) && (p.status === "refunded" || refundReasonFromNotes(p.notes))) {
     return reservationFeeRefundedDetail(refundReasonFromNotes(p.notes));
   }
   return STATUS_LABEL[String(p.status ?? "")] ?? enumDisplayLabel(String(p.status ?? ""));
 }
 
-export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null } = {}) {
+export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initialRecordId }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null; initialRecordId?: string } = {}) {
   const navigate = useNavigate();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   // Arriving from the dashboard's Collections card asks for everything
   // unresolved at once, which no single status covers.
-  const [statusFilter, setStatusFilter] = useState<string>(initialFilter ?? "all");
+  const [statusFilter, setStatusFilter] = useState<string>(initialFilter && initialFilter !== COLLECTIONS_TAB_FILTER ? initialFilter : "all");
   const [typeFilter, setTypeFilter] = useState<PaymentCategory | "all">("all");
   const [columnSort, setColumnSort] = useState<ColumnSort<PaymentSortKey> | null>(null);
   const [showAdd, setShowAdd] = useState(!!autoOpenAdd);
   const [showManual, setShowManual] = useState(false);
-  const [paymentsSection, setPaymentsSection] = useState<"ledger" | "stripe">("ledger");
+  const [paymentsSection, setPaymentsSection] = useState<"ledger" | "stripe" | "collections">(initialFilter === COLLECTIONS_TAB_FILTER ? "collections" : "ledger");
+  const canSeeCollections = tier === "owner" || tier === "manager";
+  const [rentals, setRentals] = useState<{ id: string; status: string | null; next_payment_due: string | null; weekly_rate: number | null; autopay_active: boolean | null; stripe_subscription_id: string | null }[]>([]);
+  // null = not loaded or not readable (Collections lines are Managers/Owners only).
+  const [collectionItems, setCollectionItems] = useState<{ amount: number; amount_paid: number; status: string; application_id: string }[] | null>(null);
+  const [collectionsNonce, setCollectionsNonce] = useState(0);
   const [refundRow, setRefundRow] = useState<{ id: string; name: string; amount: number } | null>(null);
   const [lateFeeRow, setLateFeeRow] = useState<{ rentalId: string; name: string } | null>(null);
 
@@ -162,7 +172,21 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
       .from("vehicles")
       .select("*")
       .then(({ data }) => setVehicles((data as any) || []));
+    supabase
+      .from("rentals")
+      .select("id,status,next_payment_due,weekly_rate,autopay_active,stripe_subscription_id")
+      .eq("status", "active")
+      .then(({ data }) => setRentals((data as any) || []));
   }, []);
+  useEffect(() => {
+    if (!canSeeCollections) return setCollectionItems(null);
+    (supabase as any)
+      .from("collection_items")
+      .select("amount,amount_paid,status,application_id")
+      .then(({ data, error }: { data: any[] | null; error: unknown }) =>
+        setCollectionItems(error ? null : (data ?? []).map((i) => ({ ...i, amount: Number(i.amount), amount_paid: Number(i.amount_paid) }))),
+      );
+  }, [canSeeCollections, collectionsNonce]);
 
   const driverMap = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d])), [drivers]);
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
@@ -265,7 +289,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
       case "status":
         return STATUS_LABEL[p.status as string] ?? formatStatusLabel(p.status);
       case "method":
-        return p.payment_method || "";
+        return paymentMethodLabel(p.payment_method, p);
       case "late_fees":
         return Number(p.late_fees || 0);
       case "balance":
@@ -273,14 +297,20 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
     }
   }
 
+  // $0 invoices (a paused subscription) are not ledger rows. They owe nothing,
+  // so Outstanding, which still sums countsAsOwed on this list, does not change.
+  const ledgerPayments = useMemo(() => payments.filter((p) => !isZeroMoneyRow(p)), [payments]);
+
   // Filter first, then sort a copy. Outstanding is computed from the filtered
   // set so clicking a header never changes the total.
   const byStatus = (
     statusFilter === "all"
-      ? payments
+      ? ledgerPayments
       : statusFilter === "overdue"
-        ? payments.filter((p) => OVERDUE_SET.has(p.status as string))
-        : payments.filter((p) => p.status === statusFilter)
+        ? ledgerPayments.filter((p) => isOverdueRow(p))
+        : statusFilter === FAILED_RECENT_FILTER
+          ? ledgerPayments.filter((p) => isRecentFailure(p as any))
+          : ledgerPayments.filter((p) => p.status === statusFilter)
   );
   // Type filter reads the shared category (payment-category.ts): a Reservation Fee is
   // Reservation even while it is stored as type 'fee'.
@@ -293,7 +323,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
     for (const p of payments) {
       if (!p.rental_id) continue;
       (byRental.get(p.rental_id) ?? byRental.set(p.rental_id, []).get(p.rental_id)!).push({
-        id: p.id, type: p.type, reason: (p as any).reason, notes: p.notes, status: p.status, amount: p.amount, dueDate: p.due_date, paidDate: p.paid_date,
+        id: p.id, type: p.type, reason: (p as any).reason, notes: p.notes, status: p.status, amount: p.amount, dueDate: p.due_date, paidDate: p.paid_date, balanceDue: p.balance_due, lateFees: p.late_fees,
       } as StandingPayment & { id: string });
     }
     const out = new Set<string>();
@@ -316,28 +346,47 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
 
   // Owed now: due/unpaid states only. Upcoming isn't due yet; paid, refunded,
   // waived and void owe nothing. A settled balance of 0 is 0, not the amount.
-  const OWED = new Set(["pending", "current", "late", "overdue", "past_due", "failed", "unpaid", "collections"]);
+  // Rows in Collections are tracked on the Collections tab, never in Outstanding (payments-summary.ts,
+  // shared with the summary cards so the cards and the rows always agree).
+  // A covered rent row still owes its late fees when only fees are left on it.
+  const feesOnly = (p: Payment) => feesOnlyLeft(p as any);
   const totalDue = filtered
-    .filter((p) => OWED.has(p.status as string) && !coveredIds.has(p.id))
-    .reduce((s, p) => s + (p.balance_due == null ? Number(p.amount || 0) : Number(p.balance_due)), 0);
+    .filter((p) => countsAsOwed(p as any, coveredIds))
+    .reduce((s, p) => s + rowOwed(p as any), 0);
+  const awaiting = awaitingReservationFee(filtered);
+  const summary = useMemo(
+    () => buildPaymentsSummary({ payments: payments as any, coveredIds, rentals, collectionItems }),
+    [payments, coveredIds, rentals, collectionItems],
+  );
 
   const statusCount = (status: string) => {
-    if (status === "all") return payments.length;
-    if (status === "overdue") return payments.filter((payment) => OVERDUE_SET.has(payment.status as string)).length;
-    return payments.filter((payment) => payment.status === status).length;
+    if (status === "all") return ledgerPayments.length;
+    if (status === "overdue") return ledgerPayments.filter((payment) => isOverdueRow(payment)).length;
+    if (status === FAILED_RECENT_FILTER) return ledgerPayments.filter((payment) => isRecentFailure(payment as any)).length;
+    return ledgerPayments.filter((payment) => payment.status === status).length;
   };
-  const statusLabel = (status: string) => status === "all" ? "All" : STATUS_LABEL[status] ?? formatStatusLabel(status);
+  const statusLabel = (status: string) => status === "all" ? "All" : status === FAILED_RECENT_FILTER ? "Failed (Last 3 Days)" : STATUS_LABEL[status] ?? formatStatusLabel(status);
 
   return (
     <div className="max-lg:min-w-0">
+      <PaymentSummaryCards
+        summary={summary}
+        overdueActive={paymentsSection === "ledger" && statusFilter === "overdue"}
+        failedActive={paymentsSection === "ledger" && statusFilter === FAILED_RECENT_FILTER}
+        collectionsActive={paymentsSection === "collections"}
+        onOverdue={() => { setPaymentsSection("ledger"); setTypeFilter("all"); setStatusFilter("overdue"); }}
+        onCollections={canSeeCollections ? () => setPaymentsSection("collections") : undefined}
+        onFailed={() => { setPaymentsSection("ledger"); setTypeFilter("all"); setStatusFilter(FAILED_RECENT_FILTER); }}
+      />
       <div className="admin-sticky-bar mb-4 grid grid-cols-1 gap-2 pb-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="flex min-w-0 items-center gap-2">
-          <Select value={paymentsSection} onValueChange={(value) => setPaymentsSection(value as "ledger" | "stripe")}>
+          <Select value={paymentsSection} onValueChange={(value) => setPaymentsSection(value as "ledger" | "stripe" | "collections")}>
             <SelectTrigger aria-label="Payment View" className="h-8 w-36 shrink-0 bg-white text-xs text-foreground">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ledger">Payments</SelectItem>
+              {canSeeCollections ? <SelectItem value="collections">Collections</SelectItem> : null}
               <SelectItem value="stripe">Stripe Collections</SelectItem>
             </SelectContent>
           </Select>
@@ -399,8 +448,15 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <div className="hidden whitespace-nowrap text-sm text-muted-foreground md:block">
-                Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
+              <div className="hidden min-w-0 items-baseline gap-3 whitespace-nowrap text-sm text-muted-foreground md:flex">
+                <span>
+                  Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
+                </span>
+                {awaiting.count > 0 ? (
+                  <span className="text-xs" data-testid="awaiting-reservation-fee">
+                    {`Awaiting Reservation Fee: $${awaiting.total.toLocaleString()} (${awaiting.count})`}
+                  </span>
+                ) : null}
               </div>
             </>
           ) : null}
@@ -423,12 +479,15 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
         ) : null}
       </div>
 
-      {paymentsSection === "stripe" ? (
+      {paymentsSection === "collections" ? (
+        <CollectionsPanel tier={tier} focusItemId={initialRecordId ?? null} onChanged={() => setCollectionsNonce((n) => n + 1)} />
+      ) : paymentsSection === "stripe" ? (
         <div className="rounded-2xl border border-[#EDEDF0] bg-white p-4 sm:p-5">
           <StripeCollections />
         </div>
       ) : (
       <>
+      <UnmatchedPaymentsQueue />
       {STRIPE_UNMATCHED_PAYMENTS_ENABLED ? <UnmatchedStripePayments /> : null}
       <UnmatchedRenterPayments />
       {(BILLING_PM_UPDATE_LINK_ENABLED || BILLING_DAY_CHANGE_ENABLED || BILLING_ONE_TIME_EXTENSION_ENABLED) ? <BillingControls /> : null}
@@ -504,7 +563,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                         </span>
                       </SelectTrigger>
                       <SelectContent align="start" className="min-w-[11rem]">
-                        {OPEN_STATUSES.map((s) => (
+                        {STATUS_MENU_OPTIONS.map((s) => (
                           <SelectItem key={s} value={s} className="text-[13px]">
                             {STATUS_LABEL[s]}
                           </SelectItem>
@@ -513,10 +572,10 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                     </Select>
                     )}
                     {coveredIds.has(p.id) ? (
-                      <span className="mt-0.5 block text-[11px] font-medium text-[#50C060]" data-testid="payment-covered-note">Paid On Another Row</span>
+                      <span className="mt-0.5 block text-[11px] font-medium text-[#50C060]" data-testid="payment-covered-note">{feesOnly(p) ? "Rent Paid · Late Fees Owed" : "Paid On Another Row"}</span>
                     ) : null}
                   </td>
-                  <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>
+                  <td className="px-3 text-[13px]">{paymentMethodLabel(p.payment_method, p)}</td>
                   <td
                     className={`px-3 text-right tabular-nums text-[13px] ${lateFees > 0 ? "text-[#D03020] font-medium" : "text-[#9A9AA3]"}`}
                   >
@@ -723,7 +782,7 @@ function AddPayment({
               </SelectTrigger>
               <SelectContent>
                 {/* A new charge starts owed. Money received is recorded with Mark as Paid, which is audited. */}
-                {OPEN_STATUSES.map((s) => (
+                {STATUS_MENU_OPTIONS.map((s) => (
                   <SelectItem key={s} value={s}>
                     {enumDisplayLabel(s)}
                   </SelectItem>

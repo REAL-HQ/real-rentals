@@ -40,6 +40,13 @@ describe("reference and emergency contact fields", () => {
     const panel = src("src/components/admin/DriversPanel.tsx");
     expect(panel).toMatch(/title="Reference And Emergency Contact"/);
     expect(panel).toMatch(/CONTACT_PEOPLE_FIELDS\.map/);
+    // Coordinators read the Drivers list through a field allow-list. These six
+    // have to be on it or the read-only card shows blanks.
+    const list = src("src/lib/drivers-list.ts");
+    for (const k of CONTACT_PEOPLE_FIELDS) expect(list).toContain(`"${k}"`);
+    expect(wiz).toMatch(/PhoneInput/);
+    expect(wiz).not.toMatch(/text-transform/);
+    expect(panel).not.toMatch(/text-transform/);
   });
 });
 
@@ -65,7 +72,7 @@ describe("blacklist matching on references", () => {
     expect(identifierKindLabel("emergency_name")).toBe("Emergency Contact Name");
   });
   test("migration: columns, matching function, trigger columns, scan uses full matching", () => {
-    const sql = src("supabase/migrations/20261120130000_application_references.sql");
+    const sql = src("supabase/migrations/20261126213000_application_references.sql");
     for (const k of CONTACT_PEOPLE_FIELDS) expect(sql).toContain(`ADD COLUMN IF NOT EXISTS ${k} text`);
     expect(sql).toMatch(/private\.blacklist_reference_hits\(_app\)/);
     expect(sql).toMatch(/reference_name, reference_phone, emergency_contact_name, emergency_contact_phone ON public\.applications/);

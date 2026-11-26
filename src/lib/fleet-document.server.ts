@@ -136,7 +136,15 @@ async function priorUpload(admin: Admin, idem: string | null, leadId: string, ca
 export async function handleFleetDriverDocument(request: Request, deps: DocumentDeps = {}): Promise<Response> {
   const parsed = await fleetRequestBody(request, deps);
   if ("response" in parsed) return parsed.response;
-  const { body } = parsed;
+  return fileFleetDriverDocument(parsed.body, deps);
+}
+
+/**
+ * Everything after authentication. Exported so another already-authenticated
+ * FLEET call (the RentID report endpoint) files its report the same way,
+ * under the same Document Uploads switch, dedupe and save step.
+ */
+export async function fileFleetDriverDocument(body: Record<string, any>, deps: DocumentDeps = {}): Promise<Response> {
   const admin = await fleetAdmin(deps);
   const audit = fleetAudit(deps);
 

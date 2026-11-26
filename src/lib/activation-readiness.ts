@@ -41,6 +41,8 @@ export type ActivationBlockerCode =
   | "invalid_dates"
   /** Vehicle fails Rental Ready (or rate missing). Never overridable. */
   | "vehicle_not_ready"
+  /** For Sale is not a rentable car. Never overridable. */
+  | "vehicle_for_sale"
   /** The application's login belongs to a different identity. Never overridable. */
   | "account_conflict"
   /** Pickup mileage is materially below the vehicle's mileage history. */

@@ -325,11 +325,16 @@
     top: var(--admin-sticky-h, 0px);
     z-index: 15;
   }
-  /* Extend the bar's background over its 16px bottom margin so scrolling
-     rows can't peek through the gap above the sticky table header. */
+  /* The bar's 16px bottom padding keeps scrolling rows from peeking through
+     the gap above the sticky table header. No negative bottom margin: it
+     pulled the table up so its natural position sat 16px above the header's
+     sticky threshold per stacked bar (31px under Bookings' two bars), and a
+     sticky element is pushed to its threshold even at scroll 0 — so on load
+     the header covered the first table row. Natural position now equals the
+     threshold, so nothing is pushed. */
   .admin-sticky-bar.admin-sticky-bar {
     padding-bottom: 16px;
-    margin-bottom: -16px;
+    margin-bottom: 0;
   }
   /* Section pages need real separation below their sticky heading; unlike
      table toolbars, they must not pull the next section under the paint. */

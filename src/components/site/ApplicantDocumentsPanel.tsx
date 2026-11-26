@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { getApplicationForWizard, replaceApplicantDocument } from "@/lib/applications.functions";
+import { getApplicationForWizard, replaceApplicantDocument, addApplicantDocument } from "@/lib/applications.functions";
 import { uploadApplicantFile, type UploadKind } from "@/lib/applicant-upload";
 import { Logo } from "@/components/site/Logo";
 import { FileUploader } from "@/components/FileUploader";
@@ -18,6 +18,7 @@ const ACCEPT = "image/*,application/pdf";
 export function ApplicantDocumentsPanel({ token }: { token: string }) {
   const load = useServerFn(getApplicationForWizard);
   const replace = useServerFn(replaceApplicantDocument);
+  const add = useServerFn(addApplicantDocument);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [name, setName] = useState("");
   const [failed, setFailed] = useState(false);
@@ -45,14 +46,23 @@ export function ApplicantDocumentsPanel({ token }: { token: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  /** Throws on failure so the uploader offers Retry. */
-  async function onPick(kind: UploadKind, file: File) {
+  /**
+   * Throws on failure so the uploader offers Retry. "add" keeps every file
+   * already on file and adds this one beside them; "replace" is the explicit
+   * swap of the main file.
+   */
+  async function onPick(kind: UploadKind, file: File, mode: "add" | "replace") {
     setBusy(kind);
     setMessage(null);
     try {
       const { path } = await uploadApplicantFile({ token, kind, file });
-      const r = await replace({ data: { token, kind, path } });
-      setMessage({ ok: true, text: r.replaced ? "Thanks — Your New File Replaced The Old One. Our Team Will Review It." : "Thanks — Your File Is Uploaded. Our Team Will Review It." });
+      if (mode === "add") {
+        await add({ data: { token, kind, path } });
+        setMessage({ ok: true, text: "Thanks — Your File Was Added. Our Team Will Review It." });
+      } else {
+        const r = await replace({ data: { token, kind, path } });
+        setMessage({ ok: true, text: r.replaced ? "Thanks — Your New File Replaced The Old One. Our Team Will Review It." : "Thanks — Your File Is Uploaded. Our Team Will Review It." });
+      }
       await refresh();
     } catch (e) {
       setMessage({ ok: false, text: e instanceof Error ? e.message : "We Couldn't Upload That. Please Try Again." });
@@ -70,7 +80,7 @@ export function ApplicantDocumentsPanel({ token }: { token: string }) {
         </div>
         <h1 className="mt-6 text-2xl font-semibold text-center">Update Your Documents{name ? `, ${name}` : ""}</h1>
         <p className="mt-3 text-sm text-muted-foreground leading-relaxed text-center">
-          Upload a missing document or replace one, like a clearer photo of your driver's license. Your driver portal opens once your rental is paid at pickup.
+          Upload a missing document, add more files to any section, or replace one, like a clearer photo of your driver's license. Your driver portal opens once your rental is paid at pickup.
         </p>
         {failed ? (
           <p className="mt-6 text-sm text-red-700 text-center">This Link Has Expired. Request A New One From The Sign-In Page.</p>
@@ -84,17 +94,33 @@ export function ApplicantDocumentsPanel({ token }: { token: string }) {
                   <p className="text-sm font-medium">{row.label}</p>
                   <p className="text-xs text-muted-foreground">{row.onFile ? "On File" : "Not On File Yet"} · {row.hint}</p>
                 </div>
-                <FileUploader
-                  variant="inline"
-                  accept={ACCEPT}
-                  camera
-                  disabled={busy !== null && busy !== row.kind}
-                  busy={busy === row.kind}
-                  label={row.onFile && row.kind !== "trip_history" ? "Replace" : "Upload"}
-                  context={row.label}
-                  upload={(file) => onPick(row.kind, file)}
-                  className="shrink-0"
-                />
+                <div className="flex shrink-0 items-center gap-2">
+                  <FileUploader
+                    variant="inline"
+                    accept={ACCEPT}
+                    camera
+                    multiple
+                    disabled={busy !== null && busy !== row.kind}
+                    busy={busy === row.kind}
+                    label={row.onFile ? "Add Another" : "Upload"}
+                    context={row.label}
+                    upload={(file) => onPick(row.kind, file, "add")}
+                    className="shrink-0"
+                  />
+                  {row.onFile && row.kind !== "trip_history" ? (
+                    <FileUploader
+                      variant="inline"
+                      accept={ACCEPT}
+                      camera
+                      disabled={busy !== null && busy !== row.kind}
+                      busy={busy === row.kind}
+                      label="Replace"
+                      context={`${row.label} (Replaces The Main File)`}
+                      upload={(file) => onPick(row.kind, file, "replace")}
+                      className="shrink-0"
+                    />
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>

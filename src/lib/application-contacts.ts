@@ -4,7 +4,7 @@
  * Added Nov 20 2026 at Dolmar's request so linked-person blacklist matching
  * can see who an applicant lists: a reference or emergency contact who is a
  * blacklisted person (by name or phone) is a blacklist match
- * (20261120130000_application_references.sql). Client-safe.
+ * (20261126213000_application_references.sql, not applied). Client-safe.
  */
 import { z } from "zod";
 import { normalizePhone } from "@/lib/blacklist";
@@ -32,8 +32,14 @@ export const CONTACT_PEOPLE_LABELS: Record<ContactPeopleField, string> = {
 /** Empty string -> null; otherwise trimmed. */
 const blankToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
 
-const personName = z.preprocess(blankToNull, z.string().trim().min(2, "Enter Their Full Name.").max(120).nullable().optional());
-const relationship = z.preprocess(blankToNull, z.string().trim().max(60).nullable().optional());
+const personName = z.preprocess(
+  blankToNull,
+  z.string().trim().min(2, "Enter Their Full Name.").max(120, "Keep The Name Under 120 Characters.").nullable().optional(),
+);
+const relationship = z.preprocess(
+  blankToNull,
+  z.string().trim().max(60, "Keep The Relationship Under 60 Characters.").nullable().optional(),
+);
 const personPhone = z.preprocess(
   blankToNull,
   z

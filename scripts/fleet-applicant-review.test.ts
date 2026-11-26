@@ -1,6 +1,6 @@
 // FLEET applicant review: the rules, the list/get packet, the decision
-// endpoint (approve through the staff code path, needs_staff, no decline),
-// the ready-for-review sweep, and the proposed table (PGlite).
+// endpoint (approve through the staff code path, decline, needs_staff),
+// profile notes, the ready-for-review sweep, and the proposed table (PGlite).
 // Network refused; fake database.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -106,7 +106,7 @@ describe("rules", () => {
     expect(a.hard_blockers.map((x) => x.code)).not.toContain("background_check_status_pending");
     expect(a.hard_blockers.map((x) => x.code)).not.toContain("background_check_status_open");
   });
-  test("hard blockers: partial, missing docs, rejected doc, disqualifier, under 21, expired license, bad check, open flag, duplicate, no email", () => {
+  test("hard blockers: partial, missing docs, rejected doc, disqualifier, under 23, expired license, bad check, open flag, duplicate, no email", () => {
     const codes = (app: Row, docs = docsFor(A), extra: Row = {}) => rules.assessForFleet({ ...base, app, docs, ...extra }).hard_blockers.map((b) => b.code);
     expect(codes(goodApp(A, { status: "partial" }))).toContain("not_submitted");
     expect(codes(goodApp(A), docsFor(A, ["gig_profile"]))).toContain("missing_license_front");
@@ -117,7 +117,7 @@ describe("rules", () => {
     expect(rejectedBack.hard_blockers).toEqual([]);
     expect(rejectedBack.escalations.map((e) => e.code)).toContain("rejected_license_back");
     expect(codes(goodApp(A), docsFor(A), { disqualifiers: ["DUI on record"] })).toContain("disqualifier");
-    expect(codes(goodApp(A, { dob: "2006-06-01" }))).toContain("under_21");
+    expect(codes(goodApp(A, { dob: "2006-06-01" }))).toContain("under_min_age");
     expect(codes(goodApp(A, { license_expiration: "2026-11-01" }))).toContain("license_expired");
     expect(codes(goodApp(A, { background_check_status: "failed" }))).toContain("background_check_status_failed");
     expect(codes(goodApp(A), docsFor(A), { openNeedsStaff: { reason: "check", created_at: null } })).toContain("open_needs_staff");
@@ -125,6 +125,29 @@ describe("rules", () => {
     expect(codes(goodApp(A, { email: "" }))).toContain("no_email");
     expect(codes(goodApp(A, { status: "declined" }))).toContain("stage_not_reviewable");
     expect(codes(goodApp(A, { status: "active" }))).toContain("stage_not_reviewable");
+  });
+  test("minimum renter age is 23 (Dolmar, Nov 21 2026; was 21, with a 25 staff look)", () => {
+    // NOW is 2026-11-16 15:00 UTC.
+    const assess = (dob: string) => rules.assessForFleet({ ...base, app: goodApp(A, { dob }), docs: docsFor(A) });
+    const blockers = (dob: string) => assess(dob).hard_blockers.map((b) => b.code);
+    const escalations = (dob: string) => assess(dob).escalations.map((e) => e.code);
+    expect(rules.FLEET_ESCALATION_DEFAULTS.minAge).toBe(23);
+    expect(rules.FLEET_ESCALATION_DEFAULTS.youngDriverAge).toBe(23);
+    // 21 and 22 were allowed before; now a hard blocker.
+    expect(blockers("2005-06-01")).toContain("under_min_age");
+    expect(blockers("2004-06-01")).toContain("under_min_age");
+    expect(assess("2004-06-01").hard_blockers.find((b) => b.code === "under_min_age")?.message).toBe("Driver is 22 (minimum 23).");
+    // One day short of 23 is still blocked; the 23rd birthday passes.
+    expect(blockers("2003-11-17")).toContain("under_min_age");
+    expect(blockers("2003-11-16")).not.toContain("under_min_age");
+    // 23 and 24 used to go to staff as young drivers (under 25); now a clean approve.
+    for (const dob of ["2003-11-16", "2002-06-01"]) {
+      expect(blockers(dob)).toEqual([]);
+      expect(escalations(dob)).not.toContain("young_driver");
+      expect(assess(dob).recommendation).toBe("approve");
+    }
+    // No date of birth still goes to staff.
+    expect(rules.assessForFleet({ ...base, app: goodApp(A, { dob: null }), docs: docsFor(A) }).escalations.map((e) => e.code)).toContain("no_dob");
   });
   test("applied before: only an earlier declined or closed application escalates (t298s1611)", () => {
     const resub = rules.assessForFleet({ ...base, app: goodApp(A, { resubmission_count: 2 }), docs: docsFor(A) });
@@ -144,7 +167,9 @@ describe("rules", () => {
   test("income is advisory; escalations are FLEET's call", () => {
     const a = rules.assessForFleet({ ...base, app: goodApp(A, { dob: "2003-01-01", rating: 3.9, trips_completed: 20, ai_flags: ["name mismatch"] }), docs: docsFor(A, ["license_front", "license_back", "gig_profile"]), priorDeclined: 1 });
     expect(a.hard_blockers).toEqual([]);
-    expect(a.escalations.map((e) => e.code)).toEqual(expect.arrayContaining(["young_driver", "low_rating", "few_trips", "ai_flags", "prior_declined"]));
+    expect(a.escalations.map((e) => e.code)).toEqual(expect.arrayContaining(["low_rating", "few_trips", "ai_flags", "prior_declined"]));
+    // 23 is old enough to rent and to approve (Dolmar, Nov 21 2026): no young-driver look.
+    expect(a.escalations.map((e) => e.code)).not.toContain("young_driver");
     // Missing income proof is requested, not sent to staff (t298s1611).
     expect(a.escalations.map((e) => e.code)).not.toContain("missing_income");
     expect(a.notes.map((e) => e.code)).toContain("requested_income");
@@ -269,6 +294,25 @@ describe("applicants endpoint", () => {
     expect(withUrls.packet.documents[0].url_expires_in_seconds).toBe(900);
     expect((await srv.handleFleetApplicants(req("applicants", { action: "get", lead_id: "nope" }), { admin: db, env: ENV })).status).toBe(400);
   });
+  test("get returns every file in a category, newest first, each with its own signed url", async () => {
+    const s = seed();
+    s.documents.push(
+      { id: `${A}-ssa`, driver_id: A, category: "income", file_name: "ssa.pdf", review_status: "uploaded", is_current: true, created_at: "2026-11-01T15:00:00Z", storage_bucket: "vault", storage_path: `${A}/ssa.pdf`, uploaded_by_role: "driver" },
+      { id: `${A}-uber`, driver_id: A, category: "income", file_name: "uber-earnings.pdf", review_status: "verified", is_current: true, created_at: "2026-11-20T15:00:00Z", storage_bucket: "vault", storage_path: `${A}/uber.pdf`, uploaded_by_role: "team" },
+      { id: `${A}-old`, driver_id: A, category: "income", file_name: "archived.pdf", review_status: "uploaded", is_current: false, created_at: "2026-10-01T15:00:00Z", storage_bucket: "vault", storage_path: `${A}/old.pdf` },
+    );
+    const db = fakeDb(s);
+    const j = await (await srv.handleFleetApplicants(req("applicants", { action: "get", lead_id: A, include_urls: true }), { admin: db, env: ENV, now: () => NOW })).json();
+    const income = j.packet.documents_by_category.income;
+    expect(income.active).toBe(3);
+    expect(income.verified).toBe(1);
+    expect(income.latest).toMatchObject({ id: `${A}-uber`, file_name: "uber-earnings.pdf" });
+    expect(income.latest.url).toContain("https://signed.example/");
+    expect(income.files.map((f: any) => f.id)).toEqual([`${A}-uber`, `${A}-d3`, `${A}-ssa`]);
+    expect(income.files.every((f: any) => typeof f.url === "string" && f.url.includes("https://signed.example/"))).toBe(true);
+    expect(j.packet.documents.some((d: any) => d.id === `${A}-old`)).toBe(false);
+    expect(j.packet.documents.filter((d: any) => d.category === "income")).toHaveLength(3);
+  });
 });
 
 describe("decision endpoint", () => {
@@ -277,17 +321,22 @@ describe("decision endpoint", () => {
     const res = await srv.handleFleetApplicantDecision(req("applicant-decision", body), { admin: db, env: ENV, now: () => NOW, audit: async (e) => { audits.push(e); }, ...extra });
     return { status: res.status, body: await res.json(), audits };
   };
-  test("decline is refused; bad input refused; nothing written", async () => {
+  test("unknown decision and a short reason are refused; nothing written", async () => {
     const db = fakeDb(seed());
-    for (const d of ["decline", "declined", "reject"]) {
-      const r = await call(db, { lead_id: A, decision: d, reason: "Not a fit for us" });
-      expect(r.status).toBe(400);
-      expect(r.body.error).toContain("needs_staff");
-    }
+    const reject = await call(db, { lead_id: A, decision: "reject", reason: "Not a fit for us" });
+    expect(reject.status).toBe(400);
+    expect(reject.body.error).toContain("decline");
+    const short = await call(db, { lead_id: A, decision: "decline", reason: "no" });
+    expect(short.status).toBe(400);
+    expect(short.body.error).toContain("reason");
+    const badFlag = await call(db, { lead_id: A, decision: "decline", reason: "Not a fit for us", skip_notify: "yes" });
+    expect(badFlag.status).toBe(400);
+    expect(badFlag.body.error).toContain("skip_notify");
     expect((await call(db, { lead_id: A, decision: "approve", reason: "ok" })).status).toBe(400);
     expect((await call(db, { lead_id: "x", decision: "approve", reason: "Looks good" })).status).toBe(400);
     expect(db.state.applications.find((a) => a.id === A)!.status).toBe("new");
     expect(db.state.fleet_review_decisions).toHaveLength(0);
+    expect(db.state.applications.find((a) => a.id === A)!.notes ?? "").toBe("");
   });
   test("approve runs the staff approval core with FLEET labels; refused with blockers", async () => {
     const db = fakeDb(seed());
@@ -295,7 +344,7 @@ describe("decision endpoint", () => {
     const approve = async (a: any) => { seen.push(a); return { ok: true, agreementSent: false, portalAccount: "deferred" as const, approvalEmail: "sent" as const }; };
     const blocked = await call(db, { lead_id: C, decision: "approve", reason: "Looks good to FLEET" }, { approve });
     expect(blocked.status).toBe(409);
-    expect(blocked.body.hard_blockers.map((b: any) => b.code)).toContain("under_21");
+    expect(blocked.body.hard_blockers.map((b: any) => b.code)).toContain("under_min_age");
     expect(seen).toHaveLength(0);
     const ok = await call(db, { lead_id: A, decision: "approve", reason: "All checks clean", idempotency_key: "rev-A-1" }, { approve });
     expect(ok.status).toBe(201);
@@ -342,6 +391,113 @@ describe("decision endpoint", () => {
     expect(r.status).toBe(503);
     expect(r.audits).toHaveLength(0);
   });
+
+  function noticeDeps(sent: any[]) {
+    return {
+      sendDeclineEmail: async (a: any) => { sent.push({ channel: "email", ...a }); return { ok: true }; },
+      sendDeclineSms: async (a: any) => { sent.push({ channel: "sms", ...a }); return { ok: true }; },
+      companyPhone: async () => "(888) 833-8280",
+    };
+  }
+  test("decline sets status, audits as FLEET, writes notes, and sends the notice", async () => {
+    const db = fakeDb(seed());
+    const before = JSON.stringify({ ins: db.state.applications[0].insurance_status, bg: db.state.applications[0].background_check_status });
+    const sent: any[] = [];
+    const reason = "SECRET-REASON-9941 license not usable";
+    const r = await call(db, { lead_id: A, decision: "decline", reason, note: "Left a voicemail", idempotency_key: "dec-A-1" }, noticeDeps(sent));
+    expect(r.status).toBe(201);
+    expect(r.body).toMatchObject({
+      ok: true, decision: "decline", lead_id: A, skip_notify: false, note_saved: true,
+      decline_notice: { email: "sent", sms: "sent" }, previous_status: "new",
+    });
+    const app = db.state.applications.find((a) => a.id === A)!;
+    expect(app.status).toBe("declined");
+    expect(JSON.stringify({ ins: app.insurance_status, bg: app.background_check_status })).toBe(before);
+    expect(app.notes).toContain("Declined by FLEET (automated) on Nov 16, 2026: SECRET-REASON-9941 license not usable");
+    expect(app.notes).toContain("FLEET (automated) on Nov 16, 2026: Left a voicemail");
+    expect(db.state.fleet_review_decisions[0]).toMatchObject({ decision: "declined", decided_by: "FLEET (automated)", reason });
+    expect(r.audits[0]).toMatchObject({
+      action: "application.fleet_declined",
+      entityId: A,
+      metadata: { decided_by: "FLEET (automated)", reason, previous_status: "new", status: "declined", skip_notify: false },
+    });
+    expect(JSON.stringify(r.audits[0])).not.toMatch(/actor_email|staff@|userId/);
+    expect(sent.map((s) => s.channel).sort()).toEqual(["email", "sms"]);
+    expect(JSON.stringify(sent)).not.toContain("SECRET-REASON-9941");
+    expect(sent.find((s) => s.channel === "sms").body).toContain("Reply STOP to opt out");
+    expect(sent.find((s) => s.channel === "sms").body).toContain("(888) 833-8280");
+    const again = await call(db, { lead_id: A, decision: "decline", reason, idempotency_key: "dec-A-1" }, noticeDeps(sent));
+    expect(again.body).toMatchObject({ ok: true, duplicate: true, decision: "decline" });
+    expect(sent).toHaveLength(2);
+    expect(db.state.fleet_review_decisions).toHaveLength(1);
+  });
+  test("skip_notify does not send; false and omitted do send; active rental refuses", async () => {
+    const db = fakeDb(seed());
+    const sent: any[] = [];
+    const skipped = await call(db, { lead_id: A, decision: "decline", reason: "Not moving forward", skip_notify: true }, noticeDeps(sent));
+    expect(skipped.status).toBe(201);
+    expect(skipped.body.skip_notify).toBe(true);
+    expect(skipped.body.decline_notice).toEqual({ email: "skipped", sms: "skipped" });
+    expect(sent).toHaveLength(0);
+    expect(db.state.applications.find((a) => a.id === A)!.status).toBe("declined");
+    expect(skipped.audits[0].metadata.decided_by).toBe("FLEET (automated)");
+    const second = fakeDb(seed());
+    const sentAgain: any[] = [];
+    const explicit = await call(second, { lead_id: A, decision: "declined", reason: "Not moving forward", skip_notify: false }, noticeDeps(sentAgain));
+    expect(explicit.status).toBe(201);
+    expect(explicit.body.decline_notice).toEqual({ email: "sent", sms: "sent" });
+    expect(sentAgain).toHaveLength(2);
+    const blocked = fakeDb({ ...seed(), rentals: [{ id: "r1", application_id: A, status: "active" }] });
+    const rental = await call(blocked, { lead_id: A, decision: "decline", reason: "Not moving forward" }, noticeDeps([]));
+    expect(rental.status).toBe(409);
+    expect(blocked.state.applications.find((a) => a.id === A)!.status).toBe("new");
+    expect(blocked.state.fleet_review_decisions).toHaveLength(0);
+  });
+  test("already declined does not send again", async () => {
+    const db = fakeDb(seed());
+    db.state.applications.find((a) => a.id === A)!.status = "declined";
+    const sent: any[] = [];
+    const r = await call(db, { lead_id: A, decision: "decline", reason: "Not moving forward" }, noticeDeps(sent));
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ duplicate: true, already_declined: true });
+    expect(sent).toHaveLength(0);
+    expect(r.audits).toHaveLength(0);
+  });
+});
+
+describe("profile notes", () => {
+  const call = async (db: any, body: unknown) => {
+    const audits: any[] = [];
+    db.state.audit_log ??= [];
+    const res = await srv.handleFleetProfileNote(req("profile-note", body), {
+      admin: db, env: ENV, now: () => NOW,
+      audit: async (e) => {
+        audits.push(e);
+        db.state.audit_log.push({ id: `audit-${audits.length}`, entity_id: e.entityId, action: e.action, metadata: e.metadata ?? {}, summary: e.summary });
+      },
+    });
+    return { status: res.status, body: await res.json(), audits };
+  };
+  test("appends an attributed note staff can read, and replays an idempotency key", async () => {
+    const db = fakeDb(seed());
+    db.state.applications.find((a) => a.id === A)!.notes = "Existing staff note.";
+    const r = await call(db, { lead_id: A, note: "Spoke with them about the gig screenshot.", idempotency_key: "note-A-1" });
+    expect(r.status).toBe(201);
+    expect(r.body).toMatchObject({ ok: true, lead_id: A, note_saved: true });
+    const notes = db.state.applications.find((a) => a.id === A)!.notes as string;
+    expect(notes.startsWith("Existing staff note.")).toBe(true);
+    expect(notes).toContain("FLEET (automated) on Nov 16, 2026: Spoke with them about the gig screenshot.");
+    expect(r.audits[0]).toMatchObject({ action: "application.fleet_note", entityId: A, metadata: { decided_by: "FLEET (automated)" } });
+    expect(db.state.applications.find((a) => a.id === A)!.status).toBe("new");
+    const again = await call(db, { lead_id: A, note: "Spoke with them about the gig screenshot.", idempotency_key: "note-A-1" });
+    expect(again.status).toBe(200);
+    expect(again.body.duplicate).toBe(true);
+    expect(again.audits).toHaveLength(0);
+    const other = await call(db, { lead_id: B, note: "Different person", idempotency_key: "note-A-1" });
+    expect(other.status).toBe(409);
+    const missing = await call(db, { lead_id: A, note: "" });
+    expect(missing.status).toBe(400);
+  });
 });
 
 describe("ready-for-review sweep", () => {
@@ -359,7 +515,7 @@ describe("ready-for-review sweep", () => {
 
 describe("wiring", () => {
   test("routes POST-only; webhook event typed; cron sweeps; staff approve uses the shared core", () => {
-    for (const r of ["applicants", "applicant-decision"]) {
+    for (const r of ["applicants", "applicant-decision", "profile-note"]) {
       const src = readFileSync(`src/routes/api/public/fleet/${r}.ts`, "utf8");
       expect(src).toContain(`createFileRoute("/api/public/fleet/${r}")`);
       expect(src).not.toMatch(/GET:/);
@@ -396,7 +552,8 @@ describe("proposed migration (PGlite)", () => {
     await pg.query(`UPDATE fleet_review_decisions SET resolved_at = now()`);
     await ins("needs_staff");
     await ins("approved");
-    await expect(ins("declined")).rejects.toThrow();
+    await ins("declined", "License expired and not replaced");
+    await expect(ins("nope")).rejects.toThrow();
     await expect(ins("approved", "x")).rejects.toThrow();
     for (const e of ["lead_created", "stage_changed", "quo_message_received", "quo_call", "quo_voicemail", "quo_transcript", "agreement_signed_by_renter", "application_ready_for_review"])
       await pg.query(`INSERT INTO fleet_webhook_deliveries (event_type, dedupe_key) VALUES ($1, $2)`, [e, `k:${e}`]);

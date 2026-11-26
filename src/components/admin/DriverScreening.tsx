@@ -43,6 +43,7 @@ import {
   type InsuranceVerificationActivity,
 } from "@/lib/insurance-verification.functions";
 import { DANGER_BADGE } from "@/lib/badge-tone";
+import { MIN_RENTER_AGE } from "@/lib/renter-age";
 
 /* ------------------------------------------------------------------ */
 /* Disqualifier rules                                                  */
@@ -80,7 +81,7 @@ export function screeningConcerns(s: Partial<DriverScreening>): {
   if (s.has_personal_insurance === true && s.insurance_name_matches_license === false) {
     reasons.push("Insurance Name Does Not Match License");
   }
-  if (s.driver_age != null && s.driver_age < 21) reasons.push("Driver Under 21");
+  if (s.driver_age != null && s.driver_age < MIN_RENTER_AGE) reasons.push(`Driver Under ${MIN_RENTER_AGE}`);
 
   return { disqualified: reasons.length > 0, reasons };
 }

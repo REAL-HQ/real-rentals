@@ -23,6 +23,7 @@ import {
 } from "../src/lib/blacklist";
 import {
   addToBlacklist,
+  editBlacklistNote,
   blacklistRefusalFromDbError,
   checkBlacklist,
   clearBlacklistMatch,
@@ -184,10 +185,10 @@ describe("matching normalization", () => {
 });
 
 describe("permissions and writes", () => {
-  test("only an Owner can blacklist, remove, void, or clear a match", async () => {
+  test("only an Owner can remove, void, or clear a match; Coordinators cannot add either", async () => {
     for (const actor of [manager, coordinator]) {
       const { admin } = fakeAdmin(seed());
-      await expect(addToBlacklist(admin, actor, { applicationId: APP, reason: "chargeback", note: "Disputed rent", date: "2026-11-19" }, audit, "2026-11-19")).rejects.toThrow("Only An Owner");
+      if (actor === coordinator) await expect(addToBlacklist(admin, actor, { applicationId: APP, reason: "chargeback", note: "Disputed rent", date: "2026-11-19" }, audit, "2026-11-19")).rejects.toThrow("Only An Owner");
       await expect(removeFromBlacklist(admin, actor, { applicationId: APP, reason: "Paid in full" }, audit)).rejects.toThrow("Only An Owner");
       await expect(voidStrike(admin, actor, { strikeId: "s1", reason: "Entered in error" }, audit)).rejects.toThrow("Only An Owner");
       await expect(clearBlacklistMatch(admin, actor, { applicationId: APP, blacklistIds: ["b"] }, audit)).rejects.toThrow("Only An Owner");
@@ -420,6 +421,56 @@ describe("Owner / Admin permission (Dolmar Nov 20 2026)", () => {
     const { admin } = fakeAdmin(seed());
     const r = await addToBlacklist(admin, adminActor, { applicationId: APP, reason: "vehicle_repossessed", note: "Repossessed, keys missing", date: "2026-11-19" }, audit);
     expect(JSON.stringify(r.entry)).toContain("(Owner)");
-    await expect(addToBlacklist(fakeAdmin(seed()).admin, manager, { applicationId: APP, reason: "vehicle_repossessed", note: "Repossessed, keys missing", date: "2026-11-19" }, audit)).rejects.toThrow("Only An Owner Or Admin Can Blacklist A Renter.");
+    await expect(addToBlacklist(fakeAdmin(seed()).admin, coordinator, { applicationId: APP, reason: "vehicle_repossessed", note: "Repossessed, keys missing", date: "2026-11-19" }, audit)).rejects.toThrow("Only An Owner, Admin Or Manager Can Blacklist A Renter.");
+  });
+
+  test("a Manager can ADD (reason, note, date, who required; note saved to Notes) but not remove, void or clear", async () => {
+    const { canAddToBlacklist } = await import("../src/lib/blacklist");
+    expect(canAddToBlacklist("owner")).toBe(true);
+    expect(canAddToBlacklist("manager")).toBe(true);
+    expect(canAddToBlacklist("coordinator")).toBe(false);
+    expect(canAddToBlacklist(null)).toBe(false);
+    const { admin } = fakeAdmin(seed());
+    const r = await addToBlacklist(admin, manager, { applicationId: APP, reason: "vehicle_repossessed", note: "Repossessed, keys missing", date: "2026-11-19" }, audit);
+    expect(JSON.stringify(r.entry)).toContain("(Manager)");
+    expect(r.notes).toContain("Repossessed, keys missing");
+    await expect(addToBlacklist(fakeAdmin(seed()).admin, manager, { applicationId: APP, reason: "vehicle_repossessed", note: "", date: "2026-11-19" }, audit)).rejects.toThrow();
+    await expect(removeFromBlacklist(admin, manager, { applicationId: APP, reason: "Mistake" } as any, audit)).rejects.toThrow("Only An Owner Or Admin Can Remove A Renter From The Blacklist.");
+    const fs = readFileSync(new URL("../src/lib/blacklist.functions.ts", import.meta.url), "utf8");
+    expect(fs).toMatch(/requireManager\(context\.userId\);\s+const \{ admin, audit, core \} = await deps\(\);\s+return core\.addToBlacklist/);
+    const card = readFileSync(new URL("../src/components/admin/BlacklistCard.tsx", import.meta.url), "utf8");
+    expect(card).toMatch(/\(isOwner \|\| isManager\) && !active/);
+    expect(card).toMatch(/\{isOwner && active \?/);
+    expect(card).toMatch(/\{isOwner && !s\.voidedAt/);
+  });
+  test("Owner and Manager can edit the active blacklist note (audited, saved to Notes); coordinators cannot; reason and date stay", async () => {
+    const { admin, db } = fakeAdmin(seed());
+    await addToBlacklist(admin, owner, { applicationId: APP, reason: "vehicle_repossessed", note: "Original note text", date: "2026-11-19" }, audit);
+    audits.length = 0;
+    const r = await editBlacklistNote(admin, manager, { applicationId: APP, note: "  Updated note text  " }, audit, new Date("2026-11-21T15:00:00Z"));
+    expect(r.entry.note).toBe("Updated note text");
+    expect(r.entry.reason).toBe("vehicle_repossessed");
+    expect(r.entry.blacklistedOn).toBe("2026-11-19");
+    expect(r.entry.addedBy).toContain("(Owner)");
+    expect(r.notes).toContain("Blacklist Note Edited Nov 21, 2026 by mgr@example.com (Manager): Updated note text");
+    expect(audits[0].action).toBe("renter.blacklist_note_edited");
+    expect(audits[0].metadata.previous_note).toBe("Original note text");
+    expect(audits[0].metadata.note).toBe("Updated note text");
+    expect(db.renter_blacklist[0].note).toBe("Updated note text");
+    const o = await editBlacklistNote(admin, owner, { applicationId: APP, note: "Owner edit of the note" }, audit);
+    expect(o.entry.note).toBe("Owner edit of the note");
+    const same = audits.length;
+    await editBlacklistNote(admin, owner, { applicationId: APP, note: "Owner edit of the note" }, audit);
+    expect(audits.length).toBe(same);
+    const coord = { userId: "u-c", email: "c@example.com", role: "coordinator", tier: "coordinator" as const };
+    await expect(editBlacklistNote(admin, coord, { applicationId: APP, note: "Sneaky edit here" }, audit)).rejects.toThrow("Only An Owner, Admin Or Manager");
+    await expect(editBlacklistNote(admin, owner, { applicationId: APP, note: "  " }, audit)).rejects.toThrow("Reason Note Is Required");
+    await expect(editBlacklistNote(fakeAdmin(seed()).admin, owner, { applicationId: APP, note: "Not blacklisted here" }, audit)).rejects.toThrow("Not Blacklisted");
+    const fs = readFileSync(new URL("../src/lib/blacklist.functions.ts", import.meta.url), "utf8");
+    expect(fs).toMatch(/requireManager\(context\.userId\);\s+const \{ admin, audit, core \} = await deps\(\);\s+return core\.editBlacklistNote/);
+    const card = readFileSync(new URL("../src/components/admin/BlacklistCard.tsx", import.meta.url), "utf8");
+    expect(card).toContain('data-testid="blacklist-note-edit"');
+    expect(card).toContain('data-testid="blacklist-note-save"');
+    expect(card).toContain('data-testid="blacklist-note-cancel"');
   });
 });

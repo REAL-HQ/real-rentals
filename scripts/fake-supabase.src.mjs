@@ -84,6 +84,20 @@ class Query {
   // that matches nothing. Pretending otherwise hid the callers that must
   // check for an empty candidate list before they ask.
   in(f, vs) { if (!vs?.length) throw new Error(`PostgREST: empty in() list for ${f}`); this.filters.push((r) => vs.map(String).includes(String(r[f]))); return this; }
+  // `.not("id", "in", "(a,b)")` is how PostgREST excludes a list. The value
+  // keeps the parentheses the real client sends.
+  not(f, op, v) {
+    if (op === "in") {
+      const vs = String(v).replace(/^\(/, "").replace(/\)$/, "").split(",").map((s) => s.trim()).filter(Boolean);
+      this.filters.push((r) => !vs.includes(String(r[f])));
+      return this;
+    }
+    if (op === "is") {
+      this.filters.push((r) => (v === null ? r[f] != null : r[f] !== v));
+      return this;
+    }
+    throw new Error(`fake supabase .not(${f}, ${op}) is not implemented`);
+  }
   is(f, v) { this.filters.push((r) => (v === null ? r[f] == null : r[f] === v)); return this; }
   or(expr) { (this.ors ??= []).push(expr); this.filters.push((r) => matchOr(r, expr)); return this; }
   gte(f, v) { this.filters.push((r) => String(r[f]) >= String(v)); return this; }

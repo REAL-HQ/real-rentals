@@ -188,6 +188,29 @@ describe("lookup", () => {
     expect(await lookupPaymentReceived(fakeDb(seed()), SID, deps(null))).toEqual({ ok: false, reason: "unavailable" });
   });
 
+  it("replaced agreement: voided session agreement is accepted when the paid fee notes name the current signed agreement", async () => {
+    const NEW = "99999999-9999-4999-8999-999999999999";
+    const replaced = seed();
+    replaced.agreements[0].status = "voided";
+    replaced.agreements[0].voided_at = "2026-11-18T15:00:00Z";
+    replaced.agreements.push({ id: NEW, application_id: APP, status: "signed", signed_at: "2026-11-18T16:00:00Z", voided_at: null, rental_id: null, vehicle_id: CAR, metadata: {} });
+    replaced.payments[0].notes = `reservation_fee:${NEW}`;
+    const v: any = await lookupPaymentReceived(fakeDb(replaced), SID, deps());
+    expect(v.ok).toBe(true);
+    expect(v.booking.state).toBe("pick");
+
+    const stillOld = seed();
+    stillOld.agreements[0].status = "voided";
+    stillOld.agreements[0].voided_at = "2026-11-18T15:00:00Z";
+    stillOld.agreements.push({ id: NEW, application_id: APP, status: "signed", signed_at: "2026-11-18T16:00:00Z", voided_at: null, rental_id: null, vehicle_id: CAR, metadata: {} });
+    expect(await lookupPaymentReceived(fakeDb(stillOld), SID, deps())).toEqual({ ok: false, reason: "not_reservation_fee" });
+
+    const bothLive = seed();
+    bothLive.agreements.push({ id: NEW, application_id: APP, status: "signed", signed_at: "2026-11-18T16:00:00Z", voided_at: null, rental_id: null, vehicle_id: CAR, metadata: {} });
+    bothLive.payments[0].notes = `reservation_fee:${NEW}`;
+    expect(await lookupPaymentReceived(fakeDb(bothLive), SID, deps())).toEqual({ ok: false, reason: "not_reservation_fee" });
+  });
+
   it("the car: signed agreement first, then staff terms, then the applicant; none → no_vehicle", async () => {
     let v: any = await lookupPaymentReceived(fakeDb(seed({ ag: { vehicle_id: null } })), SID, deps());
     expect(v.rental.vehicle.model).toBe("Fusion"); // staff terms

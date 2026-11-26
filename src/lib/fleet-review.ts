@@ -16,6 +16,7 @@
  * background-check values are reported exactly as recorded.
  */
 import { REQUIRED_VAULT_CATEGORIES, requirementCategory } from "@/lib/required-docs";
+import { MIN_RENTER_AGE } from "@/lib/renter-age";
 import {
   addressFromApplication,
   addressFromReading,
@@ -76,9 +77,17 @@ const GOOD_CHECK = /^(pass|passed|clear|cleared|approved|ok)$/i;
 
 /** Default thresholds for the escalation checklist (proposed; Dolmar can change). */
 export const FLEET_ESCALATION_DEFAULTS = {
-  /** Under this age (from date of birth) -> staff look. 21+ is the hard floor. */
-  youngDriverAge: 25,
-  minAge: 21,
+  /**
+   * Minimum renter age (from date of birth): under it is a hard blocker.
+   * Dolmar, Nov 21 2026: 23, matching Uber's Florida minimum (was 21).
+   */
+  minAge: MIN_RENTER_AGE,
+  /**
+   * Under this age -> staff look. Same as minAge since Nov 21 2026 (was 25), so
+   * every renter old enough to rent is old enough for FLEET to approve, and the
+   * not-driving-yet clean-file rule reads "23+" (was "25+").
+   */
+  youngDriverAge: MIN_RENTER_AGE,
   /** Gig rating below this -> staff look (Dolmar, Nov 16 2026: 100+ trips and a 4.0+ rating). */
   minRating: 4.0,
   /** Fewer completed trips than this -> staff look (Dolmar, Nov 16 2026: 100+ trips and a 4.0+ rating; was 200). */
@@ -129,7 +138,21 @@ export type ReviewItem = { code: string; message: string };
 
 export type FleetReviewAssessment = {
   submitted: boolean;
-  docs: { have: string[]; missing_required: string[]; missing_advisory: string[]; unreviewed: string[]; rejected: string[] };
+  docs: {
+    have: string[];
+    missing_required: string[];
+    missing_advisory: string[];
+    unreviewed: string[];
+    rejected: string[];
+    /**
+     * Every active file, counted per section. A section can hold several files
+     * (two pay stubs, a gig profile per app); FLEET reviews each one, not just
+     * the newest. `unreviewed_files` is the files nobody has looked at yet,
+     * even in a section where a different file is already verified.
+     */
+    files: Record<string, { active: number; verified: number; rejected: number; unreviewed: number }>;
+    unreviewed_files: Record<string, number>;
+  };
   hard_blockers: ReviewItem[];
   escalations: ReviewItem[];
   /** Facts worth knowing that do not, by default, need staff. */
@@ -184,10 +207,16 @@ export function docPicture(docs: readonly FleetDoc[], app?: Record<string, any> 
   const have = new Set<string>();
   const reviewed = new Set<string>();
   const rejected = new Set<string>();
+  const files: Record<string, { active: number; verified: number; rejected: number; unreviewed: number }> = {};
   for (const d of docs) {
     if (d?.is_current === false) continue;
     const c = String(d?.category ?? "").trim();
     if (!c) continue;
+    const f = (files[c] ??= { active: 0, verified: 0, rejected: 0, unreviewed: 0 });
+    f.active++;
+    if (d.review_status === "rejected") f.rejected++;
+    else if (d.review_status === "verified") f.verified++;
+    else f.unreviewed++;
     if (d.review_status === "rejected") { rejected.add(c); continue; }
     have.add(c);
     // A trip-history / gig earnings screenshot is income proof (t306s1653).
@@ -199,7 +228,43 @@ export function docPicture(docs: readonly FleetDoc[], app?: Record<string, any> 
   const missing_required = hard.filter((c) => !have.has(c));
   const missing_advisory = advisory.filter((c) => !have.has(c));
   const unreviewed = [...hard].filter((c) => have.has(c) && !reviewed.has(c) && !(c === "income" && [...reviewed].some((r) => requirementCategory(r) === "income")));
-  return { have: [...have].sort(), missing_required: [...missing_required], missing_advisory: [...missing_advisory], unreviewed, rejected: [...rejected].sort() };
+  const unreviewed_files: Record<string, number> = {};
+  for (const [c, f] of Object.entries(files)) if (f.unreviewed > 0) unreviewed_files[c] = f.unreviewed;
+  return { have: [...have].sort(), missing_required: [...missing_required], missing_advisory: [...missing_advisory], unreviewed, rejected: [...rejected].sort(), files, unreviewed_files };
+}
+
+export type CategoryFileCounts = { active: number; verified: number; rejected: number; unreviewed: number };
+
+/**
+ * Per-section packet for FLEET. The count fields stay (`active`, `verified`,
+ * `rejected`, `unreviewed`). `files` is every active file, newest first, and
+ * `latest` is `files[0]` so a reader that still looks at one file keeps
+ * working. Review `files`, not only `latest`.
+ */
+export function withCategoryFiles<T extends { id?: string | null; category?: string | null; uploaded_at?: string | null; created_at?: string | null }>(
+  counts: Record<string, CategoryFileCounts>,
+  documents: readonly T[],
+): Record<string, CategoryFileCounts & { latest: T | null; files: T[] }> {
+  const grouped = new Map<string, T[]>();
+  const sorted = [...documents].sort((a, b) => {
+    const byTime = String(b.uploaded_at ?? b.created_at ?? "").localeCompare(String(a.uploaded_at ?? a.created_at ?? ""));
+    if (byTime) return byTime;
+    return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+  });
+  for (const file of sorted) {
+    const category = String(file.category ?? "").trim() || "other";
+    const list = grouped.get(category) ?? [];
+    list.push(file);
+    grouped.set(category, list);
+  }
+  const keys = new Set([...Object.keys(counts), ...grouped.keys()]);
+  const out: Record<string, CategoryFileCounts & { latest: T | null; files: T[] }> = {};
+  for (const key of [...keys].sort()) {
+    const files = grouped.get(key) ?? [];
+    const count = counts[key] ?? { active: files.length, verified: 0, rejected: 0, unreviewed: files.length };
+    out[key] = { ...count, latest: files[0] ?? null, files };
+  }
+  return out;
 }
 
 /**
@@ -257,7 +322,7 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
     }
   }
   const age = ageOn(app.dob, now);
-  if (age !== null && age < T.minAge) block("under_21", `Driver is ${age} (minimum ${T.minAge}).`);
+  if (age !== null && age < T.minAge) block("under_min_age", `Driver is ${age} (minimum ${T.minAge}).`);
   const licDays = daysUntil(app.license_expiration, now);
   if (licDays !== null && licDays < 0) block("license_expired", "Driver's license is expired.");
   if (app.license_valid === false) block("license_invalid", "Applicant reported the license is not valid.");
@@ -279,6 +344,8 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   // Missing income proof is requested from the applicant (missing-documents
   // outreach), not sent to staff (Dolmar, t298s1611).
   for (const c of docs.missing_advisory) note(`requested_${c}`, `Advisory document not on file yet (requested from the applicant): ${c.replace(/_/g, " ")}.`);
+  const extraUnreviewed = Object.entries(docs.unreviewed_files).filter(([c]) => !docs.unreviewed.includes(c));
+  if (extraUnreviewed.length) note("docs_files_unreviewed", `Files in a section that has another file already verified, not yet reviewed: ${extraUnreviewed.map(([c, n]) => `${c.replace(/_/g, " ")} (${n})`).join(", ")}. Review every file in a section.`);
   if (docs.unreviewed.length) note("docs_unreviewed", `Not yet reviewed by staff: ${docs.unreviewed.join(", ")}.`);
   if (input.licenseReading?.applied?.length) note("license_read_by_fleet", `${LICENSE_READING_LABEL} (${input.licenseReading.applied.join(", ")}); not verified, the field rep confirms the license at pickup.`);
   if (age === null) flag("no_dob", "No date of birth on file.");
@@ -296,7 +363,7 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
     // with no trips, so they are replaced, not waived: proof of income is a
     // required document (a hard blocker above) and approve is strict, meaning
     // the server refuses it while ANY escalation exists (date of birth with
-    // age 25+, license expiry known and more than 30 days out, no analysis
+    // age 23+ (MIN_RENTER_AGE), license expiry known and more than 30 days out, no analysis
     // flags, no earlier declined application, checks pending or passed).
     note("no_track_record", `Not driving for a gig app yet (${app.gig_status}). Trip and rating minimums do not apply; FLEET may approve only a clean file: proof of income on file, date of birth on file and ${T.youngDriverAge}+, license expiry on file and more than ${T.licenseExpiryDays} days out, no flags, no earlier declined application, background and driving record pending or passed.`);
   } else {

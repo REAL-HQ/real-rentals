@@ -153,7 +153,7 @@ export async function handleFleetScreeningResult(request: Request, deps: FleetDe
     applied: patch,
     kept,
     next: failed
-      ? "A RentID check did not pass. FLEET cannot approve: send needs_staff. Any decline stays with staff."
+      ? "A RentID check did not pass. FLEET cannot approve this applicant. Decline with a reason, or send needs_staff. This endpoint does not decline by itself."
       : (lic === null && hasLicense) || (crim === null && hasCriminal)
         ? "Part of the result was not usable (provisional, restricted or unavailable); nothing was written for it. Send needs_staff if approval needs it."
         : "Saved. Re-read the packet (action get) and decide.",

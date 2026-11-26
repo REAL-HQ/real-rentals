@@ -1,10 +1,10 @@
 import { VehicleCell } from "./VehicleCell";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
 import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
-import { CalendarCheck, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
+import { CalendarCheck, ChevronLeft, ChevronRight, ArrowRight, MoreHorizontal } from "lucide-react";
 import { listBookings } from "@/lib/bookings.functions";
 import {
   BOOKING_LIST_PAGE_SIZE,
@@ -12,14 +12,17 @@ import {
   bookingDates,
   bookingVehicleName,
   isBookingPhaseFilter,
+  type BookingListResult,
   type BookingPhase,
   type BookingRow,
 } from "@/lib/bookings-list";
+import { OPEN_COLUMN } from "./open-column";
 import { BookingDetails } from "./BookingDetails";
 import { BookingConversion } from "./BookingConversion";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { EmptyState, StatusPill } from "./ui";
 import { fmtDate } from "@/lib/date-format";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -27,6 +30,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { endedLengthDays, orderByLength, owesAmount, type BookingsListMode, type RentalLengthOrder } from "@/lib/rental-length-order";
+import { RentalLengthSort } from "./RentalLengthSort";
+import { listKeptFeeCreditOffers } from "@/lib/forfeited-fee-credit.functions";
+import {
+  creditCountdownLabel,
+  creditDaysLeft,
+  creditExpired,
+  creditForCancelledRental,
+  type CancelledRentalCredit,
+  type ForfeitedFeeCreditMode,
+  type KeptFeeOffer,
+} from "@/lib/forfeited-fee-credit";
+import { convertReservationFeeToCredit } from "@/lib/rental-hold.functions";
+import { ROW_MENU_COLUMN } from "./open-column";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // Bookings: every rental, in one list.
 //
@@ -39,10 +57,8 @@ import {
 // Coordinator (`canSeeMoney`), so the columns below are absent rather than
 // hidden — the rule this codebase keeps: UI hiding is not a boundary.
 //
-// The three phase chips are the filter, the way the Vehicles list's readiness
-// chips are, and they count the filtered scope rather than the page. There is
-// deliberately no "Upcoming" chip: advance reservations do not exist yet, and
-// an empty tab promising them would be a claim about inventory nobody holds.
+// Completed and Cancelled are their own tabs. This list keeps search and sort.
+// There is deliberately no phase chip: the tab already says which rows these are.
 
 type ListState = { q?: string; phase?: string; sort?: string; page?: string; vehicle?: string };
 
@@ -51,6 +67,7 @@ const PHASE_TONE: Record<BookingPhase, "green" | "neutral" | "red" | "amber"> = 
   completed: "neutral",
   cancelled: "red",
   reserved: "amber",
+  swap: "amber",
 };
 
 const usd = (n: number | null | undefined) => (n == null ? "—" : `$${Number(n).toLocaleString()}`);
@@ -69,7 +86,73 @@ function DriverCell({ b }: { b: BookingRow }) {
 
 function BookingVehicleCell({ b }: { b: BookingRow }) {
   if (!b.vehicleId) return <span className="text-muted-foreground">Unknown</span>;
-  return <VehicleCell vehicle={b} thumbnailPath={b.thumbnailPath ?? null} />;
+  return <VehicleCell vehicleId={b.vehicleId} vehicle={b} thumbnailPath={b.thumbnailPath ?? null} />;
+}
+
+function RentalLength({ label }: { label: string | null | undefined }) {
+  if (!label) return null;
+  return (
+    <span className="block text-xs text-foreground" data-testid="rental-length">
+      {label}
+    </span>
+  );
+}
+
+function CancelledCreditNote({ credit, now }: { credit: CancelledRentalCredit; now: Date }) {
+  const applied = credit.status === "applied";
+  const expired = !applied && creditExpired(credit.expiresAt, now);
+  const state = applied ? "applied" : expired ? "expired" : "available";
+  const daysLeft = state === "available" ? creditDaysLeft(credit.expiresAt, now) : null;
+  const urgent = daysLeft != null && daysLeft <= 7;
+  const amount = Number.isFinite(credit.amount) ? `$${credit.amount.toFixed(2)}` : "";
+  const status = applied ? "Credit Applied" : expired ? "Expired" : "Available";
+  const when = credit.expiresAt
+    ? `${expired ? "Expired" : "Expires"} ${fmtDate(credit.expiresAt)}`
+    : null;
+  return (
+    <span className="block text-[11px] leading-snug text-[#55555E]" data-testid="cancelled-credit" data-credit-state={state}>
+      <span className="block font-medium text-[#111114]">
+        {amount ? `${amount} · ` : ""}{status}
+      </span>
+      {state === "available" ? (
+        <span
+          className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${urgent ? "bg-[#FFF4D6] text-[#8A6A00]" : "bg-[#F4F4F6] text-[#55555E]"}`}
+          data-testid="credit-countdown"
+        >
+          {creditCountdownLabel(credit.expiresAt, now)}
+        </span>
+      ) : null}
+      {state === "expired" ? (
+        <span className="mt-1 inline-flex rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#55555E]">Expired</span>
+      ) : null}
+      {when ? <span className="mt-0.5 block text-[11px] text-muted-foreground">{when}</span> : null}
+    </span>
+  );
+}
+
+/** Credit column on Cancelled only. Nothing to show is a muted dash. */
+function CancelledCreditCell({
+  credit,
+  undecided,
+  now,
+}: {
+  credit: CancelledRentalCredit | null;
+  undecided: boolean;
+  now: Date;
+}) {
+  if (credit) return <CancelledCreditNote credit={credit} now={now} />;
+  if (undecided) {
+    return (
+      <span className="block text-[11px] font-medium leading-snug text-[#8A6A00]" data-testid="fee-kept-undecided">
+        Fee Kept, Credit Not Decided
+      </span>
+    );
+  }
+  return (
+    <span className="text-sm text-[#9A9AA3]" data-testid="cancelled-credit-empty" aria-label="No Credit">
+      —
+    </span>
+  );
 }
 
 export function BookingsPanel({
@@ -77,22 +160,57 @@ export function BookingsPanel({
   openId = null,
   listState = {},
   canViewConversion = false,
-  /** Past tab: only completed / cancelled rentals. */
+  /** Which rental statuses this list is allowed to show. */
   scope = "all",
+  onCounts,
+  previewRows,
+  initialLengthOrder = "default",
+  canManage = false,
+  previewKeptFees,
+  previewCreditMode = "case_by_case",
+  previewMenuOpen = false,
+  previewCredits,
+  previewNow,
 }: {
   externalSearch?: string;
   openId?: string | null;
   listState?: ListState;
   /** Owner and Manager. The conversion server function requires a manager, and the flag still has to be on. */
   canViewConversion?: boolean;
-  scope?: "past" | "all";
+  scope?: "past" | "all" | "completed" | "cancelled";
+  /** Completed and Cancelled totals, including swap rows counted with Cancelled. */
+  onCounts?: (counts: { completed: number; cancelled: number; swap: number }) => void;
+  /** Skip the server read and render these rows. The alignment test uses this. */
+  previewRows?: BookingRow[];
+  initialLengthOrder?: BookingsListMode;
+  /** Manager+. The credit server function checks again. */
+  canManage?: boolean;
+  /** Skip the kept-fee lookup. Screenshots and tests pass these offers. */
+  previewKeptFees?: KeptFeeOffer[];
+  previewCreditMode?: ForfeitedFeeCreditMode;
+  previewMenuOpen?: boolean;
+  /** Skip the credit lookup. Screenshots and tests pass these rows. */
+  previewCredits?: CancelledRentalCredit[];
+  /** Fixed clock for the days-left pill. */
+  previewNow?: Date;
 } = {}) {
   const navigate = useNavigate();
+  const [lengthOrder, setLengthOrder] = useState<BookingsListMode>(initialLengthOrder);
+  const lengthSort: RentalLengthOrder = lengthOrder === "owes" ? "default" : lengthOrder;
+  const [keptFees, setKeptFees] = useState<KeptFeeOffer[]>(previewKeptFees ?? []);
+  const [credits, setCredits] = useState<CancelledRentalCredit[]>(previewCredits ?? []);
+  const [creditMode, setCreditMode] = useState<ForfeitedFeeCreditMode>(previewCreditMode);
+  const clock = previewNow ?? new Date();
+  const loadOffers = useServerFn(listKeptFeeCreditOffers);
+  const loadOffersRef = useRef(loadOffers);
+  loadOffersRef.current = loadOffers;
+  const keepFee = useServerFn(convertReservationFeeToCredit);
 
   // List state lives in the URL so refresh, back and shared links keep it.
   const q = listState.q ?? "";
+  const endedScope = scope === "completed" || scope === "cancelled";
   const rawPhase = isBookingPhaseFilter(listState.phase) ? listState.phase : "all";
-  const phase = scope === "past" && rawPhase === "active" ? "all" : rawPhase;
+  const phase = endedScope || (scope === "past" && rawPhase === "active") ? "all" : rawPhase;
   const sort = listState.sort ?? "recent";
   const page = Math.max(1, Number(listState.page) || 1);
   const vehicleFilter = listState.vehicle ?? "";
@@ -107,15 +225,16 @@ export function BookingsPanel({
         vehicle: vehicleFilter,
         ...over,
       };
-      const out: Record<string, string> = { tab: "bookings", view: "past" };
+      const view = scope === "cancelled" ? "cancelled" : scope === "completed" ? "completed" : "past";
+      const out: Record<string, string> = { tab: "bookings", view };
       if (next.q) out.q = next.q;
-      if (next.phase && next.phase !== "all") out.phase = next.phase;
+      if (!endedScope && next.phase && next.phase !== "all") out.phase = next.phase;
       if (next.sort && next.sort !== "recent") out.sort = next.sort;
       if (next.page && next.page !== "1") out.page = next.page;
       if (next.vehicle) out.vehicle = next.vehicle;
       return out;
     },
-    [q, phase, sort, page, vehicleFilter],
+    [q, phase, sort, page, vehicleFilter, scope, endedScope],
   );
   const setList = useCallback(
     (over: Partial<ListState>) =>
@@ -151,6 +270,8 @@ export function BookingsPanel({
     phase,
     scope,
     sort,
+    length: lengthSort,
+    owes: lengthOrder === "owes",
     page,
     pageSize: BOOKING_LIST_PAGE_SIZE,
     ...(vehicleFilter ? { vehicleId: vehicleFilter } : {}),
@@ -159,15 +280,92 @@ export function BookingsPanel({
     queryKey: ["admin-bookings-list", params],
     queryFn: () => fetchList({ data: params }),
     placeholderData: keepPreviousData,
+    enabled: !previewRows,
   });
-  const result = listQuery.data;
+  const orderedPreview = useMemo(() => {
+    if (!previewRows) return undefined;
+    const source = lengthOrder === "owes" ? previewRows.filter((row) => owesAmount(row.balanceDue)) : previewRows;
+    return orderByLength(source, (row) => endedLengthDays(row.startDate, row.endDate), lengthSort);
+  }, [previewRows, lengthOrder, lengthSort]);
+  const previewResult: BookingListResult | undefined =
+    previewRows && orderedPreview
+      ? {
+          rows: orderedPreview,
+          total: orderedPreview.length,
+          page: 1,
+          pageSize: BOOKING_LIST_PAGE_SIZE,
+          counts: {
+            active: 0,
+            completed: previewRows.filter((r) => r.phase === "completed").length,
+            cancelled: previewRows.filter((r) => r.phase === "cancelled").length,
+            swap: previewRows.filter((r) => r.phase === "swap").length,
+          },
+          canSeeMoney: true,
+          owesCount: previewRows.filter((row) => owesAmount(row.balanceDue)).length,
+        }
+      : undefined;
+  const result = previewResult ?? listQuery.data;
+  useEffect(() => {
+    if (!result?.counts || !onCounts) return;
+    onCounts({
+      completed: result.counts.completed ?? 0,
+      cancelled: result.counts.cancelled ?? 0,
+      swap: result.counts.swap ?? 0,
+    });
+  }, [result, onCounts]);
   const rows = result?.rows ?? [];
+  const showFeeMenu = scope === "cancelled" && canManage;
+  const rentalIdKey = rows.map((row) => row.id).join(",");
+  const applicationIdKey = rows.map((row) => row.applicationId ?? "").join(",");
+  useEffect(() => {
+    if (previewKeptFees || previewCredits || scope !== "cancelled") return;
+    const uuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const ids = rentalIdKey.split(",").filter(uuid);
+    const applicationIds = [...new Set(applicationIdKey.split(",").filter(uuid))];
+    if (!ids.length) return;
+    let alive = true;
+    loadOffersRef.current({ data: { rentalIds: ids, applicationIds } })
+      .then((found) => {
+        if (!alive || !found?.offers || !found.mode) return;
+        setKeptFees((current) => (JSON.stringify(current) === JSON.stringify(found.offers) ? current : found.offers));
+        setCreditMode(found.mode);
+        setCredits(found.credits ?? []);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setKeptFees([]);
+        setCredits([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [previewKeptFees, previewCredits, scope, rentalIdKey, applicationIdKey]);
+  const offerFor = (id: string) => keptFees.find((offer) => offer.rentalId.toLowerCase() === id.toLowerCase()) ?? null;
+  const creditFor = (row: BookingRow) =>
+    scope === "cancelled" ? creditForCancelledRental({ id: row.id, applicationId: row.applicationId }, credits, clock) : null;
+  const onKeepFee = async (offer: KeptFeeOffer, name: string | null) => {
+    if (!window.confirm(`Keep ${name ?? "This Renter"}'s Reservation Fee As A Credit Toward Their Next Rental?`)) return;
+    try {
+      await keepFee({ data: { paymentId: offer.paymentId } });
+      toast.success("Credit Saved");
+      setKeptFees((current) => current.filter((row) => row.paymentId !== offer.paymentId));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could Not Save Credit");
+    }
+  };
+  const showCreditColumn = scope === "cancelled";
+  // Cancelled adds Credit after Status. Percentages leave room for Rent, the
+  // fixed Open button, and the row menu inside a 1280px window with the sidebar.
+  const widths = showCreditColumn
+    ? { driver: "w-[18%]", vehicle: "w-[20%]", dates: "w-[12%]", status: "w-[10%]", credit: "w-[17%]", rent: "w-[11%]" }
+    : { driver: "w-[22%]", vehicle: "w-[20%]", dates: "w-[20%]", status: "w-[16%]", credit: "", rent: "w-[14%]" };
   const total = result?.total ?? 0;
   const money = !!result?.canSeeMoney;
   const pages = Math.max(1, Math.ceil(total / BOOKING_LIST_PAGE_SIZE));
   const firstShown = total === 0 ? 0 : (page - 1) * BOOKING_LIST_PAGE_SIZE + 1;
   const lastShown = Math.min(total, page * BOOKING_LIST_PAGE_SIZE);
-  const hasActiveFilters = q !== "" || phase !== "all" || !!vehicleFilter;
+  const hasActiveFilters = q !== "" || (!endedScope && phase !== "all") || !!vehicleFilter;
+  const swapCount = result?.counts?.swap ?? 0;
 
   return (
     <div>
@@ -181,37 +379,20 @@ export function BookingsPanel({
           className="w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm lg:w-auto lg:min-w-[200px] lg:flex-1"
         />
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 lg:contents">
-          {/* The phase chips ARE the filter, and they count the scope the
-              current search covers — not the page, which would change the
-              numbers as you paged. */}
-          {result && (
-            <span className="inline-flex max-lg:shrink-0 items-center gap-2" data-testid="booking-phases">
-              {(scope === "past"
-                ? (["completed", "cancelled"] as const)
-                : (["active", "completed", "cancelled"] as const)
-              ).map((p) => {
-                const n = result.counts?.[p] ?? 0;
-                const on = phase === p;
-                return (
-                  <button
-                    key={p}
-                    onClick={() => setList({ phase: on ? "all" : p })}
-                    aria-pressed={on}
-                    data-phase={p}
-                    data-count={n}
-                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-white px-2.5 py-1 text-xs transition-colors ${
-                      on
-                        ? "border-[#D03020] font-medium text-[#111114]"
-                        : "border-[#EDEDF0] text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {BOOKING_PHASE_LABEL[p]}
-                    <span className="font-medium text-foreground">{n}</span>
-                  </button>
-                );
-              })}
+          {endedScope && result && (
+            <span className="whitespace-nowrap text-sm text-muted-foreground" data-testid="booking-count">
+              {total} {scope === "cancelled" ? "Cancelled" : "Completed"} Rental{total === 1 ? "" : "s"}
+              {scope === "cancelled" && swapCount > 0 ? ` · ${swapCount} Swap` : ""}
             </span>
           )}
+          <RentalLengthSort
+            value={lengthOrder}
+            owesCount={result?.owesCount ?? null}
+            onChange={(next) => {
+              setLengthOrder(next);
+              if (page !== 1) setList({});
+            }}
+          />
           <Select value={sort} onValueChange={(v) => setList({ sort: v })}>
             <SelectTrigger
               className="h-9 w-[150px] max-lg:shrink-0 bg-white text-foreground text-sm"
@@ -248,12 +429,14 @@ export function BookingsPanel({
           <table className="w-full table-fixed text-sm">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
-                <th className="w-[22%] px-2 py-2 font-medium">Driver</th>
-                <th className="w-[20%] px-2 py-2 font-medium">Vehicle</th>
-                <th className="w-[24%] px-2 py-2 font-medium">Dates</th>
-                <th className="w-[12%] px-2 py-2 font-medium">Status</th>
-                {money ? <th className="w-[14%] px-2 py-2 font-medium">Rent</th> : null}
-                <th className="w-[8%] px-2 py-2 font-medium text-right sticky right-0 bg-[#FAFAFB]">Open</th>
+                <th className={`${widths.driver} px-2 py-2 font-medium`}>Driver</th>
+                <th className={`${widths.vehicle} px-2 py-2 font-medium`}>Vehicle</th>
+                <th className={`${widths.dates} px-2 py-2 font-medium`}>Dates</th>
+                <th className={`${widths.status} px-2 py-2 font-medium`}>Status</th>
+                {showCreditColumn ? <th className={`${widths.credit} px-2 py-2 font-medium`}>Credit</th> : null}
+                {money ? <th className={`${widths.rent} px-2 py-2 font-medium`}>Rent</th> : null}
+                <th className={`${OPEN_COLUMN} py-2 font-medium`}>Open</th>
+                {showFeeMenu ? <th className={`${ROW_MENU_COLUMN} py-2 font-medium`} /> : null}
               </tr>
             </thead>
             <tbody>
@@ -275,12 +458,22 @@ export function BookingsPanel({
                     <span className="block text-xs">
                       → {b.endDate ? fmtDate(b.endDate) : b.openEnded ? "Open-ended" : "Not recorded"}
                     </span>
+                    <RentalLength label={b.lengthLabel} />
                   </td>
-                  <td className="px-2 py-2 align-top whitespace-nowrap">
+                  <td className="px-2 py-2 align-top">
                     <StatusPill status={b.phase} tone={PHASE_TONE[b.phase]}>
                       {BOOKING_PHASE_LABEL[b.phase]}
                     </StatusPill>
                   </td>
+                  {showCreditColumn ? (
+                    <td className="px-2 py-2 align-top" data-testid="cancelled-credit-column">
+                      <CancelledCreditCell
+                        credit={creditFor(b)}
+                        undecided={creditMode === "case_by_case" && !!offerFor(b.id) && !creditFor(b)}
+                        now={clock}
+                      />
+                    </td>
+                  ) : null}
                   {money ? (
                     <td className="px-2 py-2 align-top tabular-nums">
                       <span className="block">{usd(b.weeklyRate)}/wk</span>
@@ -291,7 +484,7 @@ export function BookingsPanel({
                       )}
                     </td>
                   ) : null}
-                  <td className="px-2 py-2 text-right sticky right-0 bg-white">
+                  <td className={`${OPEN_COLUMN} py-2`}>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -302,6 +495,47 @@ export function BookingsPanel({
                       Open <ArrowRight className="w-3 h-3" />
                     </button>
                   </td>
+                  {showFeeMenu ? (
+                    <td className={`${ROW_MENU_COLUMN} relative py-2`} onClick={(e) => e.stopPropagation()}>
+                      {offerFor(b.id) ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Actions For ${b.driverName ?? "Reservation"}`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-[#FAFAFB] hover:text-foreground"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-white">
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                const offer = offerFor(b.id);
+                                if (offer) void onKeepFee(offer, b.driverName);
+                              }}
+                            >
+                              Keep Fee As Credit
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : null}
+                      {previewMenuOpen && offerFor(b.id) ? (
+                        <div className="absolute right-1 top-10 z-30 min-w-[11.5rem] rounded-md border border-[#EDEDF0] bg-white p-1 text-left shadow-sm" data-testid="kept-fee-menu">
+                          <button
+                            type="button"
+                            className="w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-[#111114]"
+                            onClick={() => {
+                              const offer = offerFor(b.id);
+                              if (offer) void onKeepFee(offer, b.driverName);
+                            }}
+                          >
+                            Keep Fee As Credit
+                          </button>
+                        </div>
+                      ) : null}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -331,6 +565,7 @@ export function BookingsPanel({
               </div>
               <div className="mt-1 text-[13px] text-muted-foreground">
                 {bookingDates(b.startDate, b.endDate, b.phase)}
+                <RentalLength label={b.lengthLabel} />
               </div>
               {money && (
                 <div className="mt-2 text-[13px]">
@@ -340,6 +575,28 @@ export function BookingsPanel({
                   )}
                 </div>
               )}
+              {showCreditColumn && (creditFor(b) || (creditMode === "case_by_case" && offerFor(b.id))) ? (
+                <div className="mt-2">
+                  <CancelledCreditCell
+                    credit={creditFor(b)}
+                    undecided={creditMode === "case_by_case" && !!offerFor(b.id) && !creditFor(b)}
+                    now={clock}
+                  />
+                </div>
+              ) : null}
+              {showFeeMenu && offerFor(b.id) ? (
+                <button
+                  type="button"
+                  className="mt-2 inline-flex h-8 items-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const offer = offerFor(b.id);
+                    if (offer) void onKeepFee(offer, b.driverName);
+                  }}
+                >
+                  Keep Fee As Credit
+                </button>
+              ) : null}
             </div>
           ))}
         </div>
@@ -381,11 +638,23 @@ export function BookingsPanel({
         <EmptyState
           className="mt-6"
           icon={<CalendarCheck className="w-6 h-6" strokeWidth={1.75} />}
-          title={scope === "past" ? "No Past Rentals" : "No Rentals Yet"}
+          title={
+            scope === "completed"
+              ? "No Completed Rentals"
+              : scope === "cancelled"
+                ? "No Cancelled Rentals"
+                : scope === "past"
+                  ? "No Past Rentals"
+                  : "No Rentals Yet"
+          }
           hint={
-            scope === "past"
-              ? "Completed and canceled rentals will show up here after they end."
-              : "A rental appears here when it is activated from an approved driver's record."
+            scope === "completed"
+              ? "Completed rentals show up here after they end."
+              : scope === "cancelled"
+                ? "Cancelled rentals show up here. A row ended by a vehicle swap is included and labeled Swap."
+                : scope === "past"
+                  ? "Completed and canceled rentals will show up here after they end."
+                  : "A rental appears here when it is activated from an approved driver's record."
           }
         />
       )}

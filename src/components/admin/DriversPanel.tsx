@@ -1,5 +1,6 @@
 import { LinkedVehicleCell } from "./VehicleCell";
 import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import { LeadActivity } from "./LeadActivity";
 import { AppSelect } from "@/components/ui/app-select";
 import { OnboardingChecklist } from "./OnboardingChecklist";
@@ -42,6 +43,7 @@ import {
   applicationStatusChoiceDisabled,
   applicationStatusLabel,
   applicationStatusMenu,
+  canDeclineApplication,
   visibleDriverActivity,
   type ApplicationStatusEvent,
   type ClosureReason,
@@ -49,6 +51,10 @@ import {
 import type { StaffTier } from "@/lib/roles";
 import { getApplicationStatusHistory, listDriverActiveSets } from "@/lib/application-status.functions";
 import { CloseApplicationDialog } from "./CloseApplicationDialog";
+import { DeclineApplicationDialog } from "./DeclineApplicationDialog";
+import { EditDriverProfileDialog } from "./EditDriverProfileDialog";
+import { listDriverProfileUpdates } from "@/lib/driver-profile-edit.functions";
+import { ConfirmDialog } from "./modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
@@ -72,8 +78,10 @@ import { createDriverReadVersions } from "@/lib/latest-driver-reads";
 import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
 import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { ReserveCarDialog } from "./ReserveCarDialog";
+import { PickupLinkDialog } from "./PickupLinkDialog";
 import { NextStepCard } from "./NextStepCard";
 import { ReturnFlowDialog } from "./ReturnFlowDialog";
+import { DriverSwapDialog } from "./DriverSwapDialog";
 import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
 import { DriverRentalDetails } from "./DriverRentalDetails";
 import { DriverContactsEditor } from "./DriverContactsEditor";
@@ -86,6 +94,8 @@ import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
 import { endRental, getActivationReadiness, type ActivationReadiness } from "@/lib/rentals.functions";
 import { clearReservationAfterActivate, getOpenReservationForApplication, getReservationDepositSettings } from "@/lib/reservations.functions";
+import { getPickupNotBooked } from "@/lib/pickup-not-booked.functions";
+import type { PickupNotBookedState } from "@/lib/pickup-not-booked";
 import { reservationBlocksStart } from "@/lib/reservations";
 import { approvalEmailMessage } from "@/lib/approval-email";
 import {
@@ -168,6 +178,8 @@ import {
   Link2 as LinkIcon,
   ListFilter,
   Loader2,
+  Repeat,
+  Pencil,
 } from "lucide-react";
 import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
 import { publicAppUrl } from "@/lib/public-app-url";
@@ -259,7 +271,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { fmtActivityStamp, fmtDate, fmtDateTime } from "@/lib/date-format";
 import { DocumentsExpiringList } from "./DocumentsExpiring";
 import { FleetNeedsStaffBanner } from "./FleetNeedsStaffBanner";
 import { DANGER_BADGE, DANGER_BADGE_BORDERED } from "@/lib/badge-tone";
@@ -268,8 +280,12 @@ import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-revie
 import { listBlacklist } from "@/lib/blacklist.functions";
 import type { BlacklistEntry } from "@/lib/blacklist";
 import { BlacklistCard, BlacklistedBadge } from "@/components/admin/BlacklistCard";
+import { AdditionalDriversSection } from "@/components/admin/AdditionalDriversSection";
+import { CollectionsCard } from "@/components/admin/CollectionsCard";
+import { BackgroundReportsCard } from "@/components/admin/BackgroundReportsCard";
 import { BlacklistMatchAlert } from "@/components/admin/BlacklistMatchAlert";
 import { CONTACT_PEOPLE_FIELDS, CONTACT_PEOPLE_LABELS } from "@/lib/application-contacts";
+import { formatUsPhoneInput } from "@/lib/us-phone";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
 
@@ -347,6 +363,9 @@ export function DriversPanel({
   canViewOnboarding = false,
   canIssueCardLink = false,
   urlFilter,
+  previewDrivers,
+  previewBookingOutcomes,
+  previewMenuOpen = false,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
@@ -359,17 +378,24 @@ export function DriversPanel({
   externalSearch?: string;
   initialOpenId?: string;
   /**
-   * ?filter= from the address bar. "waitlist" and "active" are honoured for
-   * every staff tier. "documents-expiring" and "approved-not-renting" are honoured for a manager.
+   * ?filter= from the address bar. "waitlist", "active", "completed-booking"
+   * and "cancelled-booking" are honoured for every staff tier.
+   * "documents-expiring" and "approved-not-renting" are honoured for a manager.
    */
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
+  /** Skip the drivers fetch. Screenshots and tests pass the rows. */
+  previewDrivers?: Application[];
+  /** Skip the booking-outcome read. */
+  previewBookingOutcomes?: { completed: string[]; cancelled: string[] };
+  /** Force the Filters menu open so a static render can show it. */
+  previewMenuOpen?: boolean;
 } = {}) {
-  const [drivers, setDrivers] = useState<Application[]>([]);
+  const [drivers, setDrivers] = useState<Application[]>(previewDrivers ?? []);
   // Whether the applications fetch has come back, as distinct from having
   // come back empty. A deep link needs to tell those apart.
-  const [driversLoaded, setDriversLoaded] = useState(false);
+  const [driversLoaded, setDriversLoaded] = useState(previewDrivers != null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   /*
    * Which applicant is open is a fact about the URL, not about this
@@ -394,7 +420,7 @@ export function DriversPanel({
       const search: {
         tab: "drivers";
         id?: string;
-        filter?: "documents-expiring" | "approved-not-renting" | "stalled" | "active";
+        filter?: "documents-expiring" | "approved-not-renting" | "stalled" | "active" | "completed-booking" | "cancelled-booking";
       } = id ? { tab: "drivers", id } : { tab: "drivers" };
       // Opening a driver from a manager list comes back to that list.
       // Waitlist links stay as they were: the filter is not kept.
@@ -403,6 +429,7 @@ export function DriversPanel({
       }
       if (urlFilter === "stalled" && stalledOn) search.filter = "stalled";
       if (urlFilter === "active") search.filter = "active";
+      if (urlFilter === "completed-booking" || urlFilter === "cancelled-booking") search.filter = urlFilter;
       void navigate({ to: "/admin", search });
     },
     [navigate, urlFilter, canManageWaitlist, stalledOn],
@@ -438,6 +465,8 @@ export function DriversPanel({
   const urlListFilter =
     urlFilter === "waitlist" ||
     urlFilter === "active" ||
+    urlFilter === "completed-booking" ||
+    urlFilter === "cancelled-booking" ||
     ((urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") && canManageWaitlist) ||
     (urlFilter === "stalled" && stalledOn)
       ? urlFilter
@@ -462,13 +491,19 @@ export function DriversPanel({
         void navigate({ to: "/admin", search: { tab: "drivers", filter: "active" } });
         return;
       }
+      if (f === "completed-booking" || f === "cancelled-booking") {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: f } });
+        return;
+      }
       setLocalFilter(f);
       if (
         urlFilter === "waitlist" ||
         urlFilter === "documents-expiring" ||
         urlFilter === "approved-not-renting" ||
         urlFilter === "stalled" ||
-        urlFilter === "active"
+        urlFilter === "active" ||
+        urlFilter === "completed-booking" ||
+        urlFilter === "cancelled-booking"
       ) {
         void navigate({ to: "/admin", search: { tab: "drivers" } });
       }
@@ -594,6 +629,9 @@ export function DriversPanel({
 
   const [openRentals, setOpenRentals] = useState<Set<string>>(new Set());
   const [activeReadFailed, setActiveReadFailed] = useState(false);
+  const [completedBookingIds, setCompletedBookingIds] = useState<Set<string>>(new Set(previewBookingOutcomes?.completed ?? []));
+  const [cancelledBookingIds, setCancelledBookingIds] = useState<Set<string>>(new Set(previewBookingOutcomes?.cancelled ?? []));
+  const [bookingReadFailed, setBookingReadFailed] = useState(false);
   const loadActiveSets = useServerFn(listDriverActiveSets);
   const refreshActiveRenters = useCallback(() => {
     const current = readVersions.begin("active-rentals");
@@ -605,12 +643,18 @@ export function DriversPanel({
         setActiveRenters(new Set(filterIds));
         setOpenRentals(new Set(sets.openRentalIds));
         setActiveReadFailed(false);
+        setCompletedBookingIds(new Set(sets.completedBookingIds ?? []));
+        setCancelledBookingIds(new Set(sets.cancelledBookingIds ?? []));
+        setBookingReadFailed(sets.bookingOutcomesFailed === true);
       })
       .catch(() => {
         if (current()) setActiveReadFailed(true);
       });
   }, [loadActiveSets, readVersions]);
-  useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters, activationRefresh]);
+  useEffect(() => {
+    if (previewBookingOutcomes) return;
+    refreshActiveRenters();
+  }, [refreshActiveRenters, activationRefresh, previewBookingOutcomes]);
   // A committed readiness change anywhere in this tab (vehicle, screening,
   // document) re-reads the list's activation context so row readiness and the
   // Activate dialog's vehicle list never lag behind what was just saved.
@@ -850,7 +894,7 @@ export function DriversPanel({
     const failed = () => {
       if (live && current() && !reported) { reported = true; toast.error("Driver context could not refresh. Recheck to retry; no readiness decision was changed."); }
     };
-    refreshDrivers();
+    if (!previewDrivers) refreshDrivers();
     supabase
       .from("vehicles")
       .select("*")
@@ -905,7 +949,7 @@ setDocCounts(requiredDocCounts(rows));
     // because a loader missing from the dependency list is how a list stops
     // refreshing after somebody changes how it loads.
     return () => { live = false; };
-  }, [refreshDrivers, readVersions, activationRefresh]);
+  }, [refreshDrivers, readVersions, activationRefresh, previewDrivers]);
 
   const loadReviewAging = useServerFn(getDocumentReviewAging);
   useEffect(() => {
@@ -957,6 +1001,10 @@ setDocCounts(requiredDocCounts(rows));
             ? drivers.filter((a) => blacklisted.has(a.id))
           : filter === "active"
             ? drivers.filter((a) => activeRenters.has(a.id))
+          : filter === "completed-booking"
+            ? drivers.filter((a) => completedBookingIds.has(a.id))
+          : filter === "cancelled-booking"
+            ? drivers.filter((a) => cancelledBookingIds.has(a.id))
             : drivers.filter((a) => a.status === filter && !held.has(a.id))
     )
       // readContactStatus already answers New for a row that has no value, so
@@ -986,7 +1034,7 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted]);
+  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted, completedBookingIds, cancelledBookingIds]);
 
   const funnelRows = useMemo(() => {
     const q = externalSearch.trim().toLowerCase();
@@ -1007,7 +1055,7 @@ setDocCounts(requiredDocCounts(rows));
   }
   async function update(
     id: string,
-    patch: Partial<Application> & { closure_reason?: ClosureReason; closure_notes?: string | null },
+    patch: Partial<Application> & { closure_reason?: ClosureReason; closure_notes?: string | null; decline_reason?: string },
   ): Promise<boolean> {
     try {
       const saved = await saveLifecycle({ data: { id, patch: patch as LifecyclePatch } });
@@ -1218,8 +1266,11 @@ setDocCounts(requiredDocCounts(rows));
   };
   const PRIMARY_FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active"];
   const MENU_FILTER_ORDER = ["needs_staff", "blacklisted", "suspended", "declined", "closed"];
+  const bookingCount = (ids: Set<string>) => (bookingReadFailed && ids.size === 0 ? "…" : drivers.filter((a) => ids.has(a.id)).length);
   const filterCount = (s: string) => {
     if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
+    if (s === "completed-booking") return bookingCount(completedBookingIds);
+    if (s === "cancelled-booking") return bookingCount(cancelledBookingIds);
     if (s === "needs_staff") return needsStaffFlags == null ? "…" : drivers.filter((a) => needsStaff.has(a.id)).length;
     if (s === "blacklisted") return blacklistEntries == null ? "…" : drivers.filter((a) => blacklisted.has(a.id)).length;
     const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
@@ -1238,6 +1289,8 @@ setDocCounts(requiredDocCounts(rows));
       : "…";
   const awaitingReservationCount = funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length;
   const filterLabelWithCount = (s: string) => {
+    if (s === "completed-booking") return `Completed Booking (${bookingCount(completedBookingIds)})`;
+    if (s === "cancelled-booking") return `Cancelled Booking (${bookingCount(cancelledBookingIds)})`;
     if (s === "documents-expiring") return `Documents Expiring (${documentsExpiringCount})`;
     if (s === "approved-not-renting") return `Approved, Awaiting Reservation (${awaitingReservationCount})`;
     if (s === "stalled") return `Stalled (${stalledRows == null ? "…" : stalledRows.length})`;
@@ -1352,7 +1405,7 @@ setDocCounts(requiredDocCounts(rows));
               Documents ×
             </button>
           ) : null}
-          <DropdownMenu>
+          <DropdownMenu open={previewMenuOpen ? true : undefined}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
@@ -1365,6 +1418,22 @@ setDocCounts(requiredDocCounts(rows));
             <DropdownMenuContent align="start" className="w-72 bg-white text-foreground">
               <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">Status</DropdownMenuLabel>
               {menuFilterButtons}
+              <DropdownMenuCheckboxItem
+                data-completed-booking-filter
+                checked={filter === "completed-booking"}
+                onCheckedChange={() => setFilter("completed-booking")}
+                className="bg-white text-xs text-foreground focus:bg-muted"
+              >
+                {filterLabelWithCount("completed-booking")}
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                data-cancelled-booking-filter
+                checked={filter === "cancelled-booking"}
+                onCheckedChange={() => setFilter("cancelled-booking")}
+                className="bg-white text-xs text-foreground focus:bg-muted"
+              >
+                {filterLabelWithCount("cancelled-booking")}
+              </DropdownMenuCheckboxItem>
               {canManageWaitlist ? (
                 <DropdownMenuCheckboxItem
                   data-documents-expiring-filter
@@ -1555,6 +1624,8 @@ setDocCounts(requiredDocCounts(rows));
                           }
                           if (applicationStatusChoiceDisabled(a.status, status, tier)) return;
                           if (status === "approved") {
+                            const who = a.full_name ? displayPersonName(a.full_name) : "this applicant";
+                            if (!window.confirm(`Approve ${who}? This sends the Approval Confirmation email.`)) return;
                             void approveFromList({ data: { id: a.id, sendAgreement: false } })
                               .then((res) => {
                                 if (!res.ok) throw new Error(res.error ?? "Could not approve");
@@ -1921,7 +1992,7 @@ function DriverDetail({
 }: {
   driver: Application;
   vehicles: Vehicle[];
-  onUpdate: (patch: Partial<Application>) => Promise<boolean>;
+  onUpdate: (patch: Partial<Application> & { decline_reason?: string }) => Promise<boolean>;
   onSaved: (patch: Partial<Application>) => void;
   onReserved?: () => void;
   onDelete: () => void;
@@ -1963,6 +2034,10 @@ function DriverDetail({
   const { screening, setScreening } = useDriverScreening(driver.id);
 
   const [interviewOpen, setInterviewOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [profileAudits, setProfileAudits] = useState<{ at: string; summary: string }[]>([]);
+  const [profileAuditNonce, setProfileAuditNonce] = useState(0);
+  const loadProfileUpdates = useServerFn(listDriverProfileUpdates);
   const [recordCallOpen, setRecordCallOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [closeBusy, setCloseBusy] = useState(false);
@@ -1981,6 +2056,19 @@ function DriverDetail({
       cancelled = true;
     };
   }, [driver.id, driver.status, loadStatusHistory]);
+  useEffect(() => {
+    let cancelled = false;
+    void loadProfileUpdates({ data: { applicationId: driver.id } })
+      .then((rows) => {
+        if (!cancelled) setProfileAudits(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setProfileAudits([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [driver.id, profileAuditNonce, loadProfileUpdates]);
   // Controlled so the Documents strip and the readiness remedies can send the
   // operator straight to the tab that answers them.
   const [tab, setTab] = useState("overview");
@@ -2092,8 +2180,12 @@ function DriverDetail({
   const approve = useServerFn(approveApplication);
   const closeRental = useServerFn(endRental);
   const [returnFlowOpen, setReturnFlowOpen] = useState(false);
+  const [swapOpen, setSwapOpen] = useState(false);
   const [activateOpen, setActivateOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
+  const [bookPickupOpen, setBookPickupOpen] = useState(false);
+  const [pickupLinkOpen, setPickupLinkOpen] = useState(false);
+  const [pickupGap, setPickupGap] = useState<PickupNotBookedState | null>(null);
   const [hasReservation, setHasReservation] = useState(false);
   const [reservationDepositStatus, setReservationDepositStatus] = useState<string | null>(null);
   const [reservationFeeRequired, setReservationFeeRequired] = useState(false);
@@ -2119,6 +2211,7 @@ function DriverDetail({
   const [evidenceSaving, setEvidenceSaving] = useState(false);
   const [pickupPaymentOpen, setPickupPaymentOpen] = useState(false);
   const loadOpenReservation = useServerFn(getOpenReservationForApplication);
+  const loadPickupGap = useServerFn(getPickupNotBooked);
   const loadReservationDepositSettings = useServerFn(getReservationDepositSettings);
   const clearReservation = useServerFn(clearReservationAfterActivate);
   useEffect(() => {
@@ -2151,6 +2244,17 @@ function DriverDetail({
       cancelled = true;
     };
   }, [driver.id, isManager, rentalActive, approved, loadOpenReservation, loadReservationDepositSettings, readinessNonce]);
+  useEffect(() => {
+    if (!isManager || !approved || rentalActive) {
+      setPickupGap(null);
+      return;
+    }
+    let cancelled = false;
+    void loadPickupGap({ data: { applicationId: driver.id } })
+      .then((row) => { if (!cancelled) setPickupGap(row); })
+      .catch(() => { if (!cancelled) setPickupGap(null); });
+    return () => { cancelled = true; };
+  }, [driver.id, isManager, approved, rentalActive, loadPickupGap, readinessNonce]);
   // Pickup is never completed by the account's payment standing: a paid $50
   // Reservation Fee made it "Current" and showed Pickup Complete green before
   // the car was picked up (t493u). Only a running rental completes it.
@@ -2235,9 +2339,9 @@ function DriverDetail({
       }]];
       if (r.key === "approved") return [[r.key, {
         tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Approval Required", fields: [],
-        onToggle: () => r.met === true ? openSection("application", "") : void approveOnly(),
+        onToggle: () => r.met === true ? openSection("application", "") : requestApprove(),
         toggleLabel: r.met === true ? "View Approved Application" : "Review And Approve Application",
-        toggleTitle: r.met === true ? "View The Approved Application." : "Run The Existing Approval Checks.",
+        toggleTitle: r.met === true ? "View The Approved Application." : "Confirm, Then Run The Existing Approval Checks.",
       }]];
       if (r.key === "rental_active") return [[r.key, {
         tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Completed By Activation", fields: [],
@@ -2335,7 +2439,7 @@ function DriverDetail({
   // before approval, Move Forward (Manager/Owner) once approved, then who/when.
   const termsAgreementSigned = agreementSignedForTerms || rentalActive;
   const termsConfirmedRow = termsConfirmedRequirement(staffTerms, { approved, agreementSigned: termsAgreementSigned });
-  const termsVehicles = useMemo(() => vehicles.map((v: any) => ({ id: String(v.id), unit_number: v.unit_number ?? null, year: v.year ?? null, make: v.make ?? null, model: v.model ?? null, license_plate: v.license_plate ?? v.plate ?? null, vin: v.vin ?? null, status: v.status ?? null })), [vehicles]);
+  const termsVehicles = useMemo(() => vehicles.filter((v: any) => !isForSaleVehicleStatus(v.status)).map((v: any) => ({ id: String(v.id), unit_number: v.unit_number ?? null, year: v.year ?? null, make: v.make ?? null, model: v.model ?? null, license_plate: v.license_plate ?? v.plate ?? null, vin: v.vin ?? null, status: v.status ?? null })), [vehicles]);
   function renderChecklistEvidence(key: ActivationRequirementKey) {
     if (key === "terms_confirmed") {
       if (!isManager) return null;
@@ -2395,6 +2499,9 @@ function DriverDetail({
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordCloseOpen, setRecordCloseOpen] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declining, setDeclining] = useState(false);
   const [depositRentalId, setDepositRentalId] = useState<string | null>(null);
   const [activeRentalId, setActiveRentalId] = useState<string | null>(null);
   const [rentalStatus, setRentalStatus] = useState<string | null>(null);
@@ -2458,16 +2565,23 @@ function DriverDetail({
   }
 
   // Approval is only the vetting decision. Agreements are prepared and sent explicitly.
-  async function approveOnly() {
-    if (approving) return; // a double click must not approve twice
+  // Every profile path opens the confirm dialog first. approveOnly is the commit.
+  function requestApprove() {
+    if (approving || approveOpen) return;
+    setApproveOpen(true);
+  }
+  async function approveOnly(): Promise<boolean> {
+    if (approving) return false; // a double click must not approve twice
     setApproving(true);
     try {
       const res = await approve({ data: { id: driver.id, sendAgreement: false } });
       if (!res.ok) throw new Error(res.error ?? "Could not approve");
       toast.success(`Approved — Login Details Send At Reserved. ${approvalEmailMessage(res.approvalEmail)}`.trim());
       onSaved({ status: "approved" });
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not approve this driver");
+      return false;
     } finally {
       setApproving(false);
     }
@@ -2478,7 +2592,10 @@ function DriverDetail({
   const step = primaryStep({ screeningDone, docsComplete, insuranceOk, approved, rentalActive, isManager });
   // One next step for the header and the Overview card, from the server's
   // readiness when it is loaded (see src/lib/next-step.ts).
-  const canReserve = isManager && approved && !rentalActive;
+  const canReserve = isManager && approved && !rentalActive && pickupGap?.openRental !== true;
+  const pickupNotBooked = isManager && pickupGap?.show === true && !hasReservation && !rentalActive;
+  // Swap Vehicle from the profile: same Manager/Owner gate as the booking page; the vehicle_swap flag is checked inside the popup.
+  const canSwap = (isManager || isOwner) && rentalActive && Boolean(activeRentalId);
   const next = nextStep({
     step,
     entry: activationEntry,
@@ -2486,7 +2603,8 @@ function DriverDetail({
     loading: rentalTabReadinessLoading,
     failed: rentalTabReadinessFailed,
     canReserve,
-    hasReservation,
+    hasReservation: hasReservation || pickupGap?.openRental === true,
+    pickupNotBooked,
   });
   function openSection(tabValue: string, anchor: string) {
     setTab(tabValue);
@@ -2497,8 +2615,9 @@ function DriverDetail({
     if (t.kind === "section") openSection(t.tab, t.anchor);
     else if (t.kind === "interview") setInterviewOpen(true);
     else if (t.kind === "record_call") setRecordCallOpen(true);
-    else if (t.kind === "approve") void approveOnly();
+    else if (t.kind === "approve") requestApprove();
     else if (t.kind === "reserve") { if (!reserveOpen) setReserveOpen(true); }
+    else if (t.kind === "book_pickup") { if (!bookPickupOpen) setBookPickupOpen(true); }
     else if (t.kind === "activate") {
       if (reservationBlocksStart({ depositStatus: reservationDepositStatus, blockStartWhenPending })) {
         toast.error("The Reservation Payment Is Still Pending. Record It Or Turn Off Block Start When Pending In Settings → Deposits.");
@@ -2514,6 +2633,20 @@ function DriverDetail({
         : next.target.kind === "section" && next.target.tab === "documents" ? FileText
           : next.target.kind === "section" && next.target.tab === "screening" ? ShieldCheck
             : Car;
+  const canDecline = canDeclineApplication(driver.status, panelTier(isOwner, isManager), hasActiveRental || rentalStatus === "active");
+  async function confirmDecline(reason: string) {
+    if (declining) return;
+    setDeclining(true);
+    try {
+      const ok = await onUpdate({ status: "declined", decline_reason: reason });
+      if (ok) {
+        setDeclineOpen(false);
+        toast.success("Application Declined");
+      }
+    } finally {
+      setDeclining(false);
+    }
+  }
   const primaryAction = {
     label: next.target.kind === "approve" && approving ? "Approving…" : next.label,
     onClick: () => runTarget(next.target),
@@ -2563,6 +2696,7 @@ function DriverDetail({
     push((driver as any).agreement_signed_at, "Agreement Signed");
     push((driver as any).pickup_at, "Vehicle Picked Up");
     push((driver as any).return_at, "Vehicle Returned");
+    for (const row of profileAudits) push(row.at, row.summary);
     for (const event of statusEvents) {
       if (!event.at) continue;
       const detail = [
@@ -2579,7 +2713,7 @@ function DriverDetail({
       });
     }
     return visibleDriverActivity(ev);
-  }, [driver, screening, vaultDocs, statusEvents]);
+  }, [driver, screening, vaultDocs, statusEvents, profileAudits]);
 
   const summaryRow = (
     <div className="grid gap-4 md:grid-cols-2">
@@ -2653,7 +2787,7 @@ function DriverDetail({
 
   const factsCard = (
     <SectionCard title="Driver Facts">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-2 2xl:grid-cols-4 gap-3">
         <Fact
           label="Platforms"
           value={
@@ -2691,6 +2825,11 @@ function DriverDetail({
           </button>
           {rentalActive ? (
             <>
+              {canSwap ? (
+                <button className={btnSecondary} onClick={() => setSwapOpen(true)} data-testid="driver-swap-actions">
+                  <Repeat className="w-3.5 h-3.5" /> Swap
+                </button>
+              ) : null}
               {RETURN_FLOW_ENABLED ? (
                 <button className={btnPrimary} onClick={() => setReturnFlowOpen(true)} data-testid="driver-return-open">
                   <Car className="w-3.5 h-3.5" /> Return
@@ -2721,9 +2860,9 @@ function DriverDetail({
       ) : (
         <ol className="space-y-2.5">
           {activity.map((e, i) => (
-            <li key={`${e.at}-${i}`} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-[12px]">
-              <span className="text-[#9A9AA3] tabular-nums">
-                {fmtDate(e.at)}
+            <li key={`${e.at}-${i}`} className="grid grid-cols-[minmax(0,172px)_minmax(0,1fr)] gap-3 text-[12px]" data-testid="driver-activity-row">
+              <span className="text-[#9A9AA3] tabular-nums whitespace-nowrap">
+                {fmtActivityStamp(e.at)}
               </span>
               <span className="min-w-0 text-[#111114]">
                 {e.label}
@@ -2768,6 +2907,17 @@ function DriverDetail({
                   <h2 className="text-[18px] font-semibold text-[#111114] truncate">
                     {driver.full_name ? displayPersonName(driver.full_name) : "Unnamed"}
                   </h2>
+                  {isManager ? (
+                    <button
+                      type="button"
+                      aria-label="Edit Profile"
+                      data-testid="edit-driver-profile"
+                      onClick={() => setEditProfileOpen(true)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#55555E] hover:bg-[#F4F4F6] hover:text-[#111114]"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  ) : null}
                   {blacklistEntry ? <BlacklistedBadge title={blacklistEntry.reasonLabel} /> : null}
                   <StatusPill status={driver.status} />
                   {driver.gclid && (
@@ -2813,6 +2963,27 @@ function DriverDetail({
               </div>
             </div>
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              {canSwap ? (
+                <button
+                  type="button"
+                  onClick={() => setSwapOpen(true)}
+                  data-testid="profile-swap"
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#55555E] hover:border-[#C4C4CB] hover:text-[#111114] transition-colors"
+                >
+                  <Repeat className="w-3.5 h-3.5" strokeWidth={2} /> Swap
+                </button>
+              ) : null}
+              {canDecline ? (
+                <button
+                  type="button"
+                  onClick={() => setDeclineOpen(true)}
+                  disabled={declining}
+                  data-testid="profile-decline"
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-[#D03020] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#D03020] hover:bg-[#D03020]/5 disabled:opacity-50 transition-colors"
+                >
+                  Decline
+                </button>
+              ) : null}
               <button
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
@@ -2866,6 +3037,11 @@ function DriverDetail({
                       <Mail className="w-4 h-4 mr-2" /> Email
                     </DropdownMenuItem>
                   )}
+                  {isManager ? (
+                    <DropdownMenuItem data-testid="edit-driver-profile-menu" onClick={() => setEditProfileOpen(true)}>
+                      <Pencil className="w-4 h-4 mr-2" /> Edit Profile
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem title="Open In Messages" aria-label="Open In Messages" onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
                     <MessageSquare className="w-4 h-4 mr-2" /> Messages
                   </DropdownMenuItem>
@@ -2886,7 +3062,7 @@ function DriverDetail({
             </div>
             </div>
             {/* Mobile primary action: full width under identity */}
-            <div className="pt-3 sm:hidden">
+            <div className="pt-3 sm:hidden space-y-2">
               <button
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
@@ -2894,6 +3070,17 @@ function DriverDetail({
               >
                 <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
               </button>
+              {canDecline ? (
+                <button
+                  type="button"
+                  onClick={() => setDeclineOpen(true)}
+                  disabled={declining}
+                  data-testid="profile-decline-mobile"
+                  className="w-full inline-flex items-center justify-center rounded-md border border-[#D03020] bg-white px-3.5 py-2 text-[13px] font-semibold text-[#D03020] disabled:opacity-50"
+                >
+                  Decline
+                </button>
+              ) : null}
             </div>
           </div>
           <div className="mt-3">
@@ -2934,15 +3121,8 @@ function DriverDetail({
           </div>
         </div>
 
-        <div className="px-4 sm:px-8 py-6 max-w-[1400px]">
+        <div className="px-4 sm:px-8 py-6">
               <TabsContent value="overview" className="mt-0 space-y-5">
-                <BlacklistCard
-                  applicationId={driver.id}
-                  driverName={driver.full_name ?? null}
-                  isOwner={isOwner}
-                  onNotesChanged={(notes) => onSaved({ notes })}
-                  onBlacklistChanged={onBlacklistChanged}
-                />
                 {APPLICATION_QUICK_REVIEW_ENABLED && isManager && isPendingReviewStatus(driver.status) ? (
                   <ApplicationQuickReview
                     applicationId={driver.id}
@@ -2953,6 +3133,7 @@ function DriverDetail({
                 ) : null}
                 <NextStepCard
                   onReturn={RETURN_FLOW_ENABLED ? () => setReturnFlowOpen(true) : undefined}
+                  onSwap={canSwap ? () => setSwapOpen(true) : undefined}
                   model={next}
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
@@ -2962,24 +3143,36 @@ function DriverDetail({
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}
+                  onBookPickup={() => setBookPickupOpen(true)}
+                  onSendPickupLink={() => setPickupLinkOpen(true)}
                   canReserve={canReserve && !hasReservation}
                   canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
                 />
+                <BlacklistCard
+                  applicationId={driver.id}
+                  driverName={driver.full_name ?? null}
+                  isOwner={isOwner}
+                  isManager={isManager}
+                  onNotesChanged={(notes) => onSaved({ notes })}
+                  onBlacklistChanged={onBlacklistChanged}
+                />
+                {isManager ? <AdditionalDriversSection applicationId={driver.id} /> : null}
+                <CollectionsCard applicationId={driver.id} canSee={isOwner || isManager} />
                 {summaryRow}
                 <details className="text-xs text-muted-foreground">
                   <summary className="cursor-pointer">Review Notes</summary>
                   <div className="mt-3">{readinessCard}</div>
                 </details>
                 {moreActions}
-                <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+                <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]" data-testid="driver-facts-activity-grid">
                   {factsCard}
                   {activityCard}
                 </div>
               </TabsContent>
 
               <TabsContent value="documents" className="mt-0 space-y-4">
-                <div id="profile-agreements" className="scroll-mt-48"><AgreementsCard applicationId={driver.id} applicationStatus={driver.status ?? null} onOpenTab={(t) => setTab(t)} /></div>
+                <div id="profile-agreements" className="scroll-mt-48"><AgreementsCard applicationId={driver.id} applicationStatus={driver.status ?? null} renterName={driver.full_name ?? null} renterEmail={driver.email ?? null} onOpenTab={(t) => setTab(t)} /></div>
                 <SectionCard
                   title="Documents"
                   subtitle="Everything this applicant sent us. Shared with the driver unless marked team only."
@@ -3022,6 +3215,7 @@ function DriverDetail({
                   <RenterPolicyStatusCard applicationId={driver.id} canDecide={isManager} />
                 </div>
                 </div>
+                {isManager ? <BackgroundReportsCard applicationId={driver.id} canAdd={isManager} /> : null}
                 <IdentityReviewCard applicationId={driver.id} />
                 <AISnapshotCard driver={driver} />
               </TabsContent>
@@ -3044,18 +3238,11 @@ function DriverDetail({
                     onPrimaryChange={(parts) => onUpdate({ address: parts.line1, city: parts.city, state: parts.state, zip: parts.zip })}
                   />
                 </Card>
-                <Card title="Reference And Emergency Contact" icon={<UserIcon className="w-4 h-4" />}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {CONTACT_PEOPLE_FIELDS.map((k) =>
-                      isManager ? (
-                        <TxtField key={k} label={CONTACT_PEOPLE_LABELS[k]} value={(driver as any)[k] ?? null} onSave={(v) => onUpdate({ [k]: v } as any)} />
-                      ) : (
-                        <Field key={k} label={CONTACT_PEOPLE_LABELS[k]} value={(driver as any)[k] ?? null} />
-                      ),
-                    )}
-                  </div>
-                  <p className="mt-3 text-[11px] text-muted-foreground">Optional. Checked against the Blacklist: a blacklisted person listed here (by name or phone) is flagged for an Owner / Admin to review.</p>
-                </Card>
+                <ReferenceContactCard
+                  values={driver as any}
+                  canEdit={isManager}
+                  onSave={(k, v) => onUpdate({ [k]: v } as any)}
+                />
                 <Card title="Driver Info" icon={<UserIcon className="w-4 h-4" />}>
                   {isManager ? (
                     <>
@@ -3094,7 +3281,7 @@ function DriverDetail({
                       onChange={(v) => {
                         if (applicationStatusChoiceDisabled(driver.status, v, panelTier(isOwner, isManager))) return;
                         if (v === "approved") {
-                          void approveOnly();
+                          requestApprove();
                           return;
                         }
                         if (v === "closed" && driver.status !== "closed") {
@@ -3143,6 +3330,7 @@ function DriverDetail({
               <TabsContent value="rental" className="mt-0">
                 <div className="mb-4"><NextStepCard
                   onReturn={RETURN_FLOW_ENABLED ? () => setReturnFlowOpen(true) : undefined}
+                  onSwap={canSwap ? () => setSwapOpen(true) : undefined}
                   model={next}
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
@@ -3151,6 +3339,8 @@ function DriverDetail({
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}
+                  onBookPickup={() => setBookPickupOpen(true)}
+                  onSendPickupLink={() => setPickupLinkOpen(true)}
                   canReserve={canReserve && !hasReservation}
                   canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
@@ -3175,7 +3365,7 @@ function DriverDetail({
                     )}
                   </div>
                   <VehiclePicker
-                    vehicles={vehicles}
+                    vehicles={vehicles.filter((v) => !isForSaleVehicleStatus(v.status))}
                     value={driver.vehicle_id}
                     onChange={(id) => onUpdate({ vehicle_id: id })}
                   />
@@ -3191,6 +3381,7 @@ function DriverDetail({
 
               <TabsContent value="payments" className="mt-0 space-y-4">
                 <RenterPayments driverId={driver.id} />
+                <CollectionsCard applicationId={driver.id} canSee={isOwner || isManager} />
                 {(isOwner || isManager) && activeRentalId && rentalStatus === "active" ? (
                   <LateFeesCard rentalId={activeRentalId} driverName={driver.full_name ? displayPersonName(driver.full_name) : "Driver"} />
                 ) : null}
@@ -3292,12 +3483,47 @@ function DriverDetail({
         onSaved={(saved) => { setScreening(saved); onScreeningChange?.(saved); readinessChanged(); }}
       /> : null}
 
+      {swapOpen && canSwap && activeRentalId ? (
+        <DriverSwapDialog rentalId={activeRentalId} driverName={driver.full_name ? displayPersonName(driver.full_name) : null} onClose={() => setSwapOpen(false)} />
+      ) : null}
+
       {depositRentalId ? (
         <DepositDialog rentalId={depositRentalId} onClose={() => setDepositRentalId(null)} />
       ) : null}
 
       {recordCloseOpen && activeRentalId && RECORD_RENTAL_CONTRACT_ENABLED ? <RecordedRentalCloseout key={activeRentalId} rentalId={activeRentalId} onClose={()=>setRecordCloseOpen(false)} onSaved={()=>{setRecordCloseOpen(false);onRentalStarted?.();}}/> : null}
       {recordOpen && RECORD_RENTAL_CONTRACT_ENABLED ? <RecordRentalDialog key={driver.id} driver={driver} vehicles={vehicles} onClose={()=>setRecordOpen(false)} onRecorded={()=>{setRecordOpen(false);onRentalStarted?.();}}/> : null}
+      {approveOpen ? (
+        <ConfirmDialog
+          title="Approve Application"
+          confirmLabel={approving ? "Approving…" : "Approve Application"}
+          busy={approving}
+          onCancel={() => { if (!approving) setApproveOpen(false); }}
+          onConfirm={() => { void approveOnly().then((ok) => { if (ok) setApproveOpen(false); }); }}
+        >
+          <p className="text-sm text-muted-foreground">
+            This runs the approval checks. If they pass, the application is marked Approved and the Approval Confirmation email is sent. Login details are sent at Reserved.
+          </p>
+        </ConfirmDialog>
+      ) : null}
+      {editProfileOpen && isManager ? (
+        <EditDriverProfileDialog
+          driver={driver}
+          onClose={() => setEditProfileOpen(false)}
+          onSaved={(patch) => {
+            onSaved(patch);
+            setProfileAuditNonce((n) => n + 1);
+          }}
+        />
+      ) : null}
+      {declineOpen ? (
+        <DeclineApplicationDialog
+          name={driver.full_name ? displayPersonName(driver.full_name) : "This Applicant"}
+          busy={declining}
+          onCancel={() => { if (!declining) setDeclineOpen(false); }}
+          onConfirm={(reason) => { void confirmDecline(reason); }}
+        />
+      ) : null}
       {closeOpen ? (
         <CloseApplicationDialog
           busy={closeBusy}
@@ -3345,6 +3571,31 @@ function DriverDetail({
             setReadinessNonce((n) => n + 1);
             onReserved?.();
           }}
+        />
+      ) : null}
+      {bookPickupOpen ? (
+        <ReserveCarDialog
+          open={bookPickupOpen}
+          onOpenChange={setBookPickupOpen}
+          applicationId={driver.id}
+          driverName={driver.full_name}
+          intent="book_pickup"
+          defaultVehicleId={pickupGap?.vehicleId ?? driver.vehicle_id ?? null}
+          defaultPickupDate={pickupGap?.startDate ?? (driver as { contract_start_date?: string | null }).contract_start_date ?? null}
+          onSaved={() => {
+            setHasReservation(true);
+            setPickupGap((g) => (g ? { ...g, show: false, openRental: true } : g));
+            setReadinessNonce((n) => n + 1);
+            onReserved?.();
+          }}
+        />
+      ) : null}
+      {pickupLinkOpen ? (
+        <PickupLinkDialog
+          open={pickupLinkOpen}
+          onOpenChange={setPickupLinkOpen}
+          applicationId={driver.id}
+          driverName={driver.full_name}
         />
       ) : null}
     </div>
@@ -3427,6 +3678,40 @@ function ReqRow({ ok, label }: { ok: boolean; label: string }) {
       </span>
       {label}
     </li>
+  );
+}
+
+/** Application tab card. Manager+ edits; everyone else sees the same fields read-only. */
+export function ReferenceContactCard({
+  values,
+  canEdit,
+  onSave,
+}: {
+  values: Partial<Record<(typeof CONTACT_PEOPLE_FIELDS)[number], string | null>>;
+  canEdit: boolean;
+  onSave: (key: (typeof CONTACT_PEOPLE_FIELDS)[number], value: string | null) => EditableSaveResult;
+}) {
+  return (
+    <Card title="Reference And Emergency Contact" icon={<UserIcon className="w-4 h-4" />}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {CONTACT_PEOPLE_FIELDS.map((k) =>
+          canEdit ? (
+            <TxtField
+              key={k}
+              label={CONTACT_PEOPLE_LABELS[k]}
+              value={values[k] ?? null}
+              onSave={(v) => {
+                const next = v && (k === "reference_phone" || k === "emergency_contact_phone") ? formatUsPhoneInput(v) : v;
+                return onSave(k, next);
+              }}
+            />
+          ) : (
+            <Field key={k} label={CONTACT_PEOPLE_LABELS[k]} value={values[k] ?? null} />
+          ),
+        )}
+      </div>
+      <p className="mt-3 text-[11px] text-muted-foreground">Optional. Checked against the Blacklist: a blacklisted person listed here (by name or phone) is flagged for an Owner / Admin to review.</p>
+    </Card>
   );
 }
 

@@ -30,6 +30,7 @@ import {
   getReturnBalance,
 } from "@/lib/return-flow.functions";
 import { MicroLabel } from "./ui";
+import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 
 /**
  * Guided Return for an active rental. Manager+ only (server re-checks).
@@ -313,6 +314,31 @@ export function ReturnFlowDialog({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {balance?.vehicleId && balance.vehicleIdentity ? (
+          <div
+            className="flex items-center gap-3 border-b border-[#EDEDF0] bg-[#FAFAFB] px-5 py-3"
+            data-testid="return-vehicle-identity"
+          >
+            <VehiclePickerPhoto
+              vehicleId={balance.vehicleId}
+              className="h-12 w-16 rounded-md"
+              iconClassName="h-5 w-5"
+              label={balance.vehicleIdentity.title}
+            />
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold text-[#111114]">{balance.vehicleIdentity.title}</p>
+              <p className="truncate text-[12px] text-[#55555E]">
+                {[
+                  balance.vehicleIdentity.plate ? `Plate ${balance.vehicleIdentity.plate}` : "",
+                  balance.vehicleIdentity.vinLast6 ? `VIN …${balance.vehicleIdentity.vinLast6}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         <div className="flex gap-1 overflow-x-auto border-b border-[#EDEDF0] px-3 py-2">
           {RETURN_STEPS.map((s) => (

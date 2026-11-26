@@ -6,9 +6,11 @@
  *     seconds behind the redirect). The session must be a paid, payment-mode
  *     Reservation Fee Checkout whose metadata matches OUR rows: the payments
  *     row (paymentIds) belongs to that application and carries
- *     reservation_fee:<agreementId>, and the agreement is signed for the same
- *     application. Anything else is refused, and the page shows the static
- *     thank-you instead.
+ *     reservation_fee:<agreementId>, and that agreement is signed for the same
+ *     application. When an earlier agreement was voided and the paid fee notes
+ *     were pointed at the current signed agreement, that current agreement is
+ *     accepted in place of the voided one named on the Checkout session.
+ *     Anything else is refused, and the page shows the static thank-you instead.
  *
  *   bookRenterPickup(admin, { sessionId, startAt })
  *     The renter picks a slot. It goes through createReservationCore, the one
@@ -21,6 +23,7 @@
  *     sends anything itself. The booking is marked booked_by "renter" in the
  *     reservation record and audited as reservation.renter_booked.
  */
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import {
   isCheckoutSessionId,
   safeReceiptUrl,
@@ -30,7 +33,7 @@ import {
   type PaymentReceivedView,
   type PickupBookingState,
 } from "@/lib/payment-received";
-import { RESERVATION_FEE_REASON, reservationFeeNote } from "@/lib/reservation-fee";
+import { agreementIdFromReservationFeeNotes, RESERVATION_FEE_REASON, reservationFeeNote } from "@/lib/reservation-fee";
 import { isScheduledSlot, parseSlotStart, slotLabel, type PickupScheduleSettings, type PickupSlot } from "@/lib/pickup-schedule";
 import { readReservationDetails } from "@/lib/reservations";
 
@@ -77,6 +80,14 @@ async function openSlots(admin: Admin, s: PickupScheduleSettings, now: Date, dep
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+function isCurrentSignedAgreement(row: any, applicationId: string): boolean {
+  return !!row && row.application_id === applicationId && row.status === "signed" && !row.voided_at && !(row.metadata as any)?.amendment;
+}
+
+function isVoidedAgreement(row: any, applicationId: string): boolean {
+  return !!row && row.application_id === applicationId && (row.status === "voided" || !!row.voided_at);
+}
 const num = (v: unknown): number | null => {
   const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN;
   return Number.isFinite(n) ? n : null;
@@ -126,18 +137,38 @@ async function verify(admin: Admin, sessionId: unknown, deps: PaymentReceivedDep
   // The session must point at OUR Reservation Fee row for this agreement and applicant.
   const [payRes, agRes, appRes] = await Promise.all([
     admin.from("payments").select("id,driver_id,reason,notes,status,amount,stripe_receipt_url,stripe_paid_at").eq("id", paymentId).maybeSingle(),
-    admin.from("agreements").select("id,application_id,status,vehicle_id,metadata").eq("id", agreementId).maybeSingle(),
+    admin.from("agreements").select("id,application_id,status,vehicle_id,metadata,voided_at").eq("id", agreementId).maybeSingle(),
     admin.from("applications").select("id,status,vehicle_id,weekly_rent,contract_start_date,market_id,deleted_at").eq("id", applicationId).maybeSingle(),
   ]);
   const pay = payRes?.data;
   const ag = agRes?.data;
   const app = appRes?.data;
-  if (!pay || pay.driver_id !== applicationId || pay.reason !== RESERVATION_FEE_REASON || pay.notes == null || !String(pay.notes).startsWith(reservationFeeNote(agreementId))) return { ok: false, reason: "not_reservation_fee" };
+  if (!pay || pay.driver_id !== applicationId || pay.reason !== RESERVATION_FEE_REASON || pay.notes == null) return { ok: false, reason: "not_reservation_fee" };
   if (pay.status === "void" || pay.status === "refunded") return { ok: false, reason: "not_reservation_fee" };
-  if (!ag || ag.application_id !== applicationId || ag.status !== "signed") return { ok: false, reason: "not_reservation_fee" };
-  const storedSession = (ag.metadata as any)?.reservation_fee_checkout?.session_id;
-  if (storedSession && storedSession !== sessionId) return { ok: false, reason: "not_reservation_fee" };
   if (!app || app.deleted_at) return { ok: false, reason: "not_found" };
+
+  // The Checkout session still names the agreement it was created for. After a
+  // replacement, that one is voided and the paid fee notes name the current
+  // signed agreement. The session's payment id is unchanged.
+  let feeAgreement = ag;
+  const notesMatchSession = String(pay.notes).startsWith(reservationFeeNote(agreementId));
+  if (notesMatchSession) {
+    if (!isCurrentSignedAgreement(ag, applicationId)) return { ok: false, reason: "not_reservation_fee" };
+    const storedSession = (ag.metadata as any)?.reservation_fee_checkout?.session_id;
+    if (storedSession && storedSession !== sessionId) return { ok: false, reason: "not_reservation_fee" };
+  } else {
+    const notedId = agreementIdFromReservationFeeNotes(pay.notes);
+    if (!notedId || notedId === agreementId.toLowerCase()) return { ok: false, reason: "not_reservation_fee" };
+    if (!isVoidedAgreement(ag, applicationId)) return { ok: false, reason: "not_reservation_fee" };
+    const notedRes = await admin.from("agreements").select("id,application_id,status,vehicle_id,metadata,voided_at").eq("id", notedId).maybeSingle();
+    const noted = notedRes?.data;
+    if (!isCurrentSignedAgreement(noted, applicationId)) return { ok: false, reason: "not_reservation_fee" };
+    const storedOnNoted = (noted.metadata as any)?.reservation_fee_checkout?.session_id as string | undefined;
+    const storedOnPrior = (ag.metadata as any)?.reservation_fee_checkout?.session_id as string | undefined;
+    if (storedOnNoted && storedOnNoted !== sessionId) return { ok: false, reason: "not_reservation_fee" };
+    if (!storedOnNoted && storedOnPrior && storedOnPrior !== sessionId) return { ok: false, reason: "not_reservation_fee" };
+    feeAgreement = noted;
+  }
 
   // Payment fields from Stripe; the stored row only fills gaps.
   const pi = typeof session.payment_intent === "object" && session.payment_intent ? session.payment_intent : null;
@@ -154,7 +185,7 @@ async function verify(admin: Admin, sessionId: unknown, deps: PaymentReceivedDep
 
   // The car: the signed agreement's, then the staff terms', then the applicant's.
   const terms = await latestStaffTerms(admin, applicationId);
-  const vehicleId = [ag.vehicle_id, terms?.vehicle_id, app.vehicle_id].map(str).find((x) => x && UUID.test(x)) ?? null;
+  const vehicleId = [feeAgreement.vehicle_id, terms?.vehicle_id, app.vehicle_id].map(str).find((x) => x && UUID.test(x)) ?? null;
   let vehicle: any = null;
   if (vehicleId) {
     const v = await admin.from("vehicles").select("id,year,make,model,color,weekly_rate,status,archived_at").eq("id", vehicleId).maybeSingle();
@@ -183,8 +214,11 @@ async function bookingState(
   x: { applicationId: string; appStatus: unknown; vehicleId: string | null; vehicle: any; settings: PickupScheduleSettings; location: string | null },
   deps: PaymentReceivedDeps,
 ): Promise<PickupBookingState> {
-  const { data: mine } = await admin.from("rentals").select("id,start_date,reservation_note,vehicle_id").eq("application_id", x.applicationId).eq("status", "reserved").limit(1);
-  const existing = ((mine ?? []) as any[])[0];
+  const { data: mine } = await admin.from("rentals").select("id,start_date,reservation_note,vehicle_id,status").eq("application_id", x.applicationId).in("status", ["reserved", "on_hold", "pending_reservation"]).limit(5);
+  const rows = (mine ?? []) as any[];
+  // A Pending Reservation with no pickup time is not booked yet: the renter
+  // can still pick a slot, and createReservationCore reuses that row.
+  const existing = rows.find((r) => r.status === "reserved" || r.status === "on_hold" || (r.status === "pending_reservation" && readReservationDetails(r.reservation_note).pickupTime));
   if (existing) {
     const b = bookedFrom(existing);
     // A reservation without a pickup time (an old staff record) still means "we'll call".
@@ -193,8 +227,8 @@ async function bookingState(
   if (!x.vehicleId || !x.vehicle) return { state: "no_vehicle" };
   if (!["approved", "active"].includes(String(x.appStatus ?? "").toLowerCase())) return { state: "unavailable" };
   const vs = String(x.vehicle.status ?? "").toLowerCase();
-  if (x.vehicle.archived_at || ["sold", "retired", "archived", "rented", "unavailable"].includes(vs)) return { state: "unavailable" };
-  const { data: busy } = await admin.from("rentals").select("id,application_id").eq("vehicle_id", x.vehicleId).in("status", ["active", "reserved", "on_hold"]).limit(5);
+  if (x.vehicle.archived_at || ["sold", "retired", "archived", "rented", "unavailable"].includes(vs) || isForSaleVehicleStatus(vs)) return { state: "unavailable" };
+  const { data: busy } = await admin.from("rentals").select("id,application_id").eq("vehicle_id", x.vehicleId).in("status", ["active", "reserved", "on_hold", "pending_reservation"]).limit(5);
   if (((busy ?? []) as any[]).some((r) => r.application_id !== x.applicationId)) return { state: "unavailable" };
   if (!x.location || x.location.trim().length < 3) return { state: "no_slots" };
   const now = (deps.now ?? (() => new Date()))();

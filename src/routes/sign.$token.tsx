@@ -2,12 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getAgreementByToken, signAgreement, type SigningView } from "@/lib/agreements.functions";
+import { recordReservationFeeSmsConsent } from "@/lib/sms-consent-signing.functions";
 import { Logo } from "@/components/site/Logo";
 import { layoutToText } from "@/lib/agreement-layout";
 import { SigningPanel } from "@/components/esign/SigningPanel";
-import type { Adoption } from "@/lib/signature-adoption";
+import type { SigningAdoption } from "@/lib/signature-adoption";
 import { CheckCircle2, ShieldCheck, Loader2 } from "lucide-react";
 import { ReservationFeeNextStep } from "@/components/esign/ReservationFeeNextStep";
+import { StandaloneDocumentView } from "@/components/esign/StandaloneDocumentView";
 import type { ReservationFeeSigningStep } from "@/lib/reservation-fee";
 
 export const Route = createFileRoute("/sign/$token")({
@@ -29,16 +31,20 @@ function SignPage() {
   const { token } = Route.useParams();
   const fetchAgreement = useServerFn(getAgreementByToken);
   const submitSign = useServerFn(signAgreement);
+  const recordFeeConsent = useServerFn(recordReservationFeeSmsConsent);
 
   const [loading, setLoading] = useState(true);
   const [agreement, setAgreement] = useState<SigningView>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [awaitingOthers, setAwaitingOthers] = useState(false);
   // Set only from the server's answer after signing; never from the URL.
   const [portalAccess, setPortalAccess] = useState(false);
   // The $50 Reservation Fee step, from the server's answer after signing only.
   const [feeStep, setFeeStep] = useState<ReservationFeeSigningStep | null>(null);
+  const [smsChecked, setSmsChecked] = useState(false);
+  const [feeSms, setFeeSms] = useState<{ needed: boolean; ticket: string | null }>({ needed: false, ticket: null });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,13 +64,27 @@ function SignPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  async function onSign(v: { signerName: string; adoption: Adoption }) {
+  async function onSign(v: { signerName: string; adoption: SigningAdoption }) {
     setError(null);
     setBusy(true);
     try {
-      const res = await submitSign({ data: { token, signerName: v.signerName, agree: true, adoption: v.adoption } });
+      const res = await submitSign({
+        data: {
+          token,
+          signerName: v.signerName,
+          agree: true,
+          adoption: v.adoption,
+          ...(agreement?.source !== "standalone" && agreement?.sms_consent_needed ? { smsConsent: smsChecked } : {}),
+        },
+      });
+      setAwaitingOthers((res as { awaitingOthers?: boolean })?.awaitingOthers === true);
       setPortalAccess(res?.portalAccess === true);
       setFeeStep((res as any)?.reservationFee ?? null);
+      setSmsChecked(false);
+      setFeeSms({
+        needed: (res as { smsConsentNeeded?: boolean })?.smsConsentNeeded === true,
+        ticket: (res as { smsConsentTicket?: string | null })?.smsConsentTicket ?? null,
+      });
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: any) {
@@ -127,9 +147,23 @@ function SignPage() {
         ) : done ? (
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
             <CheckCircle2 className="w-10 h-10 text-[#4CD964] mx-auto" />
-            <h1 className="mt-3 text-xl font-semibold text-[#111114]">Agreement Signed</h1>
-            {feeStep ? <ReservationFeeNextStep step={feeStep} /> : null}
-            {portalAccess ? (
+            <h1 className="mt-3 text-xl font-semibold text-[#111114]">{awaitingOthers ? "Your Signature Is Saved" : agreement?.source === "standalone" ? "Document Signed" : "Agreement Signed"}</h1>
+            {awaitingOthers ? (
+              <p className="mt-2 text-sm text-[#55555E]">The agreement is signed once every driver has signed. The reservation fee comes after that, and insurance is added after the fee is paid.</p>
+            ) : null}
+            {feeStep && !awaitingOthers ? (
+              <ReservationFeeNextStep
+                step={feeStep}
+                smsConsent={feeSms.needed && feeSms.ticket ? {
+                  checked: smsChecked,
+                  onChange: setSmsChecked,
+                  onCommit: async (checked) => {
+                    await recordFeeConsent({ data: { ticket: feeSms.ticket as string, consent: checked } });
+                  },
+                } : null}
+              />
+            ) : null}
+            {awaitingOthers ? null : portalAccess ? (
               <>
                 <p className="mt-2 text-sm text-[#55555E]">
                   Thank you. Your signed copy is saved to your driver file and available in your portal.
@@ -141,6 +175,10 @@ function SignPage() {
                   Go To Your Portal
                 </a>
               </>
+            ) : agreement?.source === "standalone" ? (
+              <p className="mt-2 text-sm text-[#55555E]">
+                Thank you. Your signed copy is saved, and it is being emailed to the insurer with you copied.
+              </p>
             ) : (
               <>
                 <p className="mt-2 text-sm text-[#55555E]">
@@ -155,11 +193,19 @@ function SignPage() {
         ) : (
           <>
             <h1 className="text-2xl font-semibold text-[#111114]">{agreement.title}</h1>
-            <p className="mt-1 text-sm text-[#55555E]">Please read the agreement carefully, then adopt your signature and initials below.</p>
+            <p className="mt-1 text-sm text-[#55555E]">
+              {agreement.source === "standalone"
+                ? "Review the document, then adopt your signature below."
+                : "Please read the agreement carefully, then adopt your signature and initials below."}
+            </p>
 
-            <div className="mt-5 rounded-xl border border-[#EDEDF0] bg-white p-6 max-h-[60vh] overflow-y-auto">
-              <pre className="whitespace-pre-wrap font-sans text-[13.5px] leading-6 text-[#28282E]">{layoutToText(agreement.body)}</pre>
-            </div>
+            {agreement.source === "standalone" && agreement.source_pdf ? (
+              <StandaloneDocumentView source={agreement.source_pdf} />
+            ) : (
+              <div className="mt-5 rounded-xl border border-[#EDEDF0] bg-white p-6 max-h-[60vh] overflow-y-auto">
+                <pre className="whitespace-pre-wrap font-sans text-[13.5px] leading-6 text-[#28282E]">{layoutToText(agreement.body)}</pre>
+              </div>
+            )}
 
             <div className="mt-5">
               <SigningPanel
@@ -168,6 +214,8 @@ function SignPage() {
                 companySigner={agreement.company_signer_name}
                 busy={busy}
                 error={error}
+                document={agreement.source === "standalone"}
+                smsConsent={agreement.source !== "standalone" && agreement.sms_consent_needed ? { checked: smsChecked, onChange: setSmsChecked } : null}
                 onSubmit={onSign}
               />
             </div>

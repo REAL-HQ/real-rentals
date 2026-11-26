@@ -96,7 +96,7 @@ export const sendTestAlert = createServerFn({ method: "POST" })
         </p>
         <p style="font-size:14px;line-height:1.6;color:#444">
           You will get <strong>New Driver Lead</strong> when someone starts or returns to an
-          application, and <strong>Wizard Completed</strong> when they finish.
+          application, and <strong>New Applicant</strong> when they finish.
         </p>
         <p style="color:#888;font-size:12px;margin-top:24px">
           Sent from Settings → Notifications by ${escapeHtml(actor.email ?? "an owner")}.

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVehicleCards, type VehicleCardData } from "@/lib/vehicle-cards.functions";
@@ -6,24 +7,36 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { vehicleCellParts, type VehicleCellInput } from "@/lib/vehicle-cell";
 import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
 
+const vehicleLink =
+  "appearance-none border-0 bg-transparent p-0 shadow-none outline-none ring-0 underline decoration-[#A3A3AB] underline-offset-4 hover:decoration-[#111114] focus:outline-none focus-visible:outline-none";
+
 /**
  * The one way a vehicle appears in a list: thumbnail (click to enlarge),
- * year make model, plate and last 6 of the VIN (no unit number). Missing
+ * year make model, plate and last 6 of the VIN (no unit number). The enlarged
+ * title and plate open that vehicle when the cell has an id. Missing
  * pieces are skipped, never shown as "undefined" or hanging separators.
  */
 export function VehicleCell({
   vehicle,
+  vehicleId = null,
   thumbnailPath = null,
   size = "md",
   className = "",
 }: {
   vehicle: VehicleCellInput | null | undefined;
+  vehicleId?: string | null;
   thumbnailPath?: string | null;
   size?: "sm" | "md";
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
   const p = vehicleCellParts(vehicle);
+  const openVehicle = () => {
+    if (!vehicleId) return;
+    setOpen(false);
+    void navigate({ to: "/admin", search: { tab: "vehicles", id: vehicleId } as never });
+  };
   const box = size === "sm" ? "h-7 w-10" : "h-8 w-11";
   return (
     <div className={`flex min-w-0 items-center gap-2 ${className}`} data-testid="vehicle-cell">
@@ -53,12 +66,24 @@ export function VehicleCell({
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="max-w-3xl" onClick={(e) => e.stopPropagation()}>
             <DialogHeader>
-              <DialogTitle>{p.title}</DialogTitle>
+              <DialogTitle>
+                {vehicleId ? (
+                  <button type="button" className={`font-[inherit] text-inherit ${vehicleLink}`} data-testid="vehicle-photo-title" onClick={openVehicle}>
+                    {p.title}
+                  </button>
+                ) : p.title}
+              </DialogTitle>
             </DialogHeader>
             <div className="overflow-hidden rounded-lg bg-soft">
               <VehicleStaffPhoto path={thumbnailPath} name={p.title} className="max-h-[70vh] w-full object-contain" />
             </div>
-            <p className="text-sm text-muted-foreground">{p.detailLine}</p>
+            {vehicleId ? (
+              <button type="button" className={`text-left text-sm text-muted-foreground ${vehicleLink}`} data-testid="vehicle-photo-plate" onClick={openVehicle}>
+                {p.detailLine}
+              </button>
+            ) : (
+              <p className="text-sm text-muted-foreground">{p.detailLine}</p>
+            )}
           </DialogContent>
         </Dialog>
       ) : null}
@@ -115,7 +140,7 @@ export function LinkedVehicleCell({
   });
   if (!vehicleId) return <span className="text-sm text-muted-foreground">No Vehicle Assigned</span>;
   const c = q.data;
-  return <VehicleCell vehicle={c ? { ...fallback, ...c } : fallback} thumbnailPath={c?.thumbnailPath ?? null} {...rest} />;
+  return <VehicleCell {...rest} vehicleId={vehicleId} vehicle={c ? { ...fallback, ...c } : fallback} thumbnailPath={c?.thumbnailPath ?? null} />;
 }
 
 /** LinkedVehicleCell when the row has a vehicle id; otherwise the plain label it already had. */

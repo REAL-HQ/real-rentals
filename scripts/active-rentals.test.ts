@@ -7,6 +7,7 @@ import {
   etDateISO,
   formatBoardDate,
   isOpenIncidentStatus,
+  dueBadge,
   overdueDays,
   paymentStatusLabel,
   sortActiveRentals,
@@ -26,6 +27,13 @@ ok(etDateISO(new Date("2026-10-21T03:00:00.000Z")) === "2026-10-20", "late eveni
 ok(formatBoardDate("2026-10-21") === "Oct 21, 2026 ET", "board dates render in Eastern Time");
 ok(overdueDays(null, today) === null, "a missing due date is unknown, not zero days overdue");
 ok(overdueDays("2026-10-21", today) === 0, "due today is current");
+ok(etDateISO(new Date("2026-11-26T04:59:00Z")) === "2026-11-25", "one minute before midnight ET is still the previous day");
+ok(etDateISO(new Date("2026-11-26T05:00:00Z")) === "2026-11-26", "midnight ET starts the new calendar day");
+ok(dueBadge(0, "2026-11-26", "2026-11-25") === "current", "a due date that is still tomorrow in ET stays Current");
+ok(dueBadge(0, "2026-11-26", "2026-11-26") === "due", "a due date on today's ET calendar day reads Due");
+ok(dueBadge(overdueDays("2026-11-25", "2026-11-26"), "2026-11-25", "2026-11-26") === "overdue", "a due date yesterday in ET stays overdue");
+ok(dueBadge(0, "2026-11-27", "2026-11-26") === "current", "a future due date stays Current");
+ok(dueBadge(null, null, "2026-11-26") === "none", "no due date has no badge");
 ok(overdueDays("2026-10-18", today) === 3, "three days past the due date is 3 overdue days");
 ok(overdueDays("2026-11-01", today) === 0, "a future due date is not overdue");
 ok(weeksIn("2026-10-01", today) === 2, "weeks in counts completed weeks from the start date");

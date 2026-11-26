@@ -19,8 +19,9 @@ import { isRentRow, type CategorizableRow } from "@/lib/payment-category";
 export const COVER_EARLY_DAYS = 2; // same as EARLY_PAYMENT_DAYS in stripe-link.ts
 export const COVER_LATE_DAYS = 6;
 
-/** Statuses that mean a row still owes money. */
-export const UNPAID_RENT_STATUSES = new Set(["failed", "overdue", "past_due", "late", "unpaid", "collections", "current"]);
+/** Statuses that mean a row still owes rent. A row in Collections ('collections') is a debt
+ *  tracked on Payments > Collections: no late fees, reminders or Overdue for it. */
+export const UNPAID_RENT_STATUSES = new Set(["failed", "overdue", "past_due", "late", "unpaid", "current"]);
 /** Statuses that mean the row is closed and owes nothing. */
 const EXCLUDED = new Set(["void", "waived", "cancelled", "canceled", "refunded"]);
 
@@ -88,25 +89,55 @@ export function isOpenRent(p: StandingPayment): boolean {
   return isRentRow(p) && UNPAID_RENT_STATUSES.has(status(p)) && !EXCLUDED.has(status(p));
 }
 
-/** Paid rent billed for the week starting `due` (rows dated due-2 .. due+6). */
-export function paidTowardWeek(due: string, payments: StandingPayment[]): number {
+/**
+ * Paid rent billed for the week starting `due` (rows dated due-2 .. due+6).
+ * A $0 row never counts. A payment dated inside a daily plan does not count
+ * toward the first weekly period after that plan ends (Regina, Nov 23 2026:
+ * Nov 21 and 22 $50s were making the Nov 23 $350 week read as $250).
+ */
+export function paidTowardWeek(
+  due: string,
+  payments: StandingPayment[],
+  opts?: { dailyPlan?: DailyRentPlan | null },
+): number {
+  const plan = opts?.dailyPlan ?? null;
+  const planEnd = plan?.endsOn ?? null;
   let total = 0;
   for (const p of payments) {
     if (!isPaidRent(p)) continue;
+    if (n(p.amount) <= 0.004) continue;
     const d = day(p.dueDate) ?? day(p.paidDate);
     if (!d) continue;
+    if (plan && planEnd && due > planEnd && d >= plan.startsOn && d <= planEnd) continue;
     const off = daysBetween(due, d);
     if (off >= -COVER_EARLY_DAYS && off <= COVER_LATE_DAYS) total += n(p.amount);
   }
   return r2(total);
 }
 
+/**
+ * The week's rent is paid and only late fees are left on the row: balance_due
+ * is positive and no more than late_fees (a multi-week Payment Link paid the
+ * rent; Damon, Nov 22 2026). balance_due defaults to 0, so a 0 balance alone
+ * never counts. The fees stay owed in the late fee ledger.
+ */
+export function onlyLateFeesLeft(row: StandingPayment): boolean {
+  if (row.balanceDue == null || row.balanceDue === "" || row.lateFees == null || row.lateFees === "") return false;
+  const bal = n(row.balanceDue), fees = n(row.lateFees);
+  return fees > 0 && bal > 0 && bal <= fees + 0.005;
+}
+
 /** An open rent row is settled when paid rent for its week covers its rent amount. */
-export function isRentRowCovered(row: StandingPayment, payments: StandingPayment[]): boolean {
+export function isRentRowCovered(
+  row: StandingPayment,
+  payments: StandingPayment[],
+  opts?: { dailyPlan?: DailyRentPlan | null },
+): boolean {
   const due = day(row.dueDate);
   if (!due || !isOpenRent(row)) return false;
+  if (onlyLateFeesLeft(row)) return true;
   const owed = n(row.amount);
-  return owed > 0 && paidTowardWeek(due, payments) + 0.005 >= owed;
+  return owed > 0 && paidTowardWeek(due, payments, opts) + 0.005 >= owed;
 }
 
 /** Validated plan from app_settings.daily_rent_plans[rentalId]. Null when absent or malformed. */
@@ -149,11 +180,12 @@ export function rentStanding(args: {
   const rent = args.payments.filter(isRentRow);
   const plan = activeDailyPlan(args.dailyPlan, today);
   const weekly = n(args.weeklyRate);
+  const cover = { dailyPlan: args.dailyPlan ?? null };
 
   const supersededRows = plan ? rent.filter((p) => isOpenRent(p) && (day(p.dueDate) ?? "") >= plan.startsOn) : [];
   const superseded = new Set(supersededRows);
   const open = rent.filter((p) => isOpenRent(p) && !superseded.has(p));
-  const coveredRows = open.filter((p) => isRentRowCovered(p, rent));
+  const coveredRows = open.filter((p) => isRentRowCovered(p, rent, cover));
   const covered = new Set(coveredRows);
   const owedRows = open.filter((p) => !covered.has(p) && day(p.dueDate) != null);
 
@@ -163,7 +195,7 @@ export function rentStanding(args: {
     const d = day(p.dueDate)!;
     if (d > today) continue;
     if (oldestWeekly == null || d < oldestWeekly) oldestWeekly = d;
-    weeklyOwed += Math.max(0, n(p.amount) - paidTowardWeek(d, rent));
+    weeklyOwed += Math.max(0, n(p.amount) - paidTowardWeek(d, rent, cover));
   }
 
   if (plan) {
@@ -191,7 +223,7 @@ export function rentStanding(args: {
   let nextDue = day(args.nextPaymentDue);
   if (nextDue && weekly > 0) {
     for (let i = 0; i < 8 && nextDue <= addDaysISO(today, COVER_EARLY_DAYS); i++) {
-      if (paidTowardWeek(nextDue, rent) + 0.005 < weekly) break;
+      if (paidTowardWeek(nextDue, rent, cover) + 0.005 < weekly) break;
       nextDue = addDaysISO(nextDue, 7);
     }
   }
@@ -200,7 +232,7 @@ export function rentStanding(args: {
   const overdueDays = fromDue == null ? fromRows : fromRows == null ? fromDue : Math.max(fromDue, fromRows);
   // A due date reached with no open row for it still owes the week (manual payers).
   if (nextDue && nextDue <= today && !owedRows.some((p) => day(p.dueDate) === nextDue)) {
-    weeklyOwed += Math.max(0, weekly - paidTowardWeek(nextDue, rent));
+    weeklyOwed += Math.max(0, weekly - paidTowardWeek(nextDue, rent, cover));
   }
   const oldest = [oldestWeekly, nextDue && nextDue <= today ? nextDue : null].filter(Boolean).sort()[0] ?? null;
   return {

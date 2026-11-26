@@ -8,7 +8,7 @@ import LeadPriorities from "./LeadPriorities";
 import OverviewToday from "./OverviewToday";
 import { BookingFollowupSlot } from "./BookingFollowupSlot";
 import { BookingConversion } from "./BookingConversion";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
 import {
@@ -42,10 +42,12 @@ import {
   summarizeFleet,
   summarizeFleetOccupancy,
   activeRentalVehicleIds,
+  fleetSnapshotSlices,
   type FleetSummary,
   type FleetStatusMismatch,
 } from "@/lib/fleet-summary";
 import { buildWeeklyBilledCollected, OVERVIEW_REVENUE_TYPES } from "@/lib/overview-weekly-revenue";
+import { isUnpaidReservationFee } from "@/lib/payments-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import { MaintenanceDueTile } from "./MaintenanceLog";
 import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
@@ -93,6 +95,9 @@ import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 import { Button } from "@/components/ui/button";
 import { Tooltip as ControlTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { serviceSummaryPreview, type ServiceSummaryRow } from "./overview-summary-details";
+import { ActiveRentersDetails } from "./ActiveRentersDetails";
+import { getOverviewActiveRenters } from "@/lib/overview-active-renters.functions";
+import { ACTIVE_RENTER_COPY, type ActiveRentersSummary } from "@/lib/overview-active-renters";
 
 type WeekPoint = import("@/lib/overview-weekly-revenue").WeekPoint;
 
@@ -181,6 +186,9 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   const [overdueRenters, setOverdueRenters] = useState(0);
   const [overdueAmt, setOverdueAmt] = useState(0);
   const [activeRentalCount, setActiveRentalCount] = useState<number | null>(null);
+  const loadActiveRenters = useServerFn(getOverviewActiveRenters);
+  const [renterSummary, setRenterSummary] = useState<ActiveRentersSummary | null>(null);
+  const [renterSummaryFailed, setRenterSummaryFailed] = useState(false);
   const [opsRefreshKey, setOpsRefreshKey] = useState(0);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
@@ -225,6 +233,25 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   }, []);
 
   useEffect(() => {
+    let live = true;
+    loadActiveRenters({ data: {} })
+      .then((summary) => {
+        if (!live) return;
+        setRenterSummary(summary);
+        setRenterSummaryFailed(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setRenterSummary(null);
+        setRenterSummaryFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opsRefreshKey]);
+
+  useEffect(() => {
     (async () => {
       const now = new Date();
       const d84 = new Date(now.getTime() - 84 * 864e5).toISOString();
@@ -250,7 +277,7 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
         // and is deliberately absent.
         supabase
           .from("payments")
-          .select("amount, balance_due, driver_id")
+          .select("amount, balance_due, driver_id, type, reason, notes, status")
           .in("status", [...COLLECTIONS_WATCH_STATUSES]),
         supabase
           .from("payments")
@@ -260,7 +287,7 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           .gte("paid_date", d84),
         supabase
           .from("payments")
-          .select("amount, due_date, type")
+          .select("amount, due_date, type, status, reason, notes")
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("due_date", d84),
         supabase
@@ -320,7 +347,8 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
       // collections query has no net_collected, so summing it was always $0.
       const sumOutstanding = (rows?: any[] | null) =>
         (rows ?? []).reduce((a, r) => a + (Number(r.balance_due ?? 0) || Number(r.amount ?? 0)), 0);
-      const overdueRows = (overdueQ.data ?? []) as any[];
+      // An unpaid Reservation Fee is a pending hold, not Past Due and not Billed.
+      const overdueRows = ((overdueQ.data ?? []) as any[]).filter((row) => !isUnpaidReservationFee(row));
       setOverdueAmt(sumOutstanding(overdueRows));
       setOverdueCount(overdueRows.length);
       setOverdueRenters(new Set(overdueRows.map((r) => r.driver_id).filter(Boolean)).size);
@@ -328,11 +356,13 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
 
       // 12-week weekly buckets — same revenue types as the Revenue card
       // (multi-method collected; deposits excluded from billed and collected).
+      const billedRows = ((billed12wQ.data ?? []) as { due_date: string | null; amount: number | null; type: string | null; status?: string | null; reason?: string | null; notes?: string | null }[])
+        .filter((row) => !isUnpaidReservationFee(row));
       setWeekly(
         buildWeeklyBilledCollected({
           now,
           collected: (pay12wQ.data ?? []) as { paid_date: string | null; net_collected: number | null; type: string | null }[],
-          billed: (billed12wQ.data ?? []) as { due_date: string | null; amount: number | null; type: string | null }[],
+          billed: billedRows,
           label: (d) => fmtDate(d),
         }),
       );
@@ -342,11 +372,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opsRefreshKey]);
 
-  const { total, rentable, rented, reserved, needsSetup } = fleet;
+  const { total, rentable, rented } = fleet;
   const vehiclesAvail = fleet.available;
-  const maintOpen = fleet.maintenance;
-  const vehiclesTotal = fleet.total;
   const utilPct = fleet.utilizationPct;
+  const fleetSlices = fleetSnapshotSlices(fleet);
   const pctOf = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
   // ---- revenue for the selected range -------------------------------------
   // Its own effect, so changing the range refetches two small queries rather
@@ -404,8 +433,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   }, [revenue, priorRevenue]);
 
   // Projected vs collected rent for the current ET week and month. Separate
-  // from the range picker total above — this is the active-renter schedule
-  // against rent already recorded, deposits excluded from both.
+  // from the range picker total above, which counts every revenue type in the
+  // selected range. These rows are rent only. Projected is the full weekly
+  // schedule for the period, including weeks already due. Collected is rent
+  // recorded in that same period.
   const loadProjected = useServerFn(getProjectedRevenueSummary);
   const [projected, setProjected] = useState<ProjectedRevenueSummary | null>(null);
   const [projectedLoading, setProjectedLoading] = useState(false);
@@ -573,15 +604,19 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           icon={Users}
           eyebrow="Active Renters"
           title={activeRentalCount === null ? "—" : String(activeRentalCount)}
-          hint={activeRentalCount === 0 ? "No active rentals" : "With an active rental"}
+          hint={activeRentalCount === 0 ? ACTIVE_RENTER_COPY.emptyHint : ACTIVE_RENTER_COPY.hint}
           href="/admin"
           search={{ tab: "drivers", filter: "active" }}
           control="view"
           expanded={summaryExpanded}
           onExpand={() => setSummaryExpanded((value) => !value)}
-          details={<>
-            <SummaryDetailRow label="Active Rentals" value={activeRentalCount === null ? "—" : activeRentalCount} />
-          </>}
+          details={
+            <ActiveRentersDetails
+              summary={renterSummary}
+              failed={renterSummaryFailed}
+              canOpenBoard={canSeeCollections}
+            />
+          }
         />
         {MAINTENANCE_LOG_ENABLED ? <MaintenanceDueTile /> : null}
       </div>
@@ -633,25 +668,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           }
         >
           <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-6 lg:grid-cols-[auto_1fr]">
-            <SegmentedDonut
-              total={total}
-              segments={[
-                { key: "rented", label: "Rented", value: rented, color: "#4CD964" },
-                { key: "reserved", label: "Reserved", value: reserved, color: "#FFCC33" },
-                { key: "available", label: "Available", value: vehiclesAvail, color: "#C7C7CC" },
-                { key: "maintenance", label: "Maintenance", value: maintOpen, color: "#FF3B30" },
-                { key: "setup", label: "Needs Setup", value: needsSetup, color: "#8E8E93" },
-              ]}
-            />
+            <SegmentedDonut total={total} segments={fleetSlices} />
             <div>
               <ul className="space-y-1.5">
-                {[
-                  { key: "rented", label: "Rented", value: rented, color: "#4CD964" },
-                  { key: "reserved", label: "Reserved", value: reserved, color: "#FFCC33" },
-                  { key: "available", label: "Available", value: vehiclesAvail, color: "#C7C7CC" },
-                  { key: "maintenance", label: "Maintenance", value: maintOpen, color: "#FF3B30" },
-                  { key: "setup", label: "Needs Setup", value: needsSetup, color: "#8E8E93" },
-                ].map((s) => (
+                {fleetSlices.map((s) => (
                   <li key={s.key} className="flex items-center gap-2 text-[13px]">
                     <span
                       className="h-2 w-2 rounded-full shrink-0"
@@ -955,7 +975,7 @@ function SummaryExpandControl({ expanded, onExpand }: { expanded: boolean; onExp
             className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
             aria-label={label}
             aria-expanded={expanded}
-            aria-controls="fleet-summary-details revenue-summary-details collections-summary-details service-summary-details"
+            aria-controls="fleet-summary-details revenue-summary-details collections-summary-details service-summary-details active-summary-details"
             onClick={(event) => { event.stopPropagation(); onExpand(); }}
             onKeyDown={(event) => event.stopPropagation()}
           >
@@ -1228,23 +1248,46 @@ function RevenueCard({
       </div>
 
       <SummaryDetails expanded={expanded} label="Revenue Details">
-          <div className="text-[10px] font-semibold text-muted-foreground">
-            Revenue: Projected / Collected
+          <div
+            className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-1 gap-y-1"
+            aria-label="Revenue, Projected then Collected"
+          >
+            <div
+              className="text-[10px] font-semibold text-muted-foreground"
+              title="Rent for the calendar week and month. Separate from the range total above."
+            >
+              Revenue
+            </div>
+            <div
+              className="text-right text-[10px] font-semibold text-muted-foreground"
+              title="Weekly rent expected for the whole period, including weeks already due."
+            >
+              Projected
+            </div>
+            <div className="text-center text-[10px] font-normal text-[#C7C7CC]" aria-hidden="true">/</div>
+            <div
+              className="text-right text-[10px] font-semibold text-muted-foreground"
+              title="Rent recorded in the period. Deposits, late fees, and the Reservation Fee are not included."
+            >
+              Collected
+            </div>
+            {(["week", "month"] as const).map((key) => {
+              const row = projected?.[key];
+              const label = key === "week" ? "This Week" : "This Month";
+              const projectedText = projectedLoading || !row ? "—" : usd(centsToDollars(row.projectedCents));
+              const collectedText = projectedLoading || !row ? "—" : usd(centsToDollars(row.collectedCents));
+              return (
+                <Fragment key={key}>
+                  <div className="whitespace-nowrap text-[11px] text-muted-foreground" aria-label={`${label}: Projected ${projectedText}, Collected ${collectedText}`}>
+                    {label}
+                  </div>
+                  <div className="whitespace-nowrap text-right text-[11px] tabular-nums text-foreground" aria-hidden="true">{projectedText}</div>
+                  <div className="text-center text-[11px] text-[#C7C7CC]" aria-hidden="true">/</div>
+                  <div className="whitespace-nowrap text-right text-[11px] tabular-nums text-foreground" aria-hidden="true">{collectedText}</div>
+                </Fragment>
+              );
+            })}
           </div>
-          {(["week", "month"] as const).map((key) => {
-            const row = projected?.[key];
-            const label = key === "week" ? "This Week" : "This Month";
-            return (
-              <div key={key} className="flex flex-wrap items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
-                <span>{label}</span>
-                <span className="tabular-nums text-foreground">
-                  {projectedLoading || !row
-                    ? "—"
-                    : `${usd(centsToDollars(row.projectedCents))} / ${usd(centsToDollars(row.collectedCents))}`}
-                </span>
-              </div>
-            );
-          })}
       </SummaryDetails>
 
       {open && (
@@ -1335,7 +1378,9 @@ function SegmentedDonut({
     c = 2 * Math.PI * r;
   const gap = 2; // px gap between segments
   let offset = 0;
-  const sum = segments.reduce((a, s) => a + s.value, 0) || 1;
+  // Scale to the center total so a missing slice leaves a gap instead of
+  // stretching the categories that happened to be drawn.
+  const denom = total > 0 ? total : 1;
   return (
     <div className="relative mx-auto shrink-0 sm:mx-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
@@ -1349,7 +1394,7 @@ function SegmentedDonut({
         />
         {segments.map((s) => {
           if (s.value <= 0) return null;
-          const len = (s.value / sum) * c;
+          const len = (s.value / denom) * c;
           const dash = Math.max(0, len - gap);
           const el = (
             <circle

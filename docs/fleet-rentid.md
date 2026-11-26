@@ -31,8 +31,9 @@ application, so `background_check_status` and `mvr_status` stayed `pending`.
    | detected | `background_check_status` | failed |
    | unavailable | — | not written |
 
-   `failed` is a hard blocker (`screening_flagged`): FLEET sends needs_staff and
-   any decline stays with staff. A `failed` value is never turned back into
+   `failed` is a hard blocker (`screening_flagged`): FLEET cannot approve.
+   Decline with a reason (`applicant-decision`) or send needs_staff. This
+   endpoint never declines by itself. A `failed` value is never turned back into
    `passed` through this endpoint. Every write is audited
    (`application.rentid_result_recorded`, with the RentID order number).
    `mvr_status` holds the license-status result, not a full MVR.
@@ -65,3 +66,9 @@ To have the site run RentID itself (no human in the portal):
 Until then, the portal stays the source: whoever runs the check (Rosa, or
 FLEET if it is given its own portal login) posts the result with the order
 number through the write path.
+
+## Background Reports On The Driver Profile
+
+RentID results (and FL DMV license checks and any other check) are stored as
+**Background Reports**: see docs/background-reports.md. On the site the
+feature is provider-neutral ("Background"); RentID is only the Source field.

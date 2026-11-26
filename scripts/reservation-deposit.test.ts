@@ -91,10 +91,10 @@ describe("reservation helpers", () => {
 describe("bookings workspace + nav", () => {
   it("defaults to Active for managers and Past when a rental id is open", () => {
     assert.equal(parseBookingsView(undefined, { canViewBoard: true }), "active");
-    assert.equal(parseBookingsView("booked", { canViewBoard: true }), "booked");
-    assert.equal(parseBookingsView("past", { canViewBoard: true }), "past");
-    assert.equal(parseBookingsView(undefined, { canViewBoard: true, openId: "r1" }), "past");
-    assert.equal(parseBookingsView(undefined, { canViewBoard: false }), "past");
+    assert.equal(parseBookingsView("booked", { canViewBoard: true }), "reserved");
+    assert.equal(parseBookingsView("past", { canViewBoard: true }), "completed");
+    assert.equal(parseBookingsView(undefined, { canViewBoard: true, openId: "r1" }), "completed");
+    assert.equal(parseBookingsView(undefined, { canViewBoard: false }), "completed");
   });
 
   it("shows Bookings on the rail and redirects Active Rentals", () => {

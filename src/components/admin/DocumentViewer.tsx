@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
-import { X, Download, ZoomIn, ZoomOut, ExternalLink, FileText } from "lucide-react";
+import { X, Download, ZoomIn, ZoomOut, ExternalLink, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 
 // Look at the document without leaving the page.
 //
@@ -23,6 +23,14 @@ export type ViewerDoc = {
   meta?: { label: string; value: string }[];
 };
 
+/** Previous / Next through the other files in the same category. */
+export type ViewerNav = {
+  index: number;
+  total: number;
+  onPrevious: () => void;
+  onNext: () => void;
+};
+
 const ZOOM_STEPS = [1, 1.5, 2, 3, 4];
 
 function isPdf(d: ViewerDoc): boolean {
@@ -37,7 +45,15 @@ function isImage(d: ViewerDoc): boolean {
   return !/\.(pdf|mp3|wav|m4a|ogg|mp4|mov|webm|zip|docx?)$/i.test(d.fileName ?? "");
 }
 
-export function DocumentViewer({ doc, onClose }: { doc: ViewerDoc | null; onClose: () => void }) {
+export function DocumentViewer({
+  doc,
+  onClose,
+  nav = null,
+}: {
+  doc: ViewerDoc | null;
+  onClose: () => void;
+  nav?: ViewerNav | null;
+}) {
   const [zoomIdx, setZoomIdx] = useState(0);
 
   useEffect(() => {
@@ -49,8 +65,17 @@ export function DocumentViewer({ doc, onClose }: { doc: ViewerDoc | null; onClos
       if (e.key === "Escape" && !e.defaultPrevented) onClose();
       if (e.key === "+" || e.key === "=") setZoomIdx((i) => Math.min(i + 1, ZOOM_STEPS.length - 1));
       if (e.key === "-") setZoomIdx((i) => Math.max(i - 1, 0));
+      if (!nav || nav.total < 2) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        nav.onPrevious();
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        nav.onNext();
+      }
     },
-    [onClose],
+    [onClose, nav],
   );
 
   useEffect(() => {
@@ -94,6 +119,32 @@ export function DocumentViewer({ doc, onClose }: { doc: ViewerDoc | null; onClos
             </div>
           )}
         </div>
+
+        {nav && nav.total > 1 && (
+          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              data-testid="doc-viewer-previous"
+              onClick={nav.onPrevious}
+              disabled={nav.index <= 0}
+              className="inline-flex items-center gap-1 rounded-md bg-white/10 px-2.5 py-1.5 text-[12px] font-medium hover:bg-white/20 disabled:opacity-30"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" /> Previous
+            </button>
+            <span data-testid="doc-viewer-page" className="text-[11px] tabular-nums w-14 text-center">
+              {nav.index + 1} of {nav.total}
+            </span>
+            <button
+              type="button"
+              data-testid="doc-viewer-next"
+              onClick={nav.onNext}
+              disabled={nav.index >= nav.total - 1}
+              className="inline-flex items-center gap-1 rounded-md bg-white/10 px-2.5 py-1.5 text-[12px] font-medium hover:bg-white/20 disabled:opacity-30"
+            >
+              Next <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {image && (
           <div className="flex items-center gap-1 shrink-0">

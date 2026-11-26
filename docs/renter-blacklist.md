@@ -21,8 +21,9 @@ Requested by Dolmar Nov 19 2026 (10:50, 10:51 and 11:07 PM ET). Migration `supab
 Any staff member logs a warning (Log Warning on the driver profile). Only an Owner / Admin voids one.
 
 ## Who can do what
-- Owner / Admin (user role `admin`, the Owner tier): Add To Blacklist, Remove From Blacklist, Void Warning, clear a blacklist match ("Not The Same Person"). Confirmed by Dolmar Nov 20 2026.
-- Manager / Coordinator: see the list and badges, Log Warning.
+- Owner / Admin / Manager: Add To Blacklist (reason + note + date + who are still required; the note is saved to Notes). Confirmed by Dolmar Nov 20 2026.
+- Owner / Admin (user role `admin`, the Owner tier): Remove From Blacklist, Void Warning, clear a blacklist match ("Not The Same Person"). Confirmed by Dolmar Nov 20 2026.
+- Manager / Coordinator: see the list and badges, Log Warning (Manager can also Add To Blacklist, above; neither can remove, void or clear).
 
 Every add needs a reason, a note and a date, and records who added it. The note is also appended to the renter's Notes (skipped when the identical text is already there). Removal records who, when and why; entries are never deleted.
 
@@ -58,9 +59,10 @@ Waitlist signups and website leads only carry phone and email, so those two are 
 
 A match is recorded in `renter_blacklist_matches` (which fields, which blacklisted person) and shown as a red alert at the top of the Drivers list and on the driver profile. Applications also get Needs Staff with reason "blacklist match: <Fields> (matches <Name>)", are never auto-approved, and approval/rentals stay refused until an Owner / Admin clicks Not The Same Person (recorded with a reason). Waitlist rows are marked for review. Nothing is declined automatically, and matched (linked) people still receive normal messages; only the blacklisted person is silenced.
 
-When the blacklisted person's own record gains a new detail (new phone, address, signed IP), it is added to their match list and existing records are re-checked. Blacklisting someone also checks everyone already on file.
+When the blacklisted person's own record gains a new detail (new phone, address, signed IP), it is added to their match list and existing records are re-checked. Blacklisting someone also checks everyone already on file, including applicants who list them as a reference or emergency contact.
+
+Reference and emergency contact (name, phone, relationship) are optional. The applicant fills them in the driver-profile section "Reference And Emergency Contact (Optional)". Staff see the same answers on Drivers → Application, under "Reference And Emergency Contact". Manager and above can edit them; a Coordinator sees them read-only. The columns and the match rules are in `20261126213000_application_references.sql`. That migration is not applied. Apply it before publishing this code, because the wizard resume query reads the new columns and fails closed if they are missing.
 
 ### Not possible with today's data
-- Reference and emergency contact (name, phone, relationship) are optional fields on the application (Driver Profile section "Reference And Emergency Contact (Optional)", and the admin Application tab). Added by 20261120130000_application_references.sql; apply it before publishing the code that reads them.
 - Stripe card fingerprint: not stored. Getting it would need new Stripe API calls with server keys, so it was not done; matching uses brand + last 4 + expiry instead (weaker: two different cards can share these).
 - Device / IP: only the agreement signer IP is captured; nothing is captured at application time.

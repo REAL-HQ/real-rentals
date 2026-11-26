@@ -4,6 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { notReadyMessage } from "@/lib/vehicle-readiness";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import {
   decideActivation,
   OWNER_APPROVED_RENTAL_REASON,
@@ -190,6 +191,12 @@ export async function evaluateReadiness(
     if (!v) {
       blockers.push({ code: "no_vehicle", message: "That vehicle no longer exists." });
     } else {
+      if (isForSaleVehicleStatus(v.status)) {
+        blockers.push({
+          code: "vehicle_for_sale",
+          message: "This vehicle is For Sale and cannot be rented.",
+        });
+      }
       // Double-booking guard. Checked against live rentals rather than
       // vehicles.status, because status is edited by hand and drifts.
       const { data: busy } = await admin
@@ -258,12 +265,10 @@ export async function evaluateReadiness(
     requirements: activationRequirements(facts),
     insurance,
     vehicleId: vehicleId ?? null,
-    suggestedWeeklyRate:
-      app.weekly_rent != null
-        ? Number(app.weekly_rent)
-        : vehicle?.weekly_rate != null
-          ? Number(vehicle.weekly_rate)
-          : null,
+    suggestedWeeklyRate: await (async () => {
+      const { weeklyRateForApplication } = await import("@/lib/agreement-weekly.server");
+      return weeklyRateForApplication(admin, applicationId, vehicle?.weekly_rate);
+    })(),
     suggestedDeposit: vehicle?.deposit != null ? Number(vehicle.deposit) : null,
     inspectionMileage,
     currentMileage,

@@ -6,12 +6,14 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getPaymentNotCompleted, restartPaymentNotCompletedCheckout } from "@/lib/payment-not-completed.functions";
+import { recordReservationFeeSmsConsent } from "@/lib/sms-consent-signing.functions";
 import { EMPTY_PNC_VIEW, paidReturnPath, type PaymentNotCompletedView } from "@/lib/payment-not-completed";
 import { PaymentNotCompletedPage } from "@/components/reservation/PaymentNotCompletedPage";
 
 export function PaymentNotCompletedLive({ sessionId }: { sessionId?: string }) {
   const load = useServerFn(getPaymentNotCompleted);
   const restart = useServerFn(restartPaymentNotCompletedCheckout);
+  const recordConsent = useServerFn(recordReservationFeeSmsConsent);
   const [view, setView] = useState<PaymentNotCompletedView | null>(sessionId ? null : EMPTY_PNC_VIEW);
   const [reserving, setReserving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +33,14 @@ export function PaymentNotCompletedLive({ sessionId }: { sessionId?: string }) {
     }
   }, [view]);
 
-  async function onReserve() {
+  async function onReserve(consent: boolean | null) {
     if (!sessionId || reserving) return;
     setReserving(true);
     setError(null);
     try {
+      if (typeof consent === "boolean") {
+        try { await recordConsent({ data: { sessionId, consent } }); } catch { /* checkout still opens */ }
+      }
       const r = await restart({ data: { sessionId } });
       if (r.ok && r.alreadyPaid) {
         window.location.replace(paidReturnPath(r.sessionId));

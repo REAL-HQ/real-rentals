@@ -153,6 +153,29 @@ function Availability({ v }: { v: VehicleListRow }) {
 }
 
 /**
+ * An open swap on this car. A signed swap leaves both cars where they were
+ * until Complete Swap is pressed on the booking, so say so here and link there.
+ */
+function SwapNotice({ v }: { v: VehicleListRow }) {
+  const n = v.swap_notice;
+  if (!n) return null;
+  const signed = n.status === "signed";
+  const cls = signed
+    ? "inline-flex items-center rounded-full border border-[#F2C94C] bg-[#FFF8E1] px-2 py-0.5 text-[11px] font-medium text-[#7A5B00]"
+    : "inline-flex items-center rounded-full border border-[#EDEDF0] bg-white px-2 py-0.5 text-[11px] text-[#55555E]";
+  const title = signed
+    ? `${n.role === "outgoing" ? "Outgoing Vehicle" : "Replacement Vehicle"} · Renter Signed · Open The Booking And Press Complete Swap At The Handover`
+    : "Swap Agreement Waiting For The Renter's Signature";
+  return n.href ? (
+    <a href={n.href} data-testid="vehicle-swap-notice" title={title} onClick={(e) => e.stopPropagation()} className={cls}>
+      {n.label}
+    </a>
+  ) : (
+    <span data-testid="vehicle-swap-notice" title={title} className={cls}>{n.label}</span>
+  );
+}
+
+/**
  * Readiness, in the list.
  *
  * Three bands, the same ones the vehicle's own profile uses, and the tooltip
@@ -350,6 +373,7 @@ function FleetVehicles({
               </dl>
               <div className="mt-2.5 text-[13px] text-muted-foreground"><Rate v={v} /></div>
               <div data-vehicle-status-row className="mt-2 flex items-center gap-1.5 whitespace-nowrap"><ReadinessPill v={v} /><Availability v={v} /></div>
+              {v.swap_notice ? <div className="mt-1.5"><SwapNotice v={v} /></div> : null}
               <div className="mt-3 flex gap-2 max-lg:flex-wrap" onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
                   Open Record <ArrowRight className="w-3.5 h-3.5" />
@@ -575,7 +599,7 @@ function FleetVehicles({
                 <tr key={v.id} className="group border-t border-border cursor-pointer hover:bg-[#FAFAFB] focus-visible:outline-none focus-visible:bg-[#FAFAFB] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D03020]/40 transition-colors" {...rowOpenProps(() => setViewing(v.id))}>
                   <td className="w-10 px-3 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
                   <td className="px-3 py-2 whitespace-nowrap"><VehicleListThumbnail vehicle={v} /></td>
-                  <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
+                  <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}{v.swap_notice ? <div className="mt-1"><SwapNotice v={v} /></div> : null}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{displayVehicleWord(v.color ?? "") || <span className="text-muted-foreground">Not Set</span>}</td>
                   <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>

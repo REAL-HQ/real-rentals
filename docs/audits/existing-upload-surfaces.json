@@ -350,6 +350,21 @@
       }
     },
     {
+      "file": "src/components/site/DocumentCapture.tsx",
+      "line": 150,
+      "props": {
+        "variant": "\"inline\"",
+        "accept": "\"image/*,application/pdf\"",
+        "maxBytes": "{60 * 1024 * 1024}",
+        "multiple": true,
+        "camera": true,
+        "label": "\"Add Another File\"",
+        "context": "{`${title} (Additional)`}",
+        "upload": "{async (file, { onProgress }) => {\n                onProgress(20);\n                const { path } = await uploadApplicantFile({ token, kind, file });\n                onProgress(70);\n                await addDocument({ data: { token, kind, path } });\n                setAddedCount((n) => n + 1);\n                onProgress(100);\n              }}"
+      },
+      "addedByMultiFileDocuments": true
+    },
+    {
       "file": "src/routes/partners.tsx",
       "line": 269,
       "props": {
@@ -442,8 +457,8 @@
   ],
   "customWizardSurface": "src/components/site/ApplicationWizard.tsx: MultiFileUpload",
   "integrationMerge": {
-    "note": "Merged integration (via PR 325) on 2026-11-14: ApplicantDocuments uploader moved to DriverDocumentUploadDialog; RenterReimbursements and ReturnFlowDialog uploaders are new on integration. Props pinned as they arrived. PR 314 (trip media) added TripMediaPanel and changed InspectionsPanel accept/size to the shared trip-media limits.",
-    "uploaderSourceSites": 25,
+    "note": "Merged integration (via PR 325) on 2026-11-14: ApplicantDocuments uploader moved to DriverDocumentUploadDialog; RenterReimbursements and ReturnFlowDialog uploaders are new on integration. Props pinned as they arrived. PR 314 (trip media) added TripMediaPanel and changed InspectionsPanel accept/size to the shared trip-media limits. Multi-file documents (Nov 20 2026): DocumentCapture gained an Add Another File uploader that adds a second file beside the main one through addApplicantDocument.",
+    "uploaderSourceSites": 26,
     "uploaderFiles": 24
   }
 }

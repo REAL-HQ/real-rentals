@@ -114,6 +114,14 @@ export async function collectRows(
   opts: { rentalId: string; customerId: string; paymentMethodId: string; description: string; metadata: Record<string, string> },
 ): Promise<CollectResult> {
   const ids = rows.map((r) => r.id);
+  const metadata: Record<string, string> = {};
+  for (const [key, value] of Object.entries({ rentalId: opts.rentalId, ...opts.metadata, paymentIds: ids.join(","), attempt: "" })) {
+    if (value != null && String(value).trim()) metadata[key] = String(value).slice(0, 500);
+  }
+  // withPaymentIntentMetadata: one metadata object. A PaymentIntent has no nested payment_intent_data.
+  const { withPaymentIntentMetadata } = await import("@/lib/stripe-charge-metadata");
+  const stamped = withPaymentIntentMetadata({ metadata }, {}, { kind: "rental" });
+  Object.assign(metadata, stamped.metadata);
   const cents = Math.round(rows.reduce((s, r) => s + owedOn(r), 0) * 100);
   if (cents < 50) return { error: "Nothing collectable on these charges", paymentIds: ids, outcome: "busy" };
   const attempt = Math.max(0, ...rows.map((r) => r.attempt_count ?? 0)) + 1;
@@ -165,7 +173,7 @@ export async function collectRows(
         off_session: true,
         confirm: true,
         description: opts.description,
-        metadata: { rentalId: opts.rentalId, ...opts.metadata, paymentIds: ids.join(","), attempt: String(attempt) },
+        metadata: { ...metadata, paymentIds: ids.join(","), attempt: String(attempt) },
       },
       { idempotencyKey: await attemptKey(ids, attempt) },
     );

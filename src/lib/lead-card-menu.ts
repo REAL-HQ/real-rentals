@@ -137,8 +137,8 @@ export function undoDraft(lead: LeadMenuLead): ContactStatusDraft {
 }
 
 /** Same validation the server re-runs; empty means the draft can be saved. */
-export function leadDraftProblems(draft: ContactStatusDraft): string[] {
-  return contactStatusBlockers(draft).map((b) => b.why);
+export function leadDraftProblems(draft: ContactStatusDraft, today?: string): string[] {
+  return contactStatusBlockers(draft, { today }).map((b) => b.why);
 }
 
 export function leadDisplayName(name: string | null | undefined): string {

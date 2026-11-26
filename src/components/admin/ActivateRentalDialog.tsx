@@ -19,6 +19,7 @@ import {
 import { MicroLabel } from "./ui";
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import { activationSubmitIssues } from "./activation-submit-issues";
 import type { FixTarget } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";
@@ -186,7 +187,7 @@ export function ActivateRentalDialog({
     }
   }
 
-  const selectable = vehicles.filter((v) => v.status !== "retired");
+  const selectable = vehicles.filter((v) => v.status !== "retired" && !isForSaleVehicleStatus(v.status));
 
   return (
     <ModalShell onClose={onClose} size="md" label="Activate Rental">

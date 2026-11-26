@@ -29,7 +29,7 @@ import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol } from "./VehicleProfileFields";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
-import { BOOKING_PHASE_LABEL, bookingDates, bookingVehicleName } from "@/lib/bookings-list";
+import { BOOKING_PHASE_LABEL, autopayBadge, bookingDates, bookingVehicleName } from "@/lib/bookings-list";
 import { persistedNumber } from "@/lib/record-numbers";
 import { RecordNumber } from "@/components/admin/RecordNumber";
 import { BookingVehicleHistory } from "@/components/admin/BookingVehicleHistory";
@@ -142,7 +142,7 @@ export function BookingDetails({
       }}
     >
       <div
-        className="min-w-0 w-full max-w-5xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]"
+        className="min-w-0 w-full max-w-6xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-4 pb-0">
@@ -156,7 +156,13 @@ export function BookingDetails({
                   <StatusPill
                     status={b.phase}
                     tone={
-                      b.phase === "active" ? "green" : b.phase === "cancelled" ? "red" : "neutral"
+                      b.phase === "active"
+                        ? "green"
+                        : b.phase === "cancelled"
+                          ? "red"
+                          : b.phase === "swap" || b.phase === "reserved"
+                            ? "amber"
+                            : "neutral"
                     }
                   >
                     {BOOKING_PHASE_LABEL[b.phase]}
@@ -170,6 +176,12 @@ export function BookingDetails({
                     {bookingVehicleName(b)}
                     <span className="mx-1.5 text-[#C4C4CB]">|</span>
                     {bookingDates(b.startDate, b.endDate, b.phase)}
+                    {b.lengthLabel ? (
+                      <>
+                        <span className="mx-1.5 text-[#C4C4CB]">|</span>
+                        <span data-testid="rental-length">{b.lengthLabel}</span>
+                      </>
+                    ) : null}
                   </>
                 ) : (
                   " "
@@ -304,6 +316,12 @@ function Overview({
                   value={b.weeklyRate == null ? "Not Set" : usd(b.weeklyRate)}
                 />
               )}
+              {d.canSeeMoney && (
+                <Row
+                  label="Autopay"
+                  value={<span data-testid="autopay-badge">{autopayBadge(b)}</span>}
+                />
+              )}
             </div>
           </TwoCol>
           {d.unavailable.length > 0 && (
@@ -395,10 +413,6 @@ function Overview({
           ) : (
             <p className="text-[13px] text-[#55555E]">Unknown</p>
           )}
-        </SectionCard>
-
-        <SectionCard title="Vehicles" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
-          <BookingVehicleHistory rentalId={b.id} showSwap={b.phase === "active"} />
         </SectionCard>
 
         <SectionCard
@@ -514,6 +528,13 @@ function Overview({
             </ul>
           </SectionCard>
         )}
+      </div>
+
+      {/* Swap history and Pickup Photos span the booking page. */}
+      <div className="min-w-0 lg:col-span-3" data-testid="booking-vehicle-swaps">
+        <SectionCard title="Vehicles" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
+          <BookingVehicleHistory rentalId={b.id} showSwap={b.phase === "active"} />
+        </SectionCard>
       </div>
     </div>
   );

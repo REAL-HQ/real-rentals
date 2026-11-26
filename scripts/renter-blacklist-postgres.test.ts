@@ -46,6 +46,7 @@ CREATE SCHEMA auth; CREATE TABLE auth.users (id uuid PRIMARY KEY, email text);
 CREATE SCHEMA private;
 CREATE FUNCTION private.is_staff() RETURNS boolean LANGUAGE sql AS 'select true';
 CREATE FUNCTION private.is_owner() RETURNS boolean LANGUAGE sql AS 'select true';
+CREATE FUNCTION private.is_manager() RETURNS boolean LANGUAGE sql AS 'select true';
 CREATE FUNCTION public.set_updated_at() RETURNS trigger LANGUAGE plpgsql AS 'begin new.updated_at = now(); return new; end';
 CREATE TABLE public.user_roles (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, role text, created_at timestamptz DEFAULT now());
 CREATE TABLE public.audit_log (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), actor_user_id uuid, actor_email text, actor_role text,
@@ -79,7 +80,10 @@ beforeAll(() => {
     .replace(/ALTER TABLE public\.fleet_webhook_deliveries[\s\S]*?;\n/g, "");
   must(fleet);
   must(readFileSync(new URL("../supabase/migrations/20261120040000_renter_blacklist.sql", import.meta.url), "utf8"));
-  must(readFileSync(new URL("../supabase/migrations/20261120130000_application_references.sql", import.meta.url), "utf8"));
+  must(readFileSync(new URL("../supabase/migrations/20261120070000_blacklist_manager_can_add.sql", import.meta.url), "utf8"));
+  must(readFileSync(new URL("../supabase/migrations/20261121130000_blacklist_note_editable.sql", import.meta.url), "utf8"));
+  // Retimed past migrations already on the live branch. Same SQL, never applied.
+  must(readFileSync(new URL("../supabase/migrations/20261126213000_application_references.sql", import.meta.url), "utf8"));
   must(`INSERT INTO auth.users VALUES ('${OWNER}', 'owner@example.com'), ('${HEATHER_USER}', 'renter6@example.com');
         INSERT INTO public.user_roles (user_id, role) VALUES ('${OWNER}', 'admin');
         INSERT INTO public.applications (id, full_name, email, phone, address, zip, license_number, status, user_id, notes)
@@ -145,7 +149,13 @@ describe.skipIf(skip)("renter blacklist in Postgres", () => {
 
   test("history: entries cannot be deleted or rewritten", () => {
     expect(psql(`DELETE FROM public.renter_blacklist`).err).toContain("never deleted");
-    expect(psql(`UPDATE public.renter_blacklist SET note = 'changed note' WHERE removed_at IS NULL`).err).toContain("only the removal");
+    expect(psql(`UPDATE public.renter_blacklist SET reason_code = 'other' WHERE removed_at IS NULL`).err).toContain("only the note and the removal");
+    expect(psql(`UPDATE public.renter_blacklist SET blacklisted_on = '2020-01-01' WHERE removed_at IS NULL`).err).toContain("only the note and the removal");
+    expect(psql(`UPDATE public.renter_blacklist SET note = 'x' WHERE removed_at IS NULL`).err).toContain("a blacklist note is required");
+    const keep = must(`SELECT note FROM public.renter_blacklist WHERE removed_at IS NULL`);
+    expect(psql(`UPDATE public.renter_blacklist SET note = 'Edited note text' WHERE removed_at IS NULL`).ok).toBe(true);
+    expect(must(`SELECT note FROM public.renter_blacklist WHERE removed_at IS NULL`)).toBe("Edited note text");
+    must(`UPDATE public.renter_blacklist SET note = '${keep.replace(/'/g, "''")}' WHERE removed_at IS NULL`);
     expect(psql(`UPDATE public.renter_blacklist SET removed_at = now() WHERE removed_at IS NULL`).err).toContain("renter_blacklist_removal_complete");
     expect(psql(`UPDATE public.renter_blacklist SET removal_reason = 'again!' WHERE removed_at IS NOT NULL`).err).toContain("already removed");
   });
@@ -322,7 +332,8 @@ describe.skipIf(skip)("renter blacklist in Postgres", () => {
     expect(must(`SELECT has_function_privilege('authenticated', 'public.renter_blacklist_check(uuid)', 'EXECUTE')`)).toBe("f");
     expect(must(`SELECT has_function_privilege('service_role', 'public.renter_blacklist_check(uuid)', 'EXECUTE')`)).toBe("t");
     expect(must(`SELECT string_agg(policyname || ':' || cmd, ',' ORDER BY policyname) FROM pg_policies WHERE tablename = 'renter_blacklist'`))
-      .toBe("Owner adds to blacklist:INSERT,Owner removes from blacklist:UPDATE,Staff read blacklist:SELECT");
-    expect(must(`SELECT pg_get_expr(polwithcheck, polrelid) FROM pg_policy WHERE polname = 'Owner adds to blacklist'`)).toContain("is_owner");
+      .toBe("Manager adds to blacklist:INSERT,Owner removes from blacklist:UPDATE,Staff read blacklist:SELECT");
+    expect(must(`SELECT pg_get_expr(polwithcheck, polrelid) FROM pg_policy WHERE polname = 'Manager adds to blacklist'`)).toContain("is_manager");
+    expect(must(`SELECT pg_get_expr(polwithcheck, polrelid) FROM pg_policy WHERE polname = 'Owner removes from blacklist'`)).toContain("is_owner");
   });
 });

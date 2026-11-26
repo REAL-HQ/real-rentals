@@ -103,7 +103,7 @@ export async function assignableVehicles(admin: Admin, opts: { exceptApplication
   const busy = new Set<string>();
   const lastEnd = new Map<string, string>();
   for (const r of (rentals.data ?? []) as any[]) {
-    if (r.status === "active" || r.status === "reserved" || r.status === "on_hold") busy.add(r.vehicle_id);
+    if (r.status === "active" || r.status === "reserved" || r.status === "on_hold" || r.status === "pending_reservation") busy.add(r.vehicle_id);
     const end = String(r.end_date ?? r.start_date ?? "");
     if (end && end > (lastEnd.get(r.vehicle_id) ?? "")) lastEnd.set(r.vehicle_id, end);
   }
@@ -277,7 +277,7 @@ export async function handleFleetAssignVehicle(request: Request, deps: AssignDep
   // Re-check: if another Approved applicant holds the same car, the earlier one keeps it.
   const holders = await admin.from("applications").select("id,vehicle_id,status,deleted_at").eq("vehicle_id", car.vehicle_id).eq("status", "approved");
   const others = ((holders.data ?? []) as any[]).filter((r) => r.id !== leadId && !r.deleted_at);
-  const rentals = await admin.from("rentals").select("id,status").eq("vehicle_id", car.vehicle_id).in("status", ["reserved", "on_hold", "active"]);
+  const rentals = await admin.from("rentals").select("id,status").eq("vehicle_id", car.vehicle_id).in("status", ["reserved", "on_hold", "pending_reservation", "active"]);
   if (others.length || (rentals.data ?? []).length) {
     await admin.from("applications").update({ vehicle_id: null, weekly_rent: app.weekly_rent ?? null, deposit_amount: app.deposit_amount ?? null, contract_start_date: app.contract_start_date ?? null }).eq("id", leadId).eq("vehicle_id", car.vehicle_id);
     return fleetJson(409, { ok: false, error: "That car was just taken. Nothing was changed. List again and retry." });

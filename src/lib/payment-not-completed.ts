@@ -51,6 +51,8 @@ export type PaymentNotCompletedView =
       openSlotsThisWeek: number | null;
       linkExpiresAt: string | null;
       checkoutUrl: string | null;
+      /** True when the primary renter has no text consent. Omitted means do not ask. */
+      smsConsentNeeded?: boolean;
     }
   | { ok: true; alreadyPaid: true; sessionId: string | null }
   | { ok: false; reason: "invalid" | "not_found" | "not_reservation_fee" | "unavailable" };

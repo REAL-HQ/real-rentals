@@ -62,8 +62,8 @@ function fakeAdmin() {
 }
 const saved = await persistConfirmedDocument(fakeAdmin() as any, {
   driver_id: "app-1",
-  kind: "license_front",
-  category: "license_front",
+  kind: "agreement",
+  category: "agreement", // single-record: the supersede write still happens
   label: null,
   storage_bucket: "driver-docs",
   storage_path: "app-1/license.jpg",

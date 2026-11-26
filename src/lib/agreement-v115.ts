@@ -140,5 +140,11 @@ if (!s.replace(/\*\*/g, "").includes(`! ${FL_812155_NOTICE}`)) throw new Error("
 
 export const V115_SOURCE = s;
 
-/** v1.15 prints the same contract values as v1.14 (fees, Service Area, venue), except the capped late fee. */
-export const V115_TERM_DEFAULTS: Record<string, string> = { ...V114_TERM_DEFAULTS, fee_late_payment: LATE_FEE_AMOUNT };
+/**
+ * v1.15 prints the same contract values as v1.14 (fees, Service Area, venue),
+ * except the capped late fee and the economy minimum age: 23, matching Uber's
+ * Florida minimum (Dolmar, Nov 21 2026, 2:37 PM ET; v1.14 prints 21). This
+ * changes the printed age sentence in new v1.15 sends only; signed agreements
+ * keep the text they were signed with. The luxury / premium minimum stays 25.
+ */
+export const V115_TERM_DEFAULTS: Record<string, string> = { ...V114_TERM_DEFAULTS, fee_late_payment: LATE_FEE_AMOUNT, min_age_economy: "23" };

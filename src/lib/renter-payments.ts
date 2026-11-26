@@ -286,10 +286,13 @@ export function matchRenterPayment(
     return false;
   });
   if (prior) {
+    // A swap moves the rental to another car; the car on an older payment is
+    // history. Use the rental's current car when the rental is known.
+    const current = prior.rental_id ? input.rentals.find((row) => row.id === prior.rental_id) : undefined;
     return finish({
       rentalId: prior.rental_id,
       driverId: prior.driver_id,
-      vehicleId: prior.vehicle_id,
+      vehicleId: current ? (current.vehicle_id ?? null) : prior.vehicle_id,
       via: "prior_payment",
       ambiguous: false,
     });
