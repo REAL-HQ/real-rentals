@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   planShots, spendRefusal, identityCheck, carSetStatus, readStudioSettings, effectiveModel,
-  buildPrompt, PHOTO_STUDIO_DEFAULTS, NEVER_GENERATE, vinLast6, PHOTO_CLASS_OPTIONS, photoClassLabel,
+  buildIsolationPrompt, buildPrompt, PHOTO_STUDIO_DEFAULTS, PHOTO_STUDIO_GENERATIONS_PER_SHOT, PHOTO_STUDIO_SCENE, NEVER_GENERATE, vinLast6, PHOTO_CLASS_OPTIONS, photoClassLabel,
   isMissingPhotoClassColumn, marketingPublishBlock, RETIRE_LIVE_SHOT, leadMarketingShotId,
 } from "../src/lib/photo-studio";
 
@@ -108,5 +108,20 @@ test("prompt forbids invention and keeps plate", () => {
   const p = buildPrompt("front", { year: 2015, make: "Ford", model: "Fusion", color: "silver" });
   expect(p).toMatch(/Do NOT add/);
   expect(p).toMatch(/license plate/);
+  expect(p).toMatch(/realistic outdoor listing photo/);
+  expect(p).not.toMatch(/dealership/);
+  expect(p).not.toMatch(/light-grey studio/);
+  expect(p).toContain(PHOTO_STUDIO_SCENE);
+  expect(p).toMatch(/palm trees/);
+  expect(p).toMatch(/No houses or residential homes/);
+  expect(p).toMatch(/Sign bands stay blank/);
+  expect(p).toMatch(/No other readable plates/);
+  expect(p).toMatch(/roof antenna/);
+  expect(p).toMatch(/true paint color and brightness/);
+  expect(p).toMatch(/Do NOT add badges or parts/);
+  const isolated = buildIsolationPrompt("front", { year: 2015, make: "Ford", model: "Fusion", color: "silver" });
+  expect(isolated).toMatch(/neutral grey/);
+  expect(isolated).not.toContain(PHOTO_STUDIO_SCENE);
+  expect(PHOTO_STUDIO_GENERATIONS_PER_SHOT).toBe(2);
 });
 test("vinLast6", () => expect(vinLast6("1FA6P0H74F5118769")).toBe("118769"));

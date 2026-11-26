@@ -130,15 +130,50 @@ export function planShots(originals: Original[], maxSourcesPerSlot = 2): SlotPla
   return plans;
 }
 
-export function buildPrompt(slot: ShotSlot, car: { year?: number | null; make?: string | null; model?: string | null; color?: string | null }): string {
+/**
+ * Default listing scene. A later choice can pick another key from
+ * PHOTO_STUDIO_SCENES; generation uses PHOTO_STUDIO_SCENE until then.
+ */
+export const PHOTO_STUDIO_SCENES = {
+  shopping_plaza:
+    "bright daylight, a clean Florida shopping-plaza parking lot with tall palm trees and a beige stucco plaza behind, the car parked in a stall on asphalt with white stall lines, natural shadows matching the sun, eye-level, photoreal like a phone photo, 1024x768 landscape",
+} as const;
+
+export const PHOTO_STUDIO_SCENE = PHOTO_STUDIO_SCENES.shopping_plaza;
+
+/** Isolate on grey, then place that cutout in the scene. Two paid image calls. */
+export const PHOTO_STUDIO_GENERATIONS_PER_SHOT = 2;
+
+type PromptCar = { year?: number | null; make?: string | null; model?: string | null; color?: string | null };
+
+function vehicleName(car: PromptCar): string {
   const name = [car.year, car.color, car.make, car.model].filter(Boolean).join(" ");
+  return name ? ` (${name})` : "";
+}
+
+const VEHICLE_FIDELITY = [
+  "Keep identical: true paint color and brightness, the same wheels and hubcaps, trim, existing badges, body shape, interior materials and colors, real details such as a roof antenna when one is present, and the license plate text exactly as shown.",
+  "Do NOT add badges or parts. Do NOT add, remove or repair anything: no new wheels, no body kits, no removed scratches or dents beyond light cleaning, no extra accessories.",
+  "If a detail is not visible in the references, keep it plain and factory-standard rather than inventing it.",
+].join("\n");
+
+/** First pass: lift the car off its real surroundings onto plain grey. */
+export function buildIsolationPrompt(slot: ShotSlot, car: PromptCar): string {
   return [
-    `Recreate THIS EXACT vehicle${name ? ` (${name})` : ""} from the reference photos as a clean dealership photo.`,
+    `Isolate THIS EXACT vehicle${vehicleName(car)} from the reference photos. Return only the car on a plain seamless neutral grey background.`,
+    `Framing: ${SLOT_TEMPLATE[slot]}. Output 1024x768 landscape.`,
+    "Completely replace the original surroundings with flat neutral grey. No plaza, no trees, no houses or residential homes, no people, no lettering, no logos, no other cars.",
+    VEHICLE_FIDELITY,
+  ].join("\n");
+}
+
+export function buildPrompt(slot: ShotSlot, car: PromptCar): string {
+  return [
+    `Place THIS EXACT vehicle${vehicleName(car)} into the scene as a realistic outdoor listing photo. The reference is the car already isolated on grey; do not bring back the original surroundings.`,
     `Framing: ${SLOT_TEMPLATE[slot]}.`,
-    "Background: seamless light-grey studio, soft even lighting, subtle floor shadow. Output 1024x768 landscape.",
-    "Keep identical: paint color, wheels and hubcaps, trim, badges, body shape, interior materials and colors, and the license plate text exactly as shown.",
-    "Do NOT add, remove or repair anything: no new wheels, no body kits, no removed scratches or dents beyond light cleaning, no extra accessories, no people, no text or watermark.",
-    "If a detail is not visible in the references, keep it plain and factory-standard rather than inventing it.",
+    `Background: ${PHOTO_STUDIO_SCENE}.`,
+    "Completely replace the original surroundings. No houses or residential homes. Sign bands stay blank: no lettering, logos, or readable text anywhere. No people. No other readable plates. Other cars only far back and blurred, if any.",
+    VEHICLE_FIDELITY,
   ].join("\n");
 }
 
