@@ -12,6 +12,7 @@
 // nothing. A rental that already has a different subscription is never
 // overwritten (reported as "duplicate").
 import { addDaysIso, dayDiff, easternDateOf } from "@/lib/rent-reminders";
+import { invoicePaymentMethod } from "@/lib/stripe-payment-method";
 
 export type LinkCandidate = {
   rentalId: string;
@@ -86,6 +87,8 @@ export type PaidInvoice = {
   amountPaid: number; // dollars
   createdOn: string; // ET date the invoice was created (the week it bills)
   paidOn: string | null; // ET date it was paid
+  /** card, link, ach, cash_app, or the raw type. Card when the charge did not say. */
+  paymentMethod: string;
   /** Stripe receipt / invoice links for the payments row (PR 356 columns). */
   receipts?: Record<string, string | null>;
 };
@@ -109,6 +112,7 @@ export function paidInvoiceOf(invoice: any): PaidInvoice | null {
     amountPaid: Math.round(amountPaid * 100) / 100,
     createdOn: easternDateOf(created),
     paidOn: paidAt ? easternDateOf(paidAt) : null,
+    paymentMethod: invoicePaymentMethod(invoice),
   };
 }
 
@@ -132,7 +136,7 @@ export function paymentRowForPaidInvoice(
     status: "paid",
     due_date: inv.createdOn,
     paid_date: inv.paidOn ?? inv.createdOn,
-    payment_method: "card",
+    payment_method: inv.paymentMethod || "card",
     ...(inv.receipts ?? {}),
     stripe_invoice_id: inv.id,
     stripe_subscription_id: inv.subscriptionId,

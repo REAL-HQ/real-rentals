@@ -5,6 +5,7 @@
 // first one to arrive writes the row (unique payment-intent index). Read-only
 // against Stripe.
 import { easternDateOf } from "@/lib/rent-reminders";
+import { invoicePaymentMethod } from "@/lib/stripe-payment-method";
 import { stripeId } from "@/lib/stripe-unmatched";
 import {
   allocateRentPayment,
@@ -272,7 +273,7 @@ export async function insertMatchedOneOff(
     status: "paid",
     due_date: dueOn,
     paid_date: day,
-    payment_method: id.cardPayment ? "card" : null,
+    payment_method: id.paymentMethod,
     stripe_payment_intent_id: id.paymentIntentId || null,
     stripe_invoice_id: id.invoiceId ?? null,
     stripe_charge_id: id.chargeId,
@@ -328,9 +329,10 @@ export async function recordInvoiceWithoutRental(admin: Admin, invoice: any): Pr
     chargeId, sessionId: null, paymentLinkId: null, rentalId: null, applicationIds: [], plates: [], forDate: null, weeks: [],
     renterName: null, customerIds: customerId ? [customerId] : [], emails: [], phones: [], billingNames: [],
     amountCents: Number.isFinite(amount) ? Math.round(amount) : 0, currency: invoice.currency ?? "usd",
-    paidAt: Number(invoice.status_transitions?.paid_at ?? invoice.created) || null, purpose: null, reason: null, receiptUrl: null, cardPayment: true,
+    paidAt: Number(invoice.status_transitions?.paid_at ?? invoice.created) || null, purpose: null, reason: null, receiptUrl: null, paymentMethod: null,
   };
   id.invoiceId = invoiceId;
+  if (!id.paymentMethod) id.paymentMethod = invoicePaymentMethod(invoice);
   if (!id.renterName && typeof invoice.customer_name === "string") id.renterName = invoice.customer_name.trim() || null;
   if (id.amountCents <= 0) return { recorded: false };
   const match = await matchRental(admin, id);
