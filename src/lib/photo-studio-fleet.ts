@@ -96,6 +96,41 @@ export function fleetProgress(cars: FleetCarInput[], dailyBlocked: boolean): Fle
   return cars.map((c) => fleetRow(c, dailyBlocked)).filter((r): r is FleetRow => !!r);
 }
 
+export type StudioLabelCounts = { labeled: number; lowConfidence: number; failed: number };
+
+export type StudioRunHold = "continues_tomorrow" | "monthly_cap" | null;
+
+/** What Run All Cars says when a pass ends. Failures lead, so a finished fleet is not a plain success. */
+export function describeStudioRun(cars: number, labels: StudioLabelCounts, held: StudioRunHold = null): string {
+  const parts: string[] = [];
+  if (labels.failed > 0) {
+    parts.push(`${labels.failed} ${labels.failed === 1 ? "photo" : "photos"} could not be labeled.`);
+  }
+  if (held === "continues_tomorrow") {
+    parts.push("Continues Tomorrow. The daily limit was reached. Run this again tomorrow.");
+  } else if (held === "monthly_cap") {
+    parts.push("The monthly cap was reached.");
+  } else if (cars > 0) {
+    parts.push(`Photo Studio finished ${cars} ${cars === 1 ? "car" : "cars"}.`);
+  } else if (labels.failed === 0) {
+    parts.push("Every car in the fleet already has its shots.");
+  }
+  if (labels.labeled > 0) parts.push(`${labels.labeled} labeled.`);
+  if (labels.lowConfidence > 0) parts.push(`${labels.lowConfidence} low confidence.`);
+  return parts.join(" ");
+}
+
+export function studioRunToast(
+  cars: number,
+  labels: StudioLabelCounts,
+  held: StudioRunHold = null,
+): { level: "error" | "message" | "success"; text: string } {
+  const text = describeStudioRun(cars, labels, held);
+  if (labels.failed > 0) return { level: "error", text };
+  if (held) return { level: "message", text };
+  return { level: "success", text };
+}
+
 /** Next car the Run All Cars button should pick, skipping ones already tried this click. */
 export function nextFleetCar<T extends { id: string; status?: string | null; archivedAt?: string | null; needsWork: boolean }>(cars: T[], skipIds: string[]): T | null {
   const skip = new Set(skipIds);

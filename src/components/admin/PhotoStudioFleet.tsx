@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   approveAndPublishStudio, approveAndPublishStudioReady, getStudioFleetProgress, runStudioNextCar,
 } from "@/lib/photo-studio-fleet.functions";
+import { describeStudioRun, studioRunToast, type StudioLabelCounts, type StudioRunHold } from "@/lib/photo-studio-fleet";
 
 type Row = Awaited<ReturnType<typeof getStudioFleetProgress>>["rows"][number];
 
@@ -40,35 +41,48 @@ export function PhotoStudioFleet({ onChanged }: { onChanged?: () => void }) {
     setBusy(true);
     const skip: string[] = [];
     let worked = 0;
-    let held: "continues_tomorrow" | "monthly_cap" | null = null;
+    let held: StudioRunHold = null;
+    const totals: StudioLabelCounts = { labeled: 0, lowConfidence: 0, failed: 0 };
+    let reported = false;
+    const showRun = () => {
+      reported = true;
+      const note = studioRunToast(worked, totals, held);
+      if (note.level === "error") toast.error(note.text);
+      else if (note.level === "message") toast.message(note.text);
+      else toast.success(note.text);
+    };
     try {
       for (let n = 0; n < 40; n++) {
         const r = await next({ data: { skipIds: skip } });
+        totals.labeled += r.labels.labeled;
+        totals.lowConfidence += r.labels.lowConfidence;
+        totals.failed += r.labels.failed;
         if (!r.ok) {
-          toast.error("error" in r ? r.error : "Could not run Photo Studio.");
+          reported = true;
+          const base = "error" in r ? r.error : "Could not run Photo Studio.";
+          if (totals.failed > 0) toast.error(`${base} ${describeStudioRun(worked, totals, held)}`);
+          else toast.error(base);
           break;
         }
         if (r.outcome === "continues_tomorrow" || r.outcome === "monthly_cap") {
           held = r.outcome;
           if (r.vehicleId) { skip.push(r.vehicleId); continue; }
-          toast.message(r.outcome === "continues_tomorrow"
-            ? "Continues Tomorrow. The daily limit was reached. Run this again tomorrow."
-            : (r.reason ?? "The monthly cap was reached."));
+          showRun();
           break;
         }
         if (r.outcome === "done") {
-          if (held === "continues_tomorrow") toast.message("Continues Tomorrow. The daily limit was reached. Run this again tomorrow.");
-          else if (held === "monthly_cap") toast.message("The monthly cap was reached.");
-          else toast.success(worked ? `Photo Studio finished ${worked} ${worked === 1 ? "car" : "cars"}.` : "Every car in the fleet already has its shots.");
+          showRun();
           break;
         }
         if (r.vehicleId) skip.push(r.vehicleId);
         worked++;
       }
+      if (!reported && totals.failed > 0) showRun();
       await refresh();
       onChanged?.();
     } catch (e) {
-      toast.error(e instanceof Error && e.message === "Forbidden" ? "Running Photo Studio is Manager-only." : "Could not run Photo Studio.");
+      const base = e instanceof Error && e.message === "Forbidden" ? "Running Photo Studio is Manager-only." : "Could not run Photo Studio.";
+      toast.error(!reported && totals.failed > 0 ? `${base} ${describeStudioRun(worked, totals, held)}` : base);
     } finally {
       setBusy(false);
     }

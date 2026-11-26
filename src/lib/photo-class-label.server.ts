@@ -10,14 +10,18 @@ import {
   canAutoLabel,
   decideLabel,
   isMissingDbColumn,
+  labelAuditMetadata,
   parsePhotoLabel,
   photoLabelPrompt,
+  providerErrorDetail,
+  providerErrorOutcome,
 } from "@/lib/photo-class-label";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export type ClassifyOutcome =
-  | { billed: false; parsed: null; reason: "no_key" | "provider_error" | "not_image" }
+  | { billed: false; parsed: null; reason: "no_key" | "not_image" }
+  | { billed: false; parsed: null; reason: "provider_error"; status: number | null; detail: string }
   | { billed: true; parsed: ReturnType<typeof parsePhotoLabel>; reason: "ok" | "unreadable" };
 
 const IMAGE = /^image\/(jpeg|png|webp|gif)$/;
@@ -32,6 +36,8 @@ export async function classifyPhoto(
   if (!apiKey) return { billed: false, parsed: null, reason: "no_key" };
   let res: Response;
   try {
+    // Same request shape as the identity read: inline image, JSON reply, no image modality.
+    // Stored bytes go up as-is. This worker has no image decoder, and a native resizer is not available.
     res = await fetchImpl(`${ENDPOINT}/${encodeURIComponent(PHOTO_LABEL_MODEL)}:generateContent`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
@@ -43,13 +49,18 @@ export async function classifyPhoto(
             { text: photoLabelPrompt() },
           ],
         }],
-        generationConfig: { temperature: 0, responseMimeType: "application/json" },
+        generationConfig: { responseMimeType: "application/json" },
       }),
     });
-  } catch {
-    return { billed: false, parsed: null, reason: "provider_error" };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Network error";
+    return { billed: false, parsed: null, reason: "provider_error", status: null, detail: providerErrorDetail(message, apiKey) };
   }
-  if (!res.ok) return { billed: false, parsed: null, reason: "provider_error" };
+  if (!res.ok) {
+    let raw = "";
+    try { raw = await res.text(); } catch { raw = ""; }
+    return { billed: false, parsed: null, reason: "provider_error", status: res.status, detail: providerErrorDetail(raw, apiKey) };
+  }
   try {
     const json = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
@@ -70,18 +81,31 @@ export type LabelJobRow = {
   mime: string | null;
 };
 
-export type LabelSummary = { labeled: number; leftUnknown: number; failed: number; skipped: number; spentCents: number };
+export type LabelSummary = {
+  labeled: number;
+  lowConfidence: number;
+  leftUnknown: number;
+  failed: number;
+  skipped: number;
+  spentCents: number;
+};
 
 type LabelDeps = {
   load: (ids: string[]) => Promise<LabelJobRow[]>;
   download: (row: LabelJobRow) => Promise<{ bytes: Uint8Array; mime: string } | null>;
   write: (id: string, photoClass: PhotoClass) => Promise<"wrote" | "skipped">;
   classify: (image: { bytes: Uint8Array; mime: string }) => Promise<ClassifyOutcome>;
-  log: (e: { row: LabelJobRow; outcome: string; costCents: number }) => Promise<void>;
+  log: (e: {
+    row: LabelJobRow;
+    outcome: string;
+    costCents: number;
+    status?: number | null;
+    detail?: string;
+  }) => Promise<void>;
 };
 
 export async function labelOriginals(ids: string[], deps: LabelDeps): Promise<LabelSummary> {
-  const summary: LabelSummary = { labeled: 0, leftUnknown: 0, failed: 0, skipped: 0, spentCents: 0 };
+  const summary: LabelSummary = { labeled: 0, lowConfidence: 0, leftUnknown: 0, failed: 0, skipped: 0, spentCents: 0 };
   const unique = [...new Set(ids)].filter(Boolean);
   if (unique.length === 0) return summary;
   const rows = (await deps.load(unique)).filter((row) => canAutoLabel(row));
@@ -103,12 +127,23 @@ export async function labelOriginals(ids: string[], deps: LabelDeps): Promise<La
         summary.spentCents += cost;
         if (!result.billed) {
           summary.failed++;
-          await deps.log({ row, outcome: result.reason, costCents: 0 });
+          if (result.reason === "provider_error") {
+            await deps.log({
+              row,
+              outcome: providerErrorOutcome(result.status, result.detail),
+              costCents: 0,
+              status: result.status,
+              detail: result.detail,
+            });
+          } else {
+            await deps.log({ row, outcome: result.reason, costCents: 0 });
+          }
           continue;
         }
         const decision = decideLabel(row, result.parsed);
         if (!decision.write) {
           summary.leftUnknown++;
+          if (decision.outcome === "low_confidence") summary.lowConfidence++;
           await deps.log({ row, outcome: decision.outcome, costCents: cost });
           continue;
         }
@@ -186,7 +221,13 @@ export async function markPhotoClassManual(id: string): Promise<void> {
   }
 }
 
-async function logSpend(actor: Actor | null, e: { row: LabelJobRow; outcome: string; costCents: number }) {
+async function logSpend(actor: Actor | null, e: {
+  row: LabelJobRow;
+  outcome: string;
+  costCents: number;
+  status?: number | null;
+  detail?: string;
+}) {
   const sb = await admin();
   const { error } = await (sb.from as any)("photo_label_spend").insert({
     vehicle_id: e.row.vehicleId, media_id: e.row.id, model: PHOTO_LABEL_MODEL,
@@ -200,7 +241,13 @@ async function logSpend(actor: Actor | null, e: { row: LabelJobRow; outcome: str
     summary: e.outcome === "labeled" ? "Labeled a photo automatically" : `Photo label left unchanged (${e.outcome})`,
     entityType: "vehicle",
     entityId: e.row.vehicleId,
-    metadata: { mediaId: e.row.id, model: PHOTO_LABEL_MODEL, outcome: e.outcome, cost_cents: e.costCents },
+    metadata: labelAuditMetadata({
+      mediaId: e.row.id,
+      outcome: e.outcome,
+      costCents: e.costCents,
+      status: e.status,
+      detail: e.detail,
+    }),
   });
 }
 
