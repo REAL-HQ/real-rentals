@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -32,6 +32,9 @@ import { convertReservationFeeToCredit } from "@/lib/rental-hold.functions";
 import { isOnHoldStatus } from "@/lib/rental-hold";
 import { isPendingReservationStatus, PENDING_RESERVATION_LABEL, WAITING_ON_INSURANCE_CARD } from "@/lib/pending-reservation";
 import { releaseReservationHold } from "@/lib/reservations.functions";
+import { etDateISO } from "@/lib/active-rentals";
+import { heldLengthDays, orderByLength, type RentalLengthOrder } from "@/lib/rental-length-order";
+import { RentalLengthSort } from "./RentalLengthSort";
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
 const primary = "inline-flex h-9 items-center justify-center rounded-md bg-[#D03020] px-4 text-sm font-semibold text-white hover:bg-[#B52818] disabled:opacity-50";
@@ -146,10 +149,12 @@ function RecordReservationFeeDialog({
 export function ReservationsPanel({
   canManage = false,
   previewRows,
+  initialLengthOrder = "default",
 }: {
   canManage?: boolean;
   /** Skip the server read and render these rows. The alignment test uses this. */
   previewRows?: ReservationRow[];
+  initialLengthOrder?: RentalLengthOrder;
 } = {}) {
   const navigate = useNavigate();
   const load = useServerFn(listReservations);
@@ -159,6 +164,12 @@ export function ReservationsPanel({
   const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
   const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
   const [rows, setRows] = useState<ReservationRow[]>(previewRows ?? []);
+  const [lengthOrder, setLengthOrder] = useState<RentalLengthOrder>(initialLengthOrder);
+  const today = etDateISO();
+  const shown = useMemo(
+    () => orderByLength(rows, (row) => heldLengthDays(row.createdAt, today), lengthOrder),
+    [rows, lengthOrder, today],
+  );
   // The $50 Reservation Fee lives in the reservation_deposit_* columns when its
   // switch is on; it is never called a deposit (Dolmar, t309u).
   const [feeOn, setFeeOn] = useState(!!previewRows);
@@ -240,6 +251,7 @@ export function ReservationsPanel({
           <span className="text-sm text-muted-foreground" data-testid="reserved-count">
             {rows.length} Reserved Vehicle{rows.length === 1 ? "" : "s"}{rows.some((r) => isOnHoldStatus(r.status)) ? ` (${rows.filter((r) => isOnHoldStatus(r.status)).length} On Hold)` : ""}{rows.some((r) => isPendingReservationStatus(r.status)) ? ` (${rows.filter((r) => isPendingReservationStatus(r.status)).length} Pending Reservation)` : ""}
           </span>
+          <RentalLengthSort value={lengthOrder} onChange={setLengthOrder} />
           {canManage ? (
             <button type="button" className={primary} onClick={() => setReserveOpen(true)}>
               Reserve A Car
@@ -276,7 +288,7 @@ export function ReservationsPanel({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {shown.map((row) => {
                 const fee = reservationFeeLabel(row.depositStatus, feeOn);
                 return (
                   <tr
