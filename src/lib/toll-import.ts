@@ -14,6 +14,8 @@ export type ParsedTollRow = {
   location: string | null;
   reference: string | null;
   agency: string | null;
+  /** Agency due date as YYYY-MM-DD, when the file has a due-date column. */
+  agencyDueDate: string | null;
   errors: string[];
 };
 
@@ -30,6 +32,9 @@ const HEADER_HINTS: Record<string, string[]> = {
   plate: ["plate", "license", "lic no", "tag", "vehicle"],
   occurredAt: ["date", "time", "posted", "transaction", "occurred", "violation date"],
   amount: ["amount", "toll", "charge", "fee", "fine", "total", "due"],
+  // Longer than the amount hint "due" and the date hint "date", so "Due Date"
+  // is the agency deadline and "Amount Due" / "Due" stay amounts.
+  agencyDue: ["agency due", "due date", "date due", "duedate"],
   location: ["location", "plaza", "exit", "lane", "site", "address", "facility"],
   reference: [
     "reference",
@@ -189,6 +194,12 @@ function buildIso(
   return dt.toISOString();
 }
 
+/** Calendar date from a statement cell. Empty stays empty; a bad value is null. */
+function isoDateOnly(raw: string | undefined): string | null {
+  const iso = parseDateTime(raw);
+  return iso ? iso.slice(0, 10) : null;
+}
+
 /** Normalise a plate for comparison: strip spaces, dashes, case. */
 export function normalizePlate(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -221,10 +232,13 @@ export function parseTollStatement(text: string): ParseResult {
     const plate = normalizePlate(get("plate"));
     const occurredAt = parseDateTime(get("occurredAt"));
     const amount = parseAmount(get("amount"));
+    const dueRaw = get("agencyDue");
+    const agencyDueDate = dueRaw?.trim() ? isoDateOnly(dueRaw) : null;
 
     if (!plate) errors.push("no license plate");
     if (!occurredAt) errors.push("unreadable date");
     if (amount == null) errors.push("unreadable amount");
+    if (dueRaw?.trim() && !agencyDueDate) errors.push("unreadable due date");
 
     rows.push({
       row: i + 1,
@@ -234,6 +248,7 @@ export function parseTollStatement(text: string): ParseResult {
       location: get("location") || null,
       reference: get("reference") || null,
       agency: get("agency") || null,
+      agencyDueDate,
       errors,
     });
   }

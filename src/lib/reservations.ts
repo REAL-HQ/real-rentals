@@ -145,6 +145,11 @@ export type FeeHoldPayment = {
 
 export type ReservationFeeLabel = "Paid" | "Unpaid" | "Waived" | "Refunded" | "Not Required";
 
+/** Unpaid reservation fee is the balance due on the Reserved list. */
+export function reservationOwes(status: string | null | undefined, feeOn: boolean): boolean {
+  return reservationFeeLabel(status, feeOn) === "Unpaid";
+}
+
 /**
  * The $50 Reservation Fee as staff read it on the Reserved list.
  * paid / applied (already counted toward week 1) read Paid; pending reads

@@ -28,6 +28,32 @@ export function enumDisplayLabel(value: string | null | undefined): string {
   return value == null ? "—" : Object.prototype.hasOwnProperty.call(UI_ENUM_LABELS, value) ? UI_ENUM_LABELS[value] : value;
 }
 
+/** Display labels for toll_charges.charge_type. Stored values stay snake_case. */
+const CHARGE_TYPE_LABELS: Readonly<Record<string, string>> = {
+  toll: "Toll",
+  citation: "Citation",
+  red_light: "Red Light Camera",
+  speeding: "Speeding",
+  parking: "Parking",
+  impound: "Impound",
+  admin_fee: "Admin Fee",
+  ticket: "Ticket",
+  other: "Other",
+};
+
+/** Title Case for a charge type. Unknown values are labeled, never rewritten in storage. */
+export function chargeTypeLabel(value: string | null | undefined): string {
+  if (value == null) return "—";
+  const key = String(value).trim();
+  if (!key) return "—";
+  if (Object.prototype.hasOwnProperty.call(CHARGE_TYPE_LABELS, key)) return CHARGE_TYPE_LABELS[key];
+  return key
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 const STATUS_SPECIAL: Readonly<Record<string, string>> = {
   past_due: "Past Due", no_show: "No Show", in_progress: "In Progress", on_rent: "Rented", onboarding: "Needs Setup",
   not_started: "Not Started", needs_review: "Needs Review", in_review: "In Review", ok: "OK", sms: "SMS", ach: "ACH", id: "ID", mvr: "MVR",

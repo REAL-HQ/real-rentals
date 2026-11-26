@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { applyRenterCredit, listRenterCredits, offerReservationFeeCreditAction, voidRenterCredit, type RenterCreditRow, type ReservationFeeOffer } from "@/lib/rental-hold.functions";
+import { creditCountdownLabel, creditDaysLeft, creditExpired } from "@/lib/forfeited-fee-credit";
 import { fmtDate } from "@/lib/date-format";
 import { OfferCreditDialog } from "./OfferCreditDialog";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -9,35 +10,57 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 const secondary = "inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB] disabled:opacity-50";
 const primary = "inline-flex h-8 items-center justify-center rounded-md bg-[#111114] px-2.5 text-xs font-semibold text-white hover:bg-[#2A2A30] disabled:opacity-50";
 
-function statusLabel(status: RenterCreditRow["status"]): string {
-  if (status === "applied") return "Applied";
-  if (status === "expired") return "Expired";
-  if (status === "void") return "Void";
+type CreditState = "Available" | "Applied" | "Expired";
+
+function creditState(row: RenterCreditRow, now: Date): CreditState {
+  if (row.status === "applied") return "Applied";
+  if (row.status === "available" && creditExpired(row.expiresAt, now)) return "Expired";
   return "Available";
 }
 
 /**
- * Staff view of renter credits. An offered Reservation Fee stays collected;
- * this card can offer one, apply an available credit to a Reserved or On Hold
- * rental, or void it with a note. Renters do not see this.
+ * Staff view of renter credits. An offered Reservation Fee stays collected.
+ * Staff can offer one, apply an available credit to a Reserved or On Hold
+ * rental, or void it with a note. A kept missed-pickup credit uses the same
+ * card, including its countdown. An expired credit stays and cannot be applied.
+ * Renters do not see this.
  */
-export function RenterCreditsCard({ canManage, applicationId, rentals, showOffer = false, driverName = null }: { canManage: boolean; applicationId?: string | null; rentals: { id: string; applicationId: string | null; label: string }[]; showOffer?: boolean; driverName?: string | null }) {
+export function RenterCreditsCard({
+  canManage,
+  applicationId,
+  rentals,
+  showOffer = false,
+  driverName = null,
+  previewRows,
+  now,
+}: {
+  canManage: boolean;
+  applicationId?: string | null;
+  rentals: { id: string; applicationId: string | null; label: string }[];
+  showOffer?: boolean;
+  driverName?: string | null;
+  /** Skip the server read. Screenshots and tests pass the rows. */
+  previewRows?: RenterCreditRow[];
+  now?: Date;
+}) {
   const load = useServerFn(listRenterCredits);
   const apply = useServerFn(applyRenterCredit);
   const offer = useServerFn(offerReservationFeeCreditAction);
   const voidCredit = useServerFn(voidRenterCredit);
-  const [rows, setRows] = useState<RenterCreditRow[]>([]);
+  const [rows, setRows] = useState<RenterCreditRow[]>(previewRows ?? []);
   const [offerable, setOfferable] = useState<ReservationFeeOffer | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [offerOpen, setOfferOpen] = useState(false);
   const [voidId, setVoidId] = useState<string | null>(null);
   const [voidNote, setVoidNote] = useState("");
+  const clock = now ?? new Date();
   const refresh = useCallback(() => {
+    if (previewRows) return;
     load({ data: { applicationId: applicationId ?? null } }).then((r) => {
       setRows(r.rows);
       setOfferable(r.offer);
     }).catch(() => { setRows([]); setOfferable(null); });
-  }, [load, applicationId]);
+  }, [load, applicationId, previewRows]);
   useEffect(refresh, [refresh]);
   const shown = rows.filter((r) => r.status === "available" || r.status === "applied" || r.status === "expired");
   if (!shown.length && !(showOffer && offerable)) return null;
@@ -51,17 +74,36 @@ export function RenterCreditsCard({ canManage, applicationId, rentals, showOffer
       </div>
       <ul className="space-y-2">
         {shown.map((c) => {
-          const targets = rentals.filter((r) => r.applicationId === c.applicationId);
-          const when = c.expiresAt ? fmtDate(c.expiresAt) : null;
+          const state = creditState(c, clock);
+          const daysLeft = state === "Available" ? creditDaysLeft(c.expiresAt, clock) : null;
+          const urgent = daysLeft != null && daysLeft <= 7;
+          const targets = state === "Available" ? rentals.filter((r) => r.applicationId === c.applicationId) : [];
           return (
-            <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm" data-credit-status={c.status}>
+            <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm" data-credit-status={c.status} data-credit-state={state.toLowerCase()}>
               <span>
-                {c.driverName ?? "Renter"} · ${c.amount.toFixed(2)} · {statusLabel(c.status)}
-                {when ? ` · ${c.status === "available" ? "Expires " : ""}${when}` : ` · ${fmtDate(c.createdAt)}`}
+                {c.driverName ?? "Renter"} · ${c.amount.toFixed(2)} · {state}
+                {state === "Available" ? (
+                  <span
+                    className={`ml-2 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${urgent ? "bg-[#FFF4D6] text-[#8A6A00]" : "bg-[#F4F4F6] text-[#55555E]"}`}
+                    data-testid="credit-countdown"
+                  >
+                    {creditCountdownLabel(c.expiresAt, clock)}
+                  </span>
+                ) : null}
+                {state === "Expired" ? (
+                  <span className="ml-2 inline-flex rounded-full bg-[#F4F4F6] px-2 py-0.5 text-xs font-medium text-[#55555E]">Expired</span>
+                ) : null}
+                {c.expiresAt ? (
+                  <span className="block text-xs text-muted-foreground" data-testid="credit-expiry">
+                    {state === "Expired" ? `Expired ${fmtDate(c.expiresAt)}` : `Expires ${fmtDate(c.expiresAt)}`}
+                  </span>
+                ) : (
+                  <span className="block text-xs text-muted-foreground">{fmtDate(c.createdAt)}</span>
+                )}
                 {c.reason ? <span className="block text-xs text-muted-foreground">{c.reason}</span> : null}
               </span>
               <span className="flex gap-1">
-                {canManage && c.status === "available" && targets.length ? (
+                {canManage && state === "Available" && targets.length ? (
                   <button
                     type="button"
                     className={secondary}
@@ -82,7 +124,7 @@ export function RenterCreditsCard({ canManage, applicationId, rentals, showOffer
                     Apply To {targets[0].label}
                   </button>
                 ) : null}
-                {canManage && c.status === "available" ? (
+                {canManage && state === "Available" ? (
                   <button type="button" className={secondary} data-testid="void-credit" onClick={() => { setVoidId(c.id); setVoidNote(""); }}>Void</button>
                 ) : null}
               </span>

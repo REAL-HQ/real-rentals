@@ -52,6 +52,8 @@ import type { StaffTier } from "@/lib/roles";
 import { getApplicationStatusHistory, listDriverActiveSets } from "@/lib/application-status.functions";
 import { CloseApplicationDialog } from "./CloseApplicationDialog";
 import { DeclineApplicationDialog } from "./DeclineApplicationDialog";
+import { EditDriverProfileDialog } from "./EditDriverProfileDialog";
+import { listDriverProfileUpdates } from "@/lib/driver-profile-edit.functions";
 import { ConfirmDialog } from "./modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -179,6 +181,7 @@ import {
   ListFilter,
   Loader2,
   Repeat,
+  Pencil,
 } from "lucide-react";
 import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
 import { publicAppUrl } from "@/lib/public-app-url";
@@ -360,6 +363,9 @@ export function DriversPanel({
   canViewOnboarding = false,
   canIssueCardLink = false,
   urlFilter,
+  previewDrivers,
+  previewBookingOutcomes,
+  previewMenuOpen = false,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
@@ -372,17 +378,24 @@ export function DriversPanel({
   externalSearch?: string;
   initialOpenId?: string;
   /**
-   * ?filter= from the address bar. "waitlist" and "active" are honoured for
-   * every staff tier. "documents-expiring" and "approved-not-renting" are honoured for a manager.
+   * ?filter= from the address bar. "waitlist", "active", "completed-booking"
+   * and "cancelled-booking" are honoured for every staff tier.
+   * "documents-expiring" and "approved-not-renting" are honoured for a manager.
    */
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
+  /** Skip the drivers fetch. Screenshots and tests pass the rows. */
+  previewDrivers?: Application[];
+  /** Skip the booking-outcome read. */
+  previewBookingOutcomes?: { completed: string[]; cancelled: string[] };
+  /** Force the Filters menu open so a static render can show it. */
+  previewMenuOpen?: boolean;
 } = {}) {
-  const [drivers, setDrivers] = useState<Application[]>([]);
+  const [drivers, setDrivers] = useState<Application[]>(previewDrivers ?? []);
   // Whether the applications fetch has come back, as distinct from having
   // come back empty. A deep link needs to tell those apart.
-  const [driversLoaded, setDriversLoaded] = useState(false);
+  const [driversLoaded, setDriversLoaded] = useState(previewDrivers != null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   /*
    * Which applicant is open is a fact about the URL, not about this
@@ -407,7 +420,7 @@ export function DriversPanel({
       const search: {
         tab: "drivers";
         id?: string;
-        filter?: "documents-expiring" | "approved-not-renting" | "stalled" | "active";
+        filter?: "documents-expiring" | "approved-not-renting" | "stalled" | "active" | "completed-booking" | "cancelled-booking";
       } = id ? { tab: "drivers", id } : { tab: "drivers" };
       // Opening a driver from a manager list comes back to that list.
       // Waitlist links stay as they were: the filter is not kept.
@@ -416,6 +429,7 @@ export function DriversPanel({
       }
       if (urlFilter === "stalled" && stalledOn) search.filter = "stalled";
       if (urlFilter === "active") search.filter = "active";
+      if (urlFilter === "completed-booking" || urlFilter === "cancelled-booking") search.filter = urlFilter;
       void navigate({ to: "/admin", search });
     },
     [navigate, urlFilter, canManageWaitlist, stalledOn],
@@ -451,6 +465,8 @@ export function DriversPanel({
   const urlListFilter =
     urlFilter === "waitlist" ||
     urlFilter === "active" ||
+    urlFilter === "completed-booking" ||
+    urlFilter === "cancelled-booking" ||
     ((urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") && canManageWaitlist) ||
     (urlFilter === "stalled" && stalledOn)
       ? urlFilter
@@ -475,13 +491,19 @@ export function DriversPanel({
         void navigate({ to: "/admin", search: { tab: "drivers", filter: "active" } });
         return;
       }
+      if (f === "completed-booking" || f === "cancelled-booking") {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: f } });
+        return;
+      }
       setLocalFilter(f);
       if (
         urlFilter === "waitlist" ||
         urlFilter === "documents-expiring" ||
         urlFilter === "approved-not-renting" ||
         urlFilter === "stalled" ||
-        urlFilter === "active"
+        urlFilter === "active" ||
+        urlFilter === "completed-booking" ||
+        urlFilter === "cancelled-booking"
       ) {
         void navigate({ to: "/admin", search: { tab: "drivers" } });
       }
@@ -607,6 +629,9 @@ export function DriversPanel({
 
   const [openRentals, setOpenRentals] = useState<Set<string>>(new Set());
   const [activeReadFailed, setActiveReadFailed] = useState(false);
+  const [completedBookingIds, setCompletedBookingIds] = useState<Set<string>>(new Set(previewBookingOutcomes?.completed ?? []));
+  const [cancelledBookingIds, setCancelledBookingIds] = useState<Set<string>>(new Set(previewBookingOutcomes?.cancelled ?? []));
+  const [bookingReadFailed, setBookingReadFailed] = useState(false);
   const loadActiveSets = useServerFn(listDriverActiveSets);
   const refreshActiveRenters = useCallback(() => {
     const current = readVersions.begin("active-rentals");
@@ -618,12 +643,18 @@ export function DriversPanel({
         setActiveRenters(new Set(filterIds));
         setOpenRentals(new Set(sets.openRentalIds));
         setActiveReadFailed(false);
+        setCompletedBookingIds(new Set(sets.completedBookingIds ?? []));
+        setCancelledBookingIds(new Set(sets.cancelledBookingIds ?? []));
+        setBookingReadFailed(sets.bookingOutcomesFailed === true);
       })
       .catch(() => {
         if (current()) setActiveReadFailed(true);
       });
   }, [loadActiveSets, readVersions]);
-  useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters, activationRefresh]);
+  useEffect(() => {
+    if (previewBookingOutcomes) return;
+    refreshActiveRenters();
+  }, [refreshActiveRenters, activationRefresh, previewBookingOutcomes]);
   // A committed readiness change anywhere in this tab (vehicle, screening,
   // document) re-reads the list's activation context so row readiness and the
   // Activate dialog's vehicle list never lag behind what was just saved.
@@ -863,7 +894,7 @@ export function DriversPanel({
     const failed = () => {
       if (live && current() && !reported) { reported = true; toast.error("Driver context could not refresh. Recheck to retry; no readiness decision was changed."); }
     };
-    refreshDrivers();
+    if (!previewDrivers) refreshDrivers();
     supabase
       .from("vehicles")
       .select("*")
@@ -918,7 +949,7 @@ setDocCounts(requiredDocCounts(rows));
     // because a loader missing from the dependency list is how a list stops
     // refreshing after somebody changes how it loads.
     return () => { live = false; };
-  }, [refreshDrivers, readVersions, activationRefresh]);
+  }, [refreshDrivers, readVersions, activationRefresh, previewDrivers]);
 
   const loadReviewAging = useServerFn(getDocumentReviewAging);
   useEffect(() => {
@@ -970,6 +1001,10 @@ setDocCounts(requiredDocCounts(rows));
             ? drivers.filter((a) => blacklisted.has(a.id))
           : filter === "active"
             ? drivers.filter((a) => activeRenters.has(a.id))
+          : filter === "completed-booking"
+            ? drivers.filter((a) => completedBookingIds.has(a.id))
+          : filter === "cancelled-booking"
+            ? drivers.filter((a) => cancelledBookingIds.has(a.id))
             : drivers.filter((a) => a.status === filter && !held.has(a.id))
     )
       // readContactStatus already answers New for a row that has no value, so
@@ -999,7 +1034,7 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted]);
+  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted, completedBookingIds, cancelledBookingIds]);
 
   const funnelRows = useMemo(() => {
     const q = externalSearch.trim().toLowerCase();
@@ -1231,8 +1266,11 @@ setDocCounts(requiredDocCounts(rows));
   };
   const PRIMARY_FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active"];
   const MENU_FILTER_ORDER = ["needs_staff", "blacklisted", "suspended", "declined", "closed"];
+  const bookingCount = (ids: Set<string>) => (bookingReadFailed && ids.size === 0 ? "…" : drivers.filter((a) => ids.has(a.id)).length);
   const filterCount = (s: string) => {
     if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
+    if (s === "completed-booking") return bookingCount(completedBookingIds);
+    if (s === "cancelled-booking") return bookingCount(cancelledBookingIds);
     if (s === "needs_staff") return needsStaffFlags == null ? "…" : drivers.filter((a) => needsStaff.has(a.id)).length;
     if (s === "blacklisted") return blacklistEntries == null ? "…" : drivers.filter((a) => blacklisted.has(a.id)).length;
     const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
@@ -1251,6 +1289,8 @@ setDocCounts(requiredDocCounts(rows));
       : "…";
   const awaitingReservationCount = funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length;
   const filterLabelWithCount = (s: string) => {
+    if (s === "completed-booking") return `Completed Booking (${bookingCount(completedBookingIds)})`;
+    if (s === "cancelled-booking") return `Cancelled Booking (${bookingCount(cancelledBookingIds)})`;
     if (s === "documents-expiring") return `Documents Expiring (${documentsExpiringCount})`;
     if (s === "approved-not-renting") return `Approved, Awaiting Reservation (${awaitingReservationCount})`;
     if (s === "stalled") return `Stalled (${stalledRows == null ? "…" : stalledRows.length})`;
@@ -1365,7 +1405,7 @@ setDocCounts(requiredDocCounts(rows));
               Documents ×
             </button>
           ) : null}
-          <DropdownMenu>
+          <DropdownMenu open={previewMenuOpen ? true : undefined}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
@@ -1378,6 +1418,22 @@ setDocCounts(requiredDocCounts(rows));
             <DropdownMenuContent align="start" className="w-72 bg-white text-foreground">
               <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">Status</DropdownMenuLabel>
               {menuFilterButtons}
+              <DropdownMenuCheckboxItem
+                data-completed-booking-filter
+                checked={filter === "completed-booking"}
+                onCheckedChange={() => setFilter("completed-booking")}
+                className="bg-white text-xs text-foreground focus:bg-muted"
+              >
+                {filterLabelWithCount("completed-booking")}
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                data-cancelled-booking-filter
+                checked={filter === "cancelled-booking"}
+                onCheckedChange={() => setFilter("cancelled-booking")}
+                className="bg-white text-xs text-foreground focus:bg-muted"
+              >
+                {filterLabelWithCount("cancelled-booking")}
+              </DropdownMenuCheckboxItem>
               {canManageWaitlist ? (
                 <DropdownMenuCheckboxItem
                   data-documents-expiring-filter
@@ -1978,6 +2034,10 @@ function DriverDetail({
   const { screening, setScreening } = useDriverScreening(driver.id);
 
   const [interviewOpen, setInterviewOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [profileAudits, setProfileAudits] = useState<{ at: string; summary: string }[]>([]);
+  const [profileAuditNonce, setProfileAuditNonce] = useState(0);
+  const loadProfileUpdates = useServerFn(listDriverProfileUpdates);
   const [recordCallOpen, setRecordCallOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [closeBusy, setCloseBusy] = useState(false);
@@ -1996,6 +2056,19 @@ function DriverDetail({
       cancelled = true;
     };
   }, [driver.id, driver.status, loadStatusHistory]);
+  useEffect(() => {
+    let cancelled = false;
+    void loadProfileUpdates({ data: { applicationId: driver.id } })
+      .then((rows) => {
+        if (!cancelled) setProfileAudits(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setProfileAudits([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [driver.id, profileAuditNonce, loadProfileUpdates]);
   // Controlled so the Documents strip and the readiness remedies can send the
   // operator straight to the tab that answers them.
   const [tab, setTab] = useState("overview");
@@ -2637,6 +2710,7 @@ function DriverDetail({
     push((driver as any).agreement_signed_at, "Agreement Signed");
     push((driver as any).pickup_at, "Vehicle Picked Up");
     push((driver as any).return_at, "Vehicle Returned");
+    for (const row of profileAudits) push(row.at, row.summary);
     for (const event of statusEvents) {
       if (!event.at) continue;
       const detail = [
@@ -2653,7 +2727,7 @@ function DriverDetail({
       });
     }
     return visibleDriverActivity(ev);
-  }, [driver, screening, vaultDocs, statusEvents]);
+  }, [driver, screening, vaultDocs, statusEvents, profileAudits]);
 
   const summaryRow = (
     <div className="grid gap-4 md:grid-cols-2">
@@ -2847,6 +2921,17 @@ function DriverDetail({
                   <h2 className="text-[18px] font-semibold text-[#111114] truncate">
                     {driver.full_name ? displayPersonName(driver.full_name) : "Unnamed"}
                   </h2>
+                  {isManager ? (
+                    <button
+                      type="button"
+                      aria-label="Edit Profile"
+                      data-testid="edit-driver-profile"
+                      onClick={() => setEditProfileOpen(true)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#55555E] hover:bg-[#F4F4F6] hover:text-[#111114]"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  ) : null}
                   {blacklistEntry ? <BlacklistedBadge title={blacklistEntry.reasonLabel} /> : null}
                   <StatusPill status={driver.status} />
                   {driver.gclid && (
@@ -2966,6 +3051,11 @@ function DriverDetail({
                       <Mail className="w-4 h-4 mr-2" /> Email
                     </DropdownMenuItem>
                   )}
+                  {isManager ? (
+                    <DropdownMenuItem data-testid="edit-driver-profile-menu" onClick={() => setEditProfileOpen(true)}>
+                      <Pencil className="w-4 h-4 mr-2" /> Edit Profile
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem title="Open In Messages" aria-label="Open In Messages" onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
                     <MessageSquare className="w-4 h-4 mr-2" /> Messages
                   </DropdownMenuItem>
@@ -3105,7 +3195,7 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="documents" className="mt-0 space-y-4">
-                <div id="profile-agreements" className="scroll-mt-48"><AgreementsCard applicationId={driver.id} applicationStatus={driver.status ?? null} onOpenTab={(t) => setTab(t)} /></div>
+                <div id="profile-agreements" className="scroll-mt-48"><AgreementsCard applicationId={driver.id} applicationStatus={driver.status ?? null} renterName={driver.full_name ?? null} renterEmail={driver.email ?? null} onOpenTab={(t) => setTab(t)} /></div>
                 <SectionCard
                   title="Documents"
                   subtitle="Everything this applicant sent us. Shared with the driver unless marked team only."
@@ -3436,6 +3526,16 @@ function DriverDetail({
             This runs the approval checks. If they pass, the application is marked Approved and the Approval Confirmation email is sent. Login details are sent at Reserved.
           </p>
         </ConfirmDialog>
+      ) : null}
+      {editProfileOpen && isManager ? (
+        <EditDriverProfileDialog
+          driver={driver}
+          onClose={() => setEditProfileOpen(false)}
+          onSaved={(patch) => {
+            onSaved(patch);
+            setProfileAuditNonce((n) => n + 1);
+          }}
+        />
       ) : null}
       {declineOpen ? (
         <DeclineApplicationDialog

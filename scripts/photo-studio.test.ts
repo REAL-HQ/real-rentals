@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   planShots, spendRefusal, identityCheck, carSetStatus, readStudioSettings, effectiveModel,
-  buildPrompt, PHOTO_STUDIO_DEFAULTS, NEVER_GENERATE, vinLast6,
+  buildIsolationPrompt, buildPrompt, PHOTO_STUDIO_DEFAULTS, PHOTO_STUDIO_GENERATIONS_PER_SHOT, PHOTO_STUDIO_SCENES, pickScene, NEVER_GENERATE, vinLast6, PHOTO_CLASS_OPTIONS, photoClassLabel,
+  isMissingPhotoClassColumn, marketingPublishBlock, RETIRE_LIVE_SHOT, leadMarketingShotId,
 } from "../src/lib/photo-studio";
 
 const on = { ...PHOTO_STUDIO_DEFAULTS, enabled: true };
@@ -77,9 +78,82 @@ describe("approval", () => {
   });
 });
 
+describe("photo class labels", () => {
+  test("every class staff can pick has a label, and a missing column is recognized", () => {
+    for (const value of ["exterior_front", "exterior_driver", "exterior_passenger", "exterior_rear", "interior_dash", "interior_front", "interior_rear", "damage", "document", "odometer", "vin_plate"] as const) {
+      expect(PHOTO_CLASS_OPTIONS.some((o) => o.value === value)).toBe(true);
+      expect(photoClassLabel(value).length).toBeGreaterThan(0);
+    }
+    expect(photoClassLabel(null)).toBe("Unknown");
+    expect(photoClassLabel("exterior_front")).toBe("Front 3/4");
+    expect(isMissingPhotoClassColumn("column vehicle_media.photo_class does not exist")).toBe(true);
+    expect(isMissingPhotoClassColumn("Could not find the 'photo_class' column of 'vehicle_media' in the schema cache")).toBe(true);
+    expect(isMissingPhotoClassColumn("Could not update.")).toBe(false);
+  });
+  test("rejecting a published shot without unpublishing is blocked; retiring it is not", () => {
+    const live = { kind: "marketing", published: true, studio_review_status: "approved", approved_by: "owner" };
+    expect(marketingPublishBlock({ ...live, studio_review_status: "rejected" })).toMatch(/cannot be published/);
+    expect(marketingPublishBlock({ ...live, ...RETIRE_LIVE_SHOT })).toBeNull();
+  });
+  test("the approved Front 3/4 shot is the lead", () => {
+    expect(leadMarketingShotId([
+      { id: "side", slot: "driver_side", status: "approved" },
+      { id: "front", slot: "front", status: "approved" },
+    ])).toBe("front");
+    expect(leadMarketingShotId([{ id: "front", slot: "front", status: "pending" }])).toBeNull();
+  });
+});
+
 test("prompt forbids invention and keeps plate", () => {
-  const p = buildPrompt("front", { year: 2015, make: "Ford", model: "Fusion", color: "silver" });
+  const scene = pickScene("car-1");
+  const p = buildPrompt("front", { id: "car-1", year: 2015, make: "Ford", model: "Fusion", color: "silver" });
   expect(p).toMatch(/Do NOT add/);
   expect(p).toMatch(/license plate/);
+  expect(p).toMatch(/realistic outdoor listing photo/);
+  expect(p).not.toMatch(/dealership/);
+  expect(p).not.toMatch(/light-grey studio/);
+  expect(p).toContain(scene.background);
+  expect(p).toMatch(/palm trees/);
+  expect(p).toMatch(/No houses or residential homes/);
+  expect(p).toMatch(/Sign bands stay blank/);
+  expect(p).toMatch(/No other readable plates/);
+  expect(p).toMatch(/Other cars only far back and blurred/);
+  expect(p).toMatch(/roof antenna/);
+  expect(p).toMatch(/true paint color and brightness/);
+  expect(p).toMatch(/Natural shadows matching the sun/);
+  expect(p).toMatch(/Do NOT add badges or parts/);
+  const isolated = buildIsolationPrompt("front", { year: 2015, make: "Ford", model: "Fusion", color: "silver" });
+  expect(isolated).toMatch(/neutral grey/);
+  for (const s of PHOTO_STUDIO_SCENES) expect(isolated).not.toContain(s.background);
+  expect(PHOTO_STUDIO_GENERATIONS_PER_SHOT).toBe(2);
+});
+
+test("one car keeps one scene, and all 25 scenes are reachable", () => {
+  expect(PHOTO_STUDIO_SCENES).toHaveLength(25);
+  expect(new Set(PHOTO_STUDIO_SCENES.map((s) => s.id)).size).toBe(25);
+  expect(new Set(PHOTO_STUDIO_SCENES.map((s) => s.name)).size).toBe(25);
+  expect(new Set(PHOTO_STUDIO_SCENES.map((s) => s.background)).size).toBe(25);
+  for (const s of PHOTO_STUDIO_SCENES) {
+    expect(s.background).toMatch(/palm trees/);
+    expect(s.background).not.toMatch(/house|home|residential/i);
+  }
+  const carId = "11111111-1111-4111-8111-111111111111";
+  const scene = pickScene(carId);
+  expect(pickScene(carId)).toEqual(scene);
+  const front = buildPrompt("front", { id: carId });
+  const rear = buildPrompt("rear", { id: carId });
+  expect(front).toContain(scene.background);
+  expect(rear).toContain(scene.background);
+  expect(front).not.toContain(PHOTO_STUDIO_SCENES.find((s) => s.id !== scene.id)!.background);
+  const seen = new Set<string>();
+  let different = "";
+  for (let n = 0; n < 400 && (seen.size < 25 || !different); n++) {
+    const id = `vehicle-${n}`;
+    const picked = pickScene(id);
+    seen.add(picked.id);
+    if (!different && picked.id !== scene.id) different = id;
+  }
+  expect(seen.size).toBe(25);
+  expect(pickScene(different).id).not.toBe(scene.id);
 });
 test("vinLast6", () => expect(vinLast6("1FA6P0H74F5118769")).toBe("118769"));

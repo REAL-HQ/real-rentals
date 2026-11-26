@@ -148,7 +148,7 @@ describe("mark contacted stays on the contact status editor", () => {
       note: "Called about the Civic",
       followUpOn: "2026-10-28",
     };
-    assert.deepEqual(contactStatusBlockers(draft), []);
+    assert.deepEqual(contactStatusBlockers(draft, { today: "2026-10-01" }), []);
     assert.deepEqual(contactStatusPatch(draft), {
       contact_status: "contacted",
       contact_status_note: "Called about the Civic",

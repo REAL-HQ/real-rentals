@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { runCar } from "../src/lib/photo-studio-run";
 import { mockProvider, geminiProvider } from "../src/lib/photo-studio-provider.server";
-import { PHOTO_STUDIO_DEFAULTS } from "../src/lib/photo-studio";
+import { PHOTO_STUDIO_DEFAULTS, pickScene } from "../src/lib/photo-studio";
 
 const car = { id: "c", year: 2015, make: "Ford", model: "Fusion", color: "silver", plate: "CZ07DA", vin: "1FA6P0H74F5118769" };
 const originals = [
@@ -52,6 +52,41 @@ describe("runCar", () => {
     const t = deps({ usage: async () => ({ todayImages: 0, monthCents: 9999 }) });
     const r = await runCar(car, originals, null, t.d as any);
     expect(r.ok).toBe(false);
+  });
+  test("isolates the car, then places that cutout in the plaza", async () => {
+    const prompts: string[] = [];
+    const base = mockProvider();
+    const provider = {
+      name: base.name,
+      generate: async (model: string, input: { prompt: string; images: { bytes: Uint8Array; mime: string }[] }) => {
+        prompts.push(input.prompt);
+        return base.generate(model, input);
+      },
+      readIdentity: base.readIdentity.bind(base),
+    };
+    const t = deps({ provider });
+    const r = await runCar(car, originals, ["front"], t.d as any);
+    expect(r.outcomes[0].status).toBe("saved");
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toMatch(/neutral grey/);
+    expect(prompts[1]).toContain(pickScene(car.id).background);
+    expect(t.spend).toHaveLength(2);
+    expect(t.spend.every((e) => e.outcome === "mock" && e.costCents === 0)).toBe(true);
+  });
+  test("a failed isolation does not spend the scene call", async () => {
+    let calls = 0;
+    const provider = {
+      name: "mock",
+      generate: async () => {
+        calls++;
+        return { ok: false as const, error: "mock failure", status: 500 };
+      },
+      readIdentity: async () => ({ ok: true as const, plates: [], vins: [] }),
+    };
+    const t = deps({ provider });
+    await runCar(car, originals, ["front"], t.d as any);
+    expect(calls).toBe(1);
+    expect(t.saved.length).toBe(0);
   });
 });
 

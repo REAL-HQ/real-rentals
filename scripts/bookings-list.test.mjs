@@ -241,6 +241,29 @@ const none = await list({ q: "nobody-by-that-name" });
 ok(none.rows.length === 0 && none.total === 0, "a search that matches nobody returns nothing");
 ok(none.counts.active === 0, "  and the counts agree rather than reporting the whole fleet");
 
+console.log("\\nlength order is the whole filtered set, then the page");
+{
+  seed();
+  const R6 = "11111111-0000-4000-8000-000000000006";
+  S.tables.rentals.push({
+    id: R6, status: "ended", start_date: "2026-11-01", end_date: "2026-11-02", created_at: "2026-11-20T10:00:00Z",
+    vehicle_id: V2, driver_id: U2, application_id: A2, weekly_rate: 280, payment_status: "current",
+  });
+  const recent = await list({ scope: "completed", sort: "recent", pageSize: 1, page: 1 });
+  ok(recent.rows[0].id === R6, `default order is still newest first (${recent.rows[0]?.id})`);
+  const longest = await list({ scope: "completed", sort: "recent", length: "longest", pageSize: 1, page: 1 });
+  ok(longest.rows[0].id === R2 && longest.total === 2,
+    `longest page 1 is the 92-day rental, across both rows (${longest.rows[0]?.id}, total ${longest.total})`);
+  const longest2 = await list({ scope: "completed", length: "longest", pageSize: 1, page: 2 });
+  ok(longest2.rows[0].id === R6 && longest2.total === 2, "page 2 is the remaining 1-day rental");
+  const shortest = await list({ scope: "completed", length: "shortest", pageSize: 1, page: 1 });
+  ok(shortest.rows[0].id === R6, "shortest page 1 is the 1-day rental");
+  const named = await list({ scope: "completed", q: "omar", length: "longest" });
+  ok(named.rows.map((x) => x.id).join(",") === [R2, R6].join(","), "search still applies, then longest");
+  const missed = await list({ scope: "completed", q: "RR-001", length: "longest" });
+  ok(missed.rows.length === 0 && missed.total === 0, "a search that misses stays empty");
+}
+
 console.log("\\none vehicle's rentals");
 seed();
 const v2 = await list({ vehicleId: V2 });

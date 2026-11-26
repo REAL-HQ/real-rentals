@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { MIN_RENTER_AGE, MIN_AGE_FAQ, UNDER_MIN_AGE_LABEL } from "../src/lib/renter-age";
 import { V115_TERM_DEFAULTS, V115_SOURCE } from "../src/lib/agreement-v115";
 import { V116_TERM_DEFAULTS, V116_SOURCE } from "../src/lib/agreement-v116";
+import { V117_TERM_DEFAULTS, V117_SOURCE } from "../src/lib/agreement-v117";
 import { V114_TERM_DEFAULTS } from "../src/lib/agreement-v114";
 import { resolveTerms, writeTerms } from "../src/lib/agreement-builder";
 import { FLEET_ESCALATION_DEFAULTS } from "../src/lib/fleet-review";
@@ -62,6 +63,30 @@ describe("minimum renter age 23", () => {
     expect(body).toContain("be at least 23 to rent an economy vehicle and at least 25 to rent a luxury or premium vehicle");
     expect(V114_TERM_DEFAULTS.min_age_economy).toBe("21");
     expect(V116_TERM_DEFAULTS.min_age_economy).toBe(String(MIN_RENTER_AGE));
+    expect(V116_TERM_DEFAULTS.min_age_premium).toBe("25");
     expect(resolveTerms(writeTerms(V116_SOURCE, V116_TERM_DEFAULTS))).toContain("be at least 23 to rent an economy vehicle and at least 25 to rent a luxury or premium vehicle");
+  });
+
+  test("v1.17 prints 23 for a luxury or premium vehicle; nothing else in that sentence changes", () => {
+    expect(V117_SOURCE).toBe(V116_SOURCE.replace("(v1.16)", "(v1.17)"));
+    expect(V117_TERM_DEFAULTS).toEqual({ ...V116_TERM_DEFAULTS, min_age_premium: "23" });
+    expect(V117_TERM_DEFAULTS.min_age_economy).toBe(String(MIN_RENTER_AGE));
+    expect(V117_TERM_DEFAULTS.min_age_premium).toBe(String(MIN_RENTER_AGE));
+    const before = "be at least 23 to rent an economy vehicle and at least 25 to rent a luxury or premium vehicle";
+    const after = "be at least 23 to rent an economy vehicle and at least 23 to rent a luxury or premium vehicle";
+    const v116 = resolveTerms(writeTerms(V116_SOURCE, V116_TERM_DEFAULTS));
+    const v117 = resolveTerms(writeTerms(V117_SOURCE, V117_TERM_DEFAULTS));
+    expect(v116).toContain(before);
+    expect(v117).toContain(after);
+    expect(v117).not.toContain(before);
+  });
+
+  test("no code enforces a separate premium minimum of 25", () => {
+    const gate = /(?:minAge|youngDriverAge)\s*:\s*25\b|(?:driver_)?age\s*[<>]=?\s*25\b/;
+    const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const hits = walk("src").filter((f) => gate.test(strip(read(f))));
+    expect(hits).toEqual([]);
+    expect(FLEET_ESCALATION_DEFAULTS.minAge).toBe(MIN_RENTER_AGE);
+    expect(FLEET_ESCALATION_DEFAULTS.youngDriverAge).toBe(MIN_RENTER_AGE);
   });
 });

@@ -25,15 +25,15 @@ e-signs a swap agreement for the new car, and staff then record the handover.
      staff send).
 2. **The agreement is an addendum, not a new contract (Dolmar t541u/t542u).**
    The signed PDF opens with a Vehicle Swap Addendum notice that says the
-   renter accepts the current Rental Agreement terms (Version 1.16), and the
-   full v1.16 text follows in the same PDF. Every renter is upgraded to v1.16
-   on a swap, whatever version the original was (v1.14 or v1.15 included). This is
+   renter accepts the current Rental Agreement terms (Version 1.17), and the
+   full v1.17 text follows in the same PDF. Every renter is upgraded to v1.17
+   on a swap, whatever version the original was (v1.14, v1.15 or v1.16 included). This is
    fixed behaviour, not a setting. The original start date (the rental's
    `start_date`), the weekly rent and the payment schedule stay the same. The
    Florida addendum is not part of it: `FL_ADDENDUM_OWNER_APPROVAL` is still
    null and nothing in the agreement path reads that file.
    It is generated from the current default template
-   (v1.16, `insurance_included_v116`) by the normal `prepareAgreement` /
+   (v1.17, `insurance_included_v117`) by the normal `prepareAgreement` /
    `issueAgreement` step, using the updated-agreement (amendment) path:
    - It names the **new** car: year, make, model, colour, plate and full VIN.
      The full VIN is required on contracts.

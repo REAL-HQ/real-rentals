@@ -5,14 +5,23 @@
  */
 import { readReservationDetails, reservationPickupDate, writeReservationDetails } from "@/lib/reservations";
 import {
-  appliedNoteFor, canApplyCreditTo, checkCreditNote, checkHoldReason, creditableAmount, creditExpiresAt, creditNoteFor, creditStillOpen,
+  appliedNoteFor, canApplyCreditTo, checkCreditNote, checkHoldReason, creditableAmount,
+  creditExpiresAt as offerCreditExpiresAt, creditNoteFor, creditStillOpen,
   DEFAULT_RESERVATION_FEE_CREDIT_DAYS, isOfferedCreditNote, OFFERED_CREDIT_NOTE, ON_HOLD_STATUS, OPEN_RENTAL_STATUSES,
   RESERVATION_FEE_CREDIT_DAYS_KEY, reservationFeeCreditDays,
 } from "@/lib/rental-hold";
+import { creditExpired, creditExpiresAt as keptCreditExpiresAt, FORFEITED_FEE_CREDIT_DEFAULT_DAYS } from "@/lib/forfeited-fee-credit";
 
 type Admin = any;
 type Audit = (e: { action: string; summary: string; entityType?: string; entityId?: string; metadata?: Record<string, unknown> }) => Promise<void> | void;
-export type HoldDeps = { audit?: Audit; actorId?: string | null; today?: () => string; now?: () => Date };
+export type HoldDeps = {
+  audit?: Audit;
+  actorId?: string | null;
+  today?: () => string;
+  now?: () => Date;
+  /** Days a kept-fee credit lasts. Omitted reads the forfeited-fee setting, then 90. */
+  creditDays?: number;
+};
 
 const noAudit: Audit = async () => {};
 const etToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
@@ -72,11 +81,32 @@ export async function convertFeeToCredit(admin: Admin, input: { paymentId: strin
   if (!p.driver_id) return { ok: false, error: "That Payment Has No Renter On It." };
   const existing = await admin.from("renter_credits").select("id,status").eq("source_payment_id", p.id).neq("status", "void").limit(1);
   if ((existing.data ?? []).length) return { ok: false, error: "That Reservation Fee Already Has A Credit." };
-  const ins = await admin
-    .from("renter_credits")
-    .insert({ application_id: p.driver_id, source_payment_id: p.id, source_rental_id: p.rental_id ?? null, amount: ok.amount, reason: (input.reason ?? "").trim() || "Reservation Fee Credit Toward Next Rental", status: "available", created_by: deps.actorId ?? null })
-    .select("id")
-    .single();
+  const createdAt = deps.now ? deps.now() : new Date();
+  let days = deps.creditDays;
+  if (days == null) {
+    try {
+      const { loadForfeitedFeeCreditSettings } = await import("@/lib/forfeited-fee-credit.server");
+      days = (await loadForfeitedFeeCreditSettings(admin)).days;
+    } catch {
+      days = FORFEITED_FEE_CREDIT_DEFAULT_DAYS;
+    }
+  }
+  const row = {
+    application_id: p.driver_id,
+    source_payment_id: p.id,
+    source_rental_id: p.rental_id ?? null,
+    amount: ok.amount,
+    reason: (input.reason ?? "").trim() || "Reservation Fee Credit Toward Next Rental",
+    status: "available",
+    created_by: deps.actorId ?? null,
+    expires_at: keptCreditExpiresAt(createdAt, days),
+  };
+  let ins = await admin.from("renter_credits").insert(row).select("id").single();
+  // The expiry column arrives with the migration. Until then the credit is saved without one.
+  if (ins.error && /expires_at/i.test(String(ins.error.message ?? ins.error))) {
+    const { expires_at: _drop, ...withoutExpiry } = row;
+    ins = await admin.from("renter_credits").insert(withoutExpiry).select("id").single();
+  }
   if (ins.error || !ins.data) return { ok: false, error: "Could Not Save The Credit." };
   await admin.from("payments").update({ notes: creditNoteFor(p.notes, p.rental_id ?? null) }).eq("id", p.id);
   await (deps.audit ?? noAudit)({ action: "payment.reservation_fee_to_credit", summary: `Reservation Fee $${ok.amount.toFixed(2)} kept as a credit toward the next rental`, entityType: "payment", entityId: p.id, metadata: { credit_id: ins.data.id } });
@@ -89,8 +119,13 @@ export async function convertFeeToCredit(admin: Admin, input: { paymentId: strin
  * applyReservationFeeCredit counts it toward week 1 at activation.
  */
 export async function applyCreditToRental(admin: Admin, input: { creditId: string; rentalId: string }, deps: HoldDeps = {}): Promise<{ ok: true; amount: number } | { ok: false; error: string }> {
-  const { data: c } = await admin.from("renter_credits").select("id,application_id,source_payment_id,amount,status").eq("id", input.creditId).maybeSingle();
+  let creditRead = await admin.from("renter_credits").select("id,application_id,source_payment_id,amount,status,expires_at").eq("id", input.creditId).maybeSingle();
+  if (creditRead.error && /expires_at/i.test(String(creditRead.error.message ?? creditRead.error))) {
+    creditRead = await admin.from("renter_credits").select("id,application_id,source_payment_id,amount,status").eq("id", input.creditId).maybeSingle();
+  }
+  const c = creditRead.data;
   if (!c) return { ok: false, error: "Credit Not Found." };
+  if (creditExpired(c.expires_at, deps.now ? deps.now() : new Date())) return { ok: false, error: "That Credit Has Expired." };
   const { data: r } = await admin.from("rentals").select("id,status,application_id").eq("id", input.rentalId).maybeSingle();
   if (!r) return { ok: false, error: "Rental Not Found." };
   const can = canApplyCreditTo(r, c);
@@ -147,7 +182,7 @@ export async function reservationFeeOfferPreview(admin: Admin, applicationId: st
   const amount = creditableAmount({ ...fee, reason: "reservation_fee" });
   if (!amount.ok) return amount;
   const days = await creditDays(admin);
-  return { ok: true, paymentId: fee.id, amount: amount.amount, days, expiresAt: creditExpiresAt(fee.paid_date ?? fee.created_at, days, now) };
+  return { ok: true, paymentId: fee.id, amount: amount.amount, days, expiresAt: offerCreditExpiresAt(fee.paid_date ?? fee.created_at, days, now) };
 }
 
 /**
@@ -183,7 +218,7 @@ export async function offerReservationFeeCredit(admin: Admin, input: { paymentId
   if ((existing.data ?? []).length) return { ok: false, error: "That Reservation Fee Already Has A Credit." };
   const days = await creditDays(admin);
   const now = deps.now?.() ?? new Date();
-  const expiresAt = creditExpiresAt(fee.paid_date ?? fee.created_at, days, now);
+  const expiresAt = offerCreditExpiresAt(fee.paid_date ?? fee.created_at, days, now);
   const ins = await admin
     .from("renter_credits")
     .insert({ application_id: fee.driver_id, source_payment_id: fee.id, source_rental_id: fee.rental_id ?? null, amount: amount.amount, reason: note.reason, status: "available", expires_at: expiresAt, created_by: deps.actorId ?? null })

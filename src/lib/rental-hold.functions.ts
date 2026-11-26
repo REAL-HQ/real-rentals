@@ -94,8 +94,9 @@ export type RenterCreditRow = {
   status: "available" | "applied" | "void" | "expired";
   appliedToRentalId: string | null;
   createdAt: string;
-  sourcePaymentId: string | null;
+  /** Null when the credit was saved before expiry existed. */
   expiresAt: string | null;
+  sourcePaymentId: string | null;
 };
 
 export type ReservationFeeOffer = { paymentId: string; amount: number; expiresAt: string; days: number };
@@ -144,8 +145,8 @@ export const listRenterCredits = createServerFn({ method: "GET" })
         status: r.status,
         appliedToRentalId: r.applied_to_rental_id ?? null,
         createdAt: r.created_at,
-        sourcePaymentId: r.source_payment_id ?? null,
         expiresAt: r.expires_at ?? null,
+        sourcePaymentId: r.source_payment_id ?? null,
       })),
     };
   });

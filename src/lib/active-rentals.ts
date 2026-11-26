@@ -367,6 +367,21 @@ export function overdueLabel(days: number | null): string {
   return days === 1 ? "1 Day" : `${days} Days`;
 }
 
+export type DueBadge = "none" | "overdue" | "due" | "current";
+
+/**
+ * Status pill for the payment due date.
+ * A due date on today's Eastern calendar day is Due, not Current.
+ * A later day stays Current. Days already past stay overdue.
+ */
+export function dueBadge(days: number | null, due: string | null | undefined, today: string): DueBadge {
+  const day = dateOnly(due);
+  if (days == null && !day) return "none";
+  if ((days ?? 0) > 0) return "overdue";
+  if (day === today) return "due";
+  return "current";
+}
+
 export function formatWeeklyRate(amount: number | null): string {
   if (amount == null || Number.isNaN(Number(amount))) return "Not Set";
   return Number(amount).toLocaleString("en-US", { style: "currency", currency: "USD" });

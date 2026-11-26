@@ -303,6 +303,9 @@ export const startRentalAutopay = createServerFn({ method: 'POST' })
           price_data: {
             currency: 'usd',
             product_data: { name: `Weekly Rent — Rental ${String(rental.id).slice(0, 8)}` },
+            // rentals.weekly_rate is the single weekly charge. Additional Driver
+            // fees are already inside it when the agreement included them.
+            // billAdditionalDriver adds a separate line only when they are not.
             unit_amount: Math.round(Number(rental.weekly_rate) * 100),
             recurring: { interval: 'week' },
           } as any,

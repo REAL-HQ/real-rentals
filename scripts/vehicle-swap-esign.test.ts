@@ -161,7 +161,7 @@ describe("send", () => {
     expect(JSON.stringify(r.body)).not.toContain("SECRET");
     expect(issued[0].rows).toBe(1);
     const a = issued[0].o.amendment;
-    expect(a.templateKey).toBe("insurance_included_v116");
+    expect(a.templateKey).toBe("insurance_included_v117");
     expect(a.vehicleId).toBe(NEW);
     expect(a.weeklyRate).toBe(375);
     expect(a.swap).toEqual({ rentalId: R, swapId: db.state.rental_vehicle_swaps[0].id, fromVehicleId: OLD });
@@ -295,20 +295,20 @@ describe("signing and handover", () => {
 
 describe("addendum wording (Dolmar t541u/t542u: upgrade to current terms, same start date and rent)", () => {
   const notice = lib.swapNoticeText({ weeklyRate: 375, previousSignedAt: "2026-11-16", previousNumber: "RRA-20261116-2A4BBF", previousIsPaper: false, outgoing: { year: 2018, make: "Toyota", model: "Camry", license_plate: "ed40nc" } });
-  test("it is an addendum that states the renter accepts the current v1.16 terms, printed in full", () => {
+  test("it is an addendum that states the renter accepts the current v1.17 terms, printed in full", () => {
     expect(lib.VEHICLE_SWAP_TITLE).toBe("Vehicle Swap Addendum To Rental Agreement");
-    expect(lib.SWAP_TERMS_VERSION).toBe("v1.16");
+    expect(lib.SWAP_TERMS_VERSION).toBe("v1.17");
     expect(notice).toContain("Vehicle Swap Addendum");
-    expect(notice).toContain("you accept the current Rental Agreement terms (Version 1.16)");
+    expect(notice).toContain("you accept the current Rental Agreement terms (Version 1.17)");
     expect(notice).toContain("printed in full below");
     expect(notice).toContain("original start date");
     expect(notice).toContain("$375.00");
     expect(notice).not.toMatch(/progressive|bristol|allcom|broker|deposit/i);
     expect(notice).toContain("There is no Reservation Fee. Until you sign and receive the new Vehicle, your current agreement stays in effect.");
   });
-  test("the swap is always built on the v1.16 template and the original start date, whatever version the original was", () => {
-    expect(readFileSync("src/lib/rental-amendment.ts", "utf8")).toMatch(/AMENDMENT_TEMPLATE_KEY = "insurance_included_v116"/);
-    expect(readFileSync("src/lib/agreement-library.ts", "utf8")).toMatch(/DEFAULT_LIBRARY_KEY = "insurance_included_v116"/);
+  test("the swap is always built on the v1.17 template and the original start date, whatever version the original was", () => {
+    expect(readFileSync("src/lib/rental-amendment.ts", "utf8")).toMatch(/AMENDMENT_TEMPLATE_KEY = "insurance_included_v117"/);
+    expect(readFileSync("src/lib/agreement-library.ts", "utf8")).toMatch(/DEFAULT_LIBRARY_KEY = "insurance_included_v117"/);
     const ag = readFileSync("src/lib/agreements.functions.ts", "utf8");
     expect(ag).toMatch(/const storedStart = fromRental \? rental\.start_date/);
     expect(ag).toContain('"Vehicle Swap Addendum To Rental Agreement"');

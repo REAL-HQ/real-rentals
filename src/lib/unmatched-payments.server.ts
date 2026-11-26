@@ -152,7 +152,7 @@ export async function assignUnmatchedPayment(admin: Admin, input: { id: string; 
       purpose: null,
       reason: null,
       receiptUrl: null,
-      cardPayment: true,
+      paymentMethod: null,
       invoiceId: invoice,
     };
     const written = await insertMatchedOneOff(admin, identity, rental, "staff");

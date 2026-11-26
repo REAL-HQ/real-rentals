@@ -5,6 +5,7 @@
 // first one to arrive writes the row (unique payment-intent index). Read-only
 // against Stripe.
 import { easternDateOf } from "@/lib/rent-reminders";
+import { invoicePaymentMethod } from "@/lib/stripe-payment-method";
 import { stripeId } from "@/lib/stripe-unmatched";
 import {
   allocateRentPayment,
@@ -272,7 +273,7 @@ export async function insertMatchedOneOff(
     status: "paid",
     due_date: dueOn,
     paid_date: day,
-    payment_method: id.cardPayment ? "card" : null,
+    payment_method: id.paymentMethod,
     stripe_payment_intent_id: id.paymentIntentId || null,
     stripe_invoice_id: id.invoiceId ?? null,
     stripe_charge_id: id.chargeId,
@@ -284,6 +285,25 @@ export async function insertMatchedOneOff(
   }).select("id"));
   const paymentId = ins.data?.[0]?.id ?? null;
   const inserted = !!paymentId;
+  if (inserted && paymentId) {
+    try {
+      const { shouldLinkPaidTollCharge } = await import("@/lib/toll-charge-deadlines");
+      if (shouldLinkPaidTollCharge(id.reason, id.notice)) {
+        const { linkPaidTollCharge } = await import("@/lib/toll-charge-sync.server");
+        await linkPaidTollCharge(admin, {
+          paymentId,
+          paymentLinkId: id.paymentLinkId,
+          notice: id.notice ?? null,
+          rentalId: r.id,
+          reason: id.reason,
+        });
+      }
+    } catch (err) {
+      // The payment row is already written. A charge lookup must not fail the
+      // webhook, or Stripe would retry and the unique intent index would no-op.
+      console.error("[one-off-payment] toll charge link failed", err);
+    }
+  }
   if (inserted) {
     await admin.from("notifications").insert({
       driver_id: null, title: "Payment Received", kind: "payment", read: false,
@@ -328,9 +348,10 @@ export async function recordInvoiceWithoutRental(admin: Admin, invoice: any): Pr
     chargeId, sessionId: null, paymentLinkId: null, rentalId: null, applicationIds: [], plates: [], forDate: null, weeks: [],
     renterName: null, customerIds: customerId ? [customerId] : [], emails: [], phones: [], billingNames: [],
     amountCents: Number.isFinite(amount) ? Math.round(amount) : 0, currency: invoice.currency ?? "usd",
-    paidAt: Number(invoice.status_transitions?.paid_at ?? invoice.created) || null, purpose: null, reason: null, receiptUrl: null, cardPayment: true,
+    paidAt: Number(invoice.status_transitions?.paid_at ?? invoice.created) || null, purpose: null, reason: null, receiptUrl: null, paymentMethod: null,
   };
   id.invoiceId = invoiceId;
+  if (!id.paymentMethod) id.paymentMethod = invoicePaymentMethod(invoice);
   if (!id.renterName && typeof invoice.customer_name === "string") id.renterName = invoice.customer_name.trim() || null;
   if (id.amountCents <= 0) return { recorded: false };
   const match = await matchRental(admin, id);

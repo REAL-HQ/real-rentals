@@ -23,6 +23,29 @@ export const SMS_CONSENT_TEXT = `${SMS_CONSENT_LABEL} ${SMS_CONSENT_DISCLOSURE}`
 export const SMS_CONSENT_SOURCE_WEB = "website_application";
 
 /**
+ * Transactional rental texts shown on the agreement signing page and, if
+ * still not consented, on the Reservation Fee page. Not marketing.
+ * The website application keeps SMS_CONSENT_TEXT / SMS_CONSENT_VERSION.
+ * Bump RENTAL_SMS_CONSENT_VERSION if this sentence changes.
+ */
+export const RENTAL_SMS_CONSENT_VERSION = "2026-11-25.rental.v1";
+
+export const RENTAL_SMS_CONSENT_TEXT =
+  "Text me about my rental (pickup, payment reminders and account updates). Msg & data rates may apply. Msg frequency varies. Reply STOP to opt out, HELP for help.";
+
+export const SMS_CONSENT_SOURCE_AGREEMENT_SIGNING = "agreement_signing";
+export const SMS_CONSENT_SOURCE_RESERVATION_FEE = "reservation_fee";
+
+export type RentalSmsConsentSource =
+  | typeof SMS_CONSENT_SOURCE_AGREEMENT_SIGNING
+  | typeof SMS_CONSENT_SOURCE_RESERVATION_FEE;
+
+/** The checkbox is shown only when this person has no text consent on file. */
+export function smsConsentMissing(consent: boolean | null | undefined): boolean {
+  return consent !== true;
+}
+
+/**
  * Intended first message once a provider is connected. NOT sent anywhere yet.
  */
 export const SMS_OPT_IN_CONFIRMATION =

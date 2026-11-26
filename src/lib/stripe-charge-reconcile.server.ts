@@ -117,7 +117,7 @@ export async function storeUnmatchedFromGap(admin: Admin, gap: SucceededChargeRe
     purpose: null,
     reason: null,
     receiptUrl: null,
-    cardPayment: true,
+    paymentMethod: null,
     invoiceId: gap.invoiceId,
   }, "no_match");
 }

@@ -112,6 +112,20 @@ describe("fee paid opens a Pending Reservation", () => {
     expect(await holdReservationForFee(db, APP, fee)).toBe(id);
     expect(db.state.rentals.filter((r) => r.status === "pending_reservation")).toHaveLength(1);
     expect(db.state.vehicles[0].status).toBe("pending_reservation");
+    expect(holds[0].weekly_rate).toBe(250);
+  });
+
+  test("a signed agreement's weekly amount, including an Additional Driver, is what the hold stores", async () => {
+    const seed = world();
+    seed.agreements[0].signed_at = "2026-11-25T12:00:00Z";
+    seed.agreements[0].merge_data = {
+      weekly_rate: "$450.00",
+      payment_amount: "$450.00 weekly",
+    };
+    const db = fakeDb(seed);
+    await holdReservationForFee(db, APP, fee);
+    expect(db.state.rentals[0].weekly_rate).toBe(450);
+    expect(db.state.agreements[0].merge_data.payment_amount).toBe("$450.00 weekly");
   });
 
   test("an existing reserved row is only marked fee-applied", async () => {

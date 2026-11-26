@@ -9,15 +9,19 @@ const workspace = readFileSync("src/components/admin/BookingsWorkspace.tsx", "ut
 const fn = readFileSync("src/lib/reservations.functions.ts", "utf8");
 
 describe("Bookings Reserved tab", () => {
-  it("tabs read Reserved / Active / Past (Booked is gone)", () => {
-    assert.deepEqual(BOOKINGS_VIEWS.map((v) => v.label), ["Reserved", "Active", "Past"]);
+  it("tabs read Reserved / Active / Completed / Cancelled", () => {
+    assert.deepEqual(BOOKINGS_VIEWS.map((v) => v.label), ["Reserved", "Active", "Completed", "Cancelled"]);
     assert.equal(workspace.includes('"booked"'), false);
+    assert.equal(workspace.includes('scope="past"'), false);
   });
 
-  it("old booked and reserved links both land on Reserved", () => {
+  it("old booked and reserved links both land on Reserved, and past lands on Completed", () => {
     assert.equal(parseBookingsView("reserved", { canViewBoard: true }), "reserved");
     assert.equal(parseBookingsView("booked", { canViewBoard: true }), "reserved");
     assert.equal(parseBookingsView("active", { canViewBoard: true }), "active");
+    assert.equal(parseBookingsView("past", { canViewBoard: true }), "completed");
+    assert.equal(parseBookingsView("all", { canViewBoard: true }), "completed");
+    assert.equal(parseBookingsView("swap", { canViewBoard: true }), "cancelled");
     assert.equal(parseBookingsView(undefined, { canViewBoard: true }), "active");
   });
 
@@ -38,7 +42,7 @@ describe("Bookings Reserved tab", () => {
 
   it("panel has Active-style columns, count, Open button, Title Case, no deposit wording", () => {
     for (const h of ["Driver", "Vehicle", "Reserved", "Pickup", "Rate", "Open"]) assert.match(panel, new RegExp(`>${h}</th>|>\\{chargeLabel\\}</th>`));
-    assert.match(panel, /Reserved Vehicle\{rows\.length === 1/);
+    assert.match(panel, /Reserved Vehicle\{shown\.length === 1/);
     assert.match(panel, /<VehicleCell/);
     assert.match(panel, /vinLast6: row\.vinLast6/);
     assert.match(panel, /view: "past", id: row\.id/);

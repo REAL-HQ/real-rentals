@@ -230,7 +230,8 @@ export async function holdVehicleForPaidReservationFee(
 
   const cardOnFile = await hasIssuedInsuranceCard(admin, applicationId);
   const status = cardOnFile ? RESERVATION_STATUS : PENDING_RESERVATION_STATUS;
-  const weekly = typeof vehicle.weekly_rate === "number" ? vehicle.weekly_rate : 0;
+  const { weeklyRateForApplication } = await import("@/lib/agreement-weekly.server");
+  const weekly = (await weeklyRateForApplication(admin, applicationId, vehicle.weekly_rate)) ?? 0;
   const inserted = await admin
     .from("rentals")
     .insert({

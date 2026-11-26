@@ -40,6 +40,11 @@ describe("Past tab status filter", () => {
     const swap = statusesForBookingList({ scope: "past", phase: "swap" });
     assert.deepEqual(swap, PHASE_STATUSES.cancelled);
 
+    assert.deepEqual(statusesForBookingList({ scope: "completed", phase: "all" }), PHASE_STATUSES.completed);
+    assert.deepEqual(statusesForBookingList({ scope: "cancelled", phase: "all" }), PHASE_STATUSES.cancelled);
+    assert.ok(!statusesForBookingList({ scope: "completed", phase: "all" })!.includes("cancelled"));
+    assert.ok(!statusesForBookingList({ scope: "cancelled", phase: "all" })!.includes("ended"));
+
     // A leftover ?phase=active under Past still stays ended/cancelled only.
     const mistyped = statusesForBookingList({ scope: "past", phase: "active" });
     assert.deepEqual([...mistyped!].sort(), [...PAST_STATUS_VALUES].sort());
@@ -52,15 +57,20 @@ describe("Past tab status filter", () => {
 
   it("Past tab passes scope=past and Active table drops the 1020px min-width", () => {
     const workspace = readFileSync("src/components/admin/BookingsWorkspace.tsx", "utf8");
-    assert.match(workspace, /scope="past"/);
+    assert.match(workspace, /scope=\{effective\}/);
     assert.match(workspace, /ReservationsPanel/);
     assert.match(workspace, /ActiveRentalsPanel/);
+    assert.doesNotMatch(workspace, /scope="past"/);
 
     const panel = readFileSync("src/components/admin/BookingsPanel.tsx", "utf8");
-    assert.match(panel, /scope === "past"/);
-    assert.match(panel, /No Past Rentals/);
-    assert.match(panel, /scope,/);
-    assert.match(panel, /"completed", "cancelled", "swap"/);
+    assert.match(panel, /scope === "completed"/);
+    assert.match(panel, /scope === "cancelled"/);
+    assert.match(panel, /No Completed Rentals/);
+    assert.match(panel, /No Cancelled Rentals/);
+    assert.match(panel, /data-testid="booking-count"/);
+    assert.doesNotMatch(panel, /data-testid="booking-phases"/);
+    assert.match(panel, /aria-label="Search rentals"/);
+    assert.match(panel, /aria-label="Sort"/);
     assert.match(panel, /data-testid="rental-length"/);
     assert.match(panel, /VehicleCell/);
     assert.doesNotMatch(panel, /text-transform/);

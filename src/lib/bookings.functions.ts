@@ -53,6 +53,7 @@ import {
   type RentalSpan,
   type SwapRecord,
 } from "@/lib/swap-ended-rental";
+import { endedLengthCandidates, orderByLength, owesAmount, pageOf } from "@/lib/rental-length-order";
 
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
 
@@ -90,9 +91,11 @@ const listInput = (d: unknown) =>
     .object({
       q: z.string().max(100).optional().default(""),
       phase: z.string().max(20).optional().default("all"),
-      scope: z.enum(["past", "all"]).optional().default("all"),
+      scope: z.enum(["past", "all", "completed", "cancelled"]).optional().default("all"),
       vehicleId: z.string().uuid().optional(),
       sort: z.string().max(20).optional().default("recent"),
+      length: z.enum(["default", "longest", "shortest"]).optional().default("default"),
+      owes: z.boolean().optional().default(false),
       page: z.number().int().min(1).max(100000).optional().default(1),
       pageSize: z.number().int().min(1).max(100).optional().default(BOOKING_LIST_PAGE_SIZE),
     })
@@ -120,6 +123,37 @@ const VEHICLE_SEARCH_COLUMNS = [
  */
 const SWAP_COLUMNS =
   "id,swap_number,rental_id,application_id,from_vehicle_id,completed_at,reason_code,reason";
+
+type UnpaidQuery = {
+  from: (table: string) => {
+    select: (cols: string) => {
+      in: (col: string, ids: string[]) => {
+        neq: (col: string, value: string) => PromiseLike<{ data: Array<Record<string, unknown>> | null }>;
+      };
+    };
+  };
+};
+
+/** Same sum as the red "$600 due" line: unpaid rows, balance_due or amount. */
+async function unpaidBalances(sb: UnpaidQuery, ids: string[]): Promise<Map<string, number>> {
+  const balance = new Map<string, number>();
+  for (let i = 0; i < ids.length; i += 150) {
+    const slice = ids.slice(i, i + 150);
+    if (!slice.length) continue;
+    const { data: due } = await sb
+      .from("payments")
+      .select("rental_id,balance_due,amount,status")
+      .in("rental_id", slice)
+      .neq("status", "paid");
+    for (const p of (due ?? []) as Array<Record<string, unknown>>) {
+      const id = String(p.rental_id ?? "");
+      if (!id) continue;
+      const owed = Number(p.balance_due ?? p.amount ?? 0);
+      balance.set(id, (balance.get(id) ?? 0) + (Number.isFinite(owed) ? owed : 0));
+    }
+  }
+  return balance;
+}
 
 function spanOf(r: Record<string, unknown>): RentalSpan {
   return {
@@ -177,7 +211,11 @@ export const listBookings = createServerFn({ method: "POST" })
     const canSeeMoney = tierAllows(actor.tier, "manager");
     const sb = await admin();
     const phase = isBookingPhaseFilter(data.phase) ? data.phase : "all";
-    const scope = data.scope === "past" ? "past" : "all";
+    const scope =
+      data.scope === "past" || data.scope === "completed" || data.scope === "cancelled"
+        ? data.scope
+        : "all";
+    const showsEnded = scope !== "all";
     const statusFilter = statusesForBookingList({ scope, phase });
     const sort = (BOOKING_SORTS as readonly string[]).includes(data.sort) ? data.sort : "recent";
 
@@ -254,18 +292,18 @@ export const listBookings = createServerFn({ method: "POST" })
     // Past also needs the car and the driver so a cancelled row can be told
     // apart from one a completed swap ended.
     const { data: statusRows } = await scoped(
-      sb.from("rentals").select("id,status,vehicle_id,application_id,start_date,end_date"),
+      sb.from("rentals").select("id,status,vehicle_id,application_id,start_date,end_date,created_at"),
     ).limit(5000);
-    const classifySwaps = scope === "past" || phase === "swap";
+    const classifySwaps = showsEnded || phase === "swap";
     const swaps = classifySwaps ? await loadCompletedSwaps(sb) : [];
     const spans = ((statusRows ?? []) as Array<Record<string, unknown>>).map(spanOf);
     const swapById = classifySwaps ? swapEndsByRentalId(spans, swaps) : new Map<string, SwapRecord>();
     const counts: BookingCounts = { ...empty };
     for (const span of spans) {
       const swap = swapById.get(span.id) ?? null;
-      const p = scope === "past" || phase === "swap" ? presentRentalSpan(span, swap).phase : bookingPhase(span.status);
+      const p = classifySwaps ? presentRentalSpan(span, swap).phase : bookingPhase(span.status);
       if (p === "reserved") continue; // Phase A never claims an upcoming booking.
-      if (scope === "past" && !isPastPhase(p)) continue;
+      if (showsEnded && !isPastPhase(p)) continue;
       counts[p] += 1;
     }
     const swapIds = [...swapById.keys()];
@@ -274,24 +312,91 @@ export const listBookings = createServerFn({ method: "POST" })
       return { rows: [], total: 0, page: data.page, pageSize: data.pageSize, counts, canSeeMoney };
     }
 
+    // Length order covers the whole filtered set, then the page is a slice of
+    // that order. Sorting only the current page would hide a long rental that
+    // the newest-first query had not fetched yet.
+    const lengthOrder = data.length === "longest" || data.length === "shortest" ? data.length : "default";
+    let lengthPageIds: string[] | null = null;
+    let lengthTotal: number | null = null;
+    let owesCount: number | null = null;
+    const createdAtOf = new Map(
+      ((statusRows ?? []) as Array<Record<string, unknown>>).map((row) => [String(row.id), String(row.created_at ?? "")]),
+    );
+    if (data.owes && !canSeeMoney) {
+      return { rows: [], total: 0, page: data.page, pageSize: data.pageSize, counts, canSeeMoney, owesCount: null };
+    }
+    if (canSeeMoney && showsEnded) {
+      const matched = endedLengthCandidates(
+        spans,
+        (span) => presentRentalSpan(span, swapById.get(span.id) ?? null),
+        { statusFilter, scope, phase, showsEnded },
+      );
+      const balances = await unpaidBalances(sb as unknown as UnpaidQuery, matched.map((row) => row.id));
+      const owing = matched.filter((row) => owesAmount(balances.get(row.id) ?? 0));
+      owesCount = owing.length;
+      if (data.owes) {
+        const ordered =
+          lengthOrder === "default"
+            ? [...owing].sort((a, b) => {
+                const createdA = createdAtOf.get(a.id) ?? "";
+                const createdB = createdAtOf.get(b.id) ?? "";
+                if (createdA !== createdB) {
+                  return sort === "oldest" ? createdA.localeCompare(createdB) : createdB.localeCompare(createdA);
+                }
+                return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+              })
+            : orderByLength(owing, (row) => row.days, lengthOrder);
+        lengthTotal = ordered.length;
+        lengthPageIds = pageOf(ordered, data.page, data.pageSize).map((row) => row.id);
+        if (!lengthPageIds.length) {
+          return {
+            rows: [],
+            total: lengthTotal,
+            page: data.page,
+            pageSize: data.pageSize,
+            counts,
+            canSeeMoney,
+            owesCount,
+          };
+        }
+      }
+    }
+    if (lengthOrder !== "default" && !data.owes) {
+      const matched = endedLengthCandidates(
+        spans,
+        (span) => presentRentalSpan(span, swapById.get(span.id) ?? null),
+        { statusFilter, scope, phase, showsEnded },
+      );
+      const ordered = orderByLength(matched, (row) => row.days, lengthOrder);
+      lengthTotal = ordered.length;
+      lengthPageIds = pageOf(ordered, data.page, data.pageSize).map((row) => row.id);
+      if (!lengthPageIds.length) {
+        return { rows: [], total: lengthTotal, page: data.page, pageSize: data.pageSize, counts, canSeeMoney, owesCount };
+      }
+    }
+
     let query = scoped(
       sb
         .from("rentals")
         .select(canSeeMoney ? RENTAL_WITH_MONEY : RENTAL_OPERATIONAL, { count: "exact" }),
     );
-    if (statusFilter) query = query.in("status", statusFilter as string[]);
-    if (phase === "swap") query = query.in("id", swapIds);
-    else if (scope === "past" && phase === "cancelled" && swapIds.length) {
-      query = query.not("id", "in", `(${swapIds.join(",")})`);
-    }
-    // Deterministic secondary key keeps pages stable across equal values.
-    if (sort === "oldest")
-      query = query.order("created_at", { ascending: true, nullsFirst: false });
-    else query = query.order("created_at", { ascending: false, nullsFirst: false });
-    query = query.order("id", { ascending: true });
-
     const from = (data.page - 1) * data.pageSize;
-    const { data: rentals, count } = await query.range(from, from + data.pageSize - 1);
+    if (lengthPageIds) {
+      query = query.in("id", lengthPageIds);
+    } else {
+      if (statusFilter) query = query.in("status", statusFilter as string[]);
+      if (phase === "swap") query = query.in("id", swapIds);
+      else if (scope === "past" && phase === "cancelled" && swapIds.length) {
+        query = query.not("id", "in", `(${swapIds.join(",")})`);
+      }
+      // Deterministic secondary key keeps pages stable across equal values.
+      if (sort === "oldest")
+        query = query.order("created_at", { ascending: true, nullsFirst: false });
+      else query = query.order("created_at", { ascending: false, nullsFirst: false });
+      query = query.order("id", { ascending: true });
+      query = query.range(from, from + data.pageSize - 1);
+    }
+    const { data: rentals, count } = await query;
     const rows = (rentals ?? []) as unknown as Array<Record<string, unknown>>;
 
     const appIds = [...new Set(rows.map((r) => r.application_id).filter(Boolean))] as string[];
@@ -345,7 +450,7 @@ export const listBookings = createServerFn({ method: "POST" })
         startDate: span.startDate,
         endDate,
         openEnded: !endDate && phaseOf === "active",
-        ...(scope === "past" && presented.lengthLabel ? { lengthLabel: presented.lengthLabel } : {}),
+        ...(showsEnded && presented.lengthLabel ? { lengthLabel: presented.lengthLabel } : {}),
         driverName: (app?.full_name as string | null) ?? null,
         driverEmail: (app?.email as string | null) ?? null,
         applicationId: (r.application_id as string | null) ?? null,
@@ -366,20 +471,24 @@ export const listBookings = createServerFn({ method: "POST" })
       return row;
     });
 
-    // Sorting by a person or a car is sorting by a value that is not on the
-    // rentals row; the page is already chosen, so it is ordered here.
-    if (sort === "driver")
+    if (lengthPageIds) {
+      const rank = new Map(lengthPageIds.map((id, index) => [id, index]));
+      out.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+    } else if (sort === "driver") {
+      // A person or a car is not on the rentals row; the page is already chosen.
       out.sort((a, b) => (a.driverName ?? "~").localeCompare(b.driverName ?? "~"));
-    if (sort === "vehicle")
+    } else if (sort === "vehicle") {
       out.sort((a, b) => (a.unitNumber ?? "~").localeCompare(b.unitNumber ?? "~"));
+    }
 
     return {
       rows: out,
-      total: count ?? 0,
+      total: lengthTotal ?? count ?? 0,
       page: data.page,
       pageSize: data.pageSize,
       counts,
       canSeeMoney,
+      owesCount,
     };
   });
 

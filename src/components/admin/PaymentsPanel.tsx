@@ -1,4 +1,5 @@
 import { LinkedVehicleCell } from "./VehicleCell";
+import { paymentMethodLabel } from "@/lib/stripe-payment-method";
 import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { useNavigate } from "@tanstack/react-router";
 import { rowNav } from "@/lib/row-click";
@@ -31,7 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check, ListFilter } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
-import { FAILED_RECENT_FILTER, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, rowOwed } from "@/lib/payments-summary";
+import { FAILED_RECENT_FILTER, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, isZeroMoneyRow, rowOwed } from "@/lib/payments-summary";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { PaymentSummaryCards } from "./PaymentSummaryCards";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
@@ -296,7 +297,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
       case "status":
         return STATUS_LABEL[p.status as string] ?? formatStatusLabel(p.status);
       case "method":
-        return p.payment_method || "";
+        return paymentMethodLabel(p.payment_method, p);
       case "late_fees":
         return Number(p.late_fees || 0);
       case "balance":
@@ -304,10 +305,11 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
     }
   }
 
-  // Unpaid Reservation Fees are not ledger rows. Paid, refunded, void and
-  // waived fees stay. Outstanding already skips them via countsAsOwed.
+  // $0 invoices owe nothing. Unpaid Reservation Fees are holds, shown on
+  // Reserved. Paid, refunded, void and waived fees stay on this list.
+  // Outstanding already skips unpaid fees via countsAsOwed.
   const ledgerPayments = useMemo(
-    () => payments.filter((p) => !isUnpaidReservationFee(p)),
+    () => payments.filter((p) => !isZeroMoneyRow(p) && !isUnpaidReservationFee(p)),
     [payments],
   );
 
@@ -579,7 +581,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
                       <span className="mt-0.5 block text-[11px] font-medium text-[#50C060]" data-testid="payment-covered-note">{feesOnly(p) ? "Rent Paid · Late Fees Owed" : "Paid On Another Row"}</span>
                     ) : null}
                   </td>
-                  <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>
+                  <td className="px-3 text-[13px]">{paymentMethodLabel(p.payment_method, p)}</td>
                   <td
                     className={`px-3 text-right tabular-nums text-[13px] ${lateFees > 0 ? "text-[#D03020] font-medium" : "text-[#9A9AA3]"}`}
                   >
