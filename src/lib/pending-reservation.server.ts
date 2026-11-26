@@ -69,7 +69,10 @@ export async function hasIssuedInsuranceCard(admin: Admin, applicationId: string
 }
 
 async function setVehicleStatus(admin: Admin, vehicleId: string, status: "pending_reservation" | "reserved" | "available", from: string[]) {
-  await admin.from("vehicles").update({ status }).eq("id", vehicleId).in("status", from);
+  const { aroundCapacityChange } = await import("@/lib/fleet-capacity.server");
+  await aroundCapacityChange(admin, vehicleId, () =>
+    admin.from("vehicles").update({ status }).eq("id", vehicleId).in("status", from),
+  );
 }
 
 async function linkFee(admin: Admin, rentalId: string, paymentId: string | null) {

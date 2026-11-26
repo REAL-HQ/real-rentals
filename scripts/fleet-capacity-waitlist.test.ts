@@ -161,19 +161,22 @@ describe("quiet hours queue", () => {
   });
 });
 
-describe("proposed SQL", () => {
-  test("migration and rollback are paired and additive", () => {
-    const sql = readFileSync("proposed/capacity-waitlist-v1.sql", "utf8");
+describe("migration SQL", () => {
+  test("migration and rollback are paired, additive, and do not replace the event list", () => {
+    const sql = readFileSync("supabase/migrations/20261126213000_capacity_waitlist.sql", "utf8");
     const rollback = readFileSync("proposed/rollback/capacity-waitlist-v1.sql", "utf8");
     expect(sql).toContain("ALTER TABLE public.applications");
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS approved_at");
     expect(sql).toContain("waitlist_notice_jobs");
     expect(sql).toContain("auto_capacity");
     expect(sql).toContain("vehicle_available");
-    expect(sql).toContain("reservation_refunded");
-    expect(rollback).toContain("reservation_refunded");
+    expect(sql).toContain("ENABLE ROW LEVEL SECURITY");
+    expect(sql).toContain("REVOKE ALL ON TABLE public.waitlist_notice_jobs FROM PUBLIC, anon, authenticated");
+    expect(sql).not.toContain("CHECK (event_type IN (");
     expect(rollback).toContain("DROP TABLE IF EXISTS public.waitlist_notice_jobs");
     expect(rollback).toContain("DROP COLUMN IF EXISTS approved_at");
+    expect(rollback).toContain("vehicle_available");
+    expect(rollback).not.toContain("CHECK (event_type IN (");
   });
 });
 

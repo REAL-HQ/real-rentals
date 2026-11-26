@@ -33,6 +33,12 @@ import { getWaitlistAging } from "@/lib/waitlist-aging.functions";
 import { WaitlistAging } from "./WaitlistAging";
 import { filterWaitlistByTag, waitlistLocation } from "@/lib/waitlist-tags";
 
+function stageLabel(status: string | null): string {
+  const raw = String(status ?? "").trim();
+  if (!raw) return "—";
+  return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 // Waitlist back office.
 //
 // Public waitlist mode follows the real Available count unless staff set the
@@ -274,14 +280,14 @@ export function WaitlistPanel({
         subtitle="Fleet counts come from your vehicles. The public override is optional and only changes what the website shows."
         icon={<Car className="w-4 h-4" strokeWidth={1.75} />}
         right={
-          carsAvailable === null ? (
-            <StatusPill tone="neutral">Override Not Set</StatusPill>
-          ) : carsAvailable === 0 ? (
+          waitlistMode ? (
             <StatusPill tone="amber">Waitlist Mode</StatusPill>
-          ) : (
+          ) : carsAvailable != null && carsAvailable > 0 ? (
             <StatusPill tone="green">
               {carsAvailable} {carsAvailable === 1 ? "Car" : "Cars"} Available
             </StatusPill>
+          ) : (
+            <StatusPill tone="neutral">Taking Applications</StatusPill>
           )
         }
       >
@@ -308,7 +314,7 @@ export function WaitlistPanel({
             type="number"
             min={0}
             inputMode="numeric"
-            placeholder={carsAvailable === null ? "Not set" : String(carsAvailable)}
+            placeholder={carsAvailable === null ? "Not Set" : String(carsAvailable)}
             value={countInput}
             onChange={(e) => setCountInput(e.target.value)}
             className="w-28 rounded-lg border border-[#EDEDF0] bg-white px-3 py-2 text-sm text-[#111114] outline-none focus:border-[#C7C7CC]"
@@ -362,7 +368,7 @@ export function WaitlistPanel({
         ) : (
           <AdminTableScroll>
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-border text-[11px] font-medium uppercase tracking-wide text-[#9A9AA3]">
+              <thead className="border-b border-border text-[11px] font-medium text-[#9A9AA3]">
                 <tr>
                   <th className="px-5 py-3 w-16">#</th>
                   <th className="px-5 py-3">Applicant</th>
@@ -378,7 +384,7 @@ export function WaitlistPanel({
                       <div className="text-[13px] font-medium text-[#111114]">{e.fullName}</div>
                     </td>
                     <td className="px-5 py-3">
-                      <StatusPill status={e.status ?? undefined}>{e.status ?? "—"}</StatusPill>
+                      <StatusPill status={e.status ?? undefined}>{stageLabel(e.status)}</StatusPill>
                     </td>
                     <td className="px-5 py-3 whitespace-nowrap text-[13px] text-[#55555E]">
                       {fmtDate(e.approvedAt || e.addedAt)}
@@ -404,7 +410,7 @@ export function WaitlistPanel({
             <EmptyState
               icon={<Hourglass className="w-6 h-6" strokeWidth={1.75} />}
               title="No Drivers On The Waitlist"
-              hint="When Cars Available is set to zero, the site collects waitlist signups here instead of applications."
+              hint="City pages add someone here when no cars are Available, or when the override is 0."
             />
           </div>
         ) : (

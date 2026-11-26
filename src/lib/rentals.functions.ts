@@ -649,6 +649,22 @@ export async function activateRentalCore(
 
     // rental.activated was written inside activate_rental_checked_tx (or, without
     // the wrapper, immediately after activate_rental_tx with any failure returned).
+    // Take this applicant off the capacity waitlist. The count is read after
+    // the car is rented, so +1 only avoids a false "a car opened" alert.
+    // Never blocks activation.
+    try {
+      const { readFleetCapacity, scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
+      const after = await readFleetCapacity(supabaseAdmin);
+      const capacityBefore = after == null ? null : after + 1;
+      scheduleCapacitySideEffects(supabaseAdmin, {
+        vehicleId: data.vehicleId ?? null,
+        releaseApplicationId: data.applicationId,
+        removedBy: actor.userId,
+        capacityBefore,
+      });
+    } catch (e) {
+      console.error("[capacity-waitlist] activate hook failed", (e as Error)?.message ?? e);
+    }
     return { ok: true, rentalId: rental.id as string, accountCreated: created, portalWelcome, ...(auditError ? { auditError } : {}) };
 }
 

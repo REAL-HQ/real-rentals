@@ -464,6 +464,16 @@ export async function completeSwap(admin: Admin, input: { swapId: string; handov
   for (const [k, v] of [["Return fuel", h.returnFuel], ["Pickup fuel", h.pickupFuel]] as const) {
     if (!(SWAP_FUEL_LEVELS as readonly string[]).includes(String(v))) return fail(400, `${k} must be one of ${SWAP_FUEL_LEVELS.join(", ")}.`);
   }
+  let fromVehicleId: string | null = null;
+  let capacityBefore: number | null = null;
+  try {
+    const row = await admin.from(VEHICLE_SWAPS_TABLE).select("from_vehicle_id").eq("id", input.swapId).maybeSingle();
+    fromVehicleId = row.data?.from_vehicle_id ?? null;
+    const { readFleetCapacity } = await import("@/lib/fleet-capacity.server");
+    capacityBefore = await readFleetCapacity(admin);
+  } catch {
+    capacityBefore = null;
+  }
   const { data, error } = await admin.rpc(VEHICLE_SWAP_FN, {
     _swap_id: input.swapId,
     _from_vehicle_status: h.fromVehicleStatus,
@@ -474,6 +484,15 @@ export async function completeSwap(admin: Admin, input: { swapId: string; handov
     _actor: input.actorUserId,
   });
   if (error) return fail(409, swapErrorText(error.message), { code: error.code ?? null });
+  try {
+    const { scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
+    scheduleCapacitySideEffects(admin, {
+      vehicleId: h.fromVehicleStatus === "available" ? fromVehicleId : null,
+      capacityBefore,
+    });
+  } catch (e) {
+    console.error("[capacity-waitlist] swap hook failed", (e as Error)?.message ?? e);
+  }
   return { status: 200, body: { ok: true, ...(data as Record<string, unknown>) } };
 }
 

@@ -600,6 +600,14 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
     } catch (err) {
       console.error("[fleet-review] pending reservation release failed", err);
     }
+    try {
+      // FLEET has no staff user id. Only an auto_capacity hold can close
+      // without one, and only after the migration allows it. A manual hold stays.
+      const { releaseApplicationHold } = await import("@/lib/fleet-capacity.server");
+      await releaseApplicationHold(admin, leadId, null);
+    } catch (err) {
+      console.error("[capacity-waitlist] hold release failed", err);
+    }
     const ins = await record("declined", { skip_notify: skipNotify === true });
     if (ins.error) console.error("[fleet-review] decline decision not recorded", ins.error?.code ?? "", ins.error?.message ?? "");
     const lines = [declineProfileLine(FLEET_ACTOR_LABEL, now, reason)];

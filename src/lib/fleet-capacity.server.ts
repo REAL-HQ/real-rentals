@@ -7,8 +7,9 @@
  * Staff alerts and the vehicle_available webhook are gated by
  * team_alerts.vehicle_available (default OFF).
  *
- * Proposed schema: proposed/capacity-waitlist-v1.sql. Missing columns or
- * tables are tolerated: we retry without them or skip the queued send.
+ * Schema: supabase/migrations/20261126213000_capacity_waitlist.sql (not applied
+ * by this PR). Missing columns or tables are tolerated: we retry without
+ * them or skip the queued send.
  */
 import {
   WAITLIST_JOINED_AUTOMATION_KEY,
@@ -41,19 +42,30 @@ export type ApprovedWaitlistEntry = {
 
 const MISSING = /does not exist|schema cache|42703|PGRST204/i;
 
+export function schemaMissing(error: { message?: string; code?: string } | null | undefined): boolean {
+  return MISSING.test(String(error?.message ?? "") + String(error?.code ?? ""));
+}
+
+/**
+ * Unarchived Available cars that are not on an active rental.
+ * A failed or truncated read returns null — never 0 — so a city page
+ * does not flip to the waitlist because a count could not be finished.
+ */
 export async function readFleetCapacity(admin: Admin): Promise<number | null> {
   try {
-    const { data: vehicles, error } = await admin
-      .from("vehicles")
-      .select("id,status,archived_at")
-      .is("archived_at", null);
-    if (error || !Array.isArray(vehicles)) return null;
-    const ids = vehicles.filter((v: any) => String(v.status ?? "").toLowerCase() === "available").map((v: any) => v.id);
+    const { completeRead, readInBatches } = await import("@/lib/waitlist-reads.server");
+    const vehicles = await completeRead((from, to) =>
+      admin.from("vehicles").select("id,status,archived_at", { count: "exact" }).order("id").range(from, to),
+    );
+    const ids = vehicles
+      .filter((v: any) => !v.archived_at && String(v.status ?? "").toLowerCase() === "available")
+      .map((v: any) => v.id as string);
     let busy: string[] = [];
     if (ids.length) {
-      const rentals = await admin.from("rentals").select("vehicle_id").in("vehicle_id", ids).eq("status", "active");
-      if (rentals.error) return null;
-      busy = ((rentals.data ?? []) as { vehicle_id: string | null }[]).map((r) => r.vehicle_id).filter(Boolean) as string[];
+      const rentals = await readInBatches(ids, (slice, from, to) =>
+        admin.from("rentals").select("id,vehicle_id", { count: "exact" }).in("vehicle_id", slice).eq("status", "active").order("id").range(from, to),
+      );
+      busy = rentals.map((r: any) => r.vehicle_id).filter(Boolean);
     }
     return countFleetCapacity(vehicles, busy);
   } catch (e) {
@@ -149,8 +161,10 @@ export async function applyCapacitySideEffects(
     applicationId?: string | null;
     capacityBefore?: number | null;
     now?: Date;
-    /** Close this applicant's hold (rental activated, declined, etc.). */
+    /** Close this applicant's hold (rental activated, declined, closed). */
     releaseApplicationId?: string | null;
+    /** Staff user who closed the hold. Required for a manual hold. */
+    removedBy?: string | null;
   } = {},
 ): Promise<CapacityEffectResult> {
   const now = opts.now ?? new Date();
@@ -162,7 +176,7 @@ export async function applyCapacitySideEffects(
     opened: false,
   };
   if (opts.releaseApplicationId) {
-    out.released = await releaseHold(admin, opts.releaseApplicationId);
+    out.released = await releaseHold(admin, opts.releaseApplicationId, opts.removedBy ?? null);
   }
   const after = await readFleetCapacity(admin);
   out.capacityAfter = after;
@@ -192,36 +206,28 @@ export async function enrollApprovedApplicants(
   opts: { now?: Date; onlyApplicationId?: string } = {},
 ): Promise<number> {
   const now = opts.now ?? new Date();
-  let q = admin
-    .from("applications")
-    .select("id,full_name,status,created_at,approved_at,sms_consent,email,phone,deleted_at")
-    .eq("status", "approved")
-    .is("deleted_at", null);
-  if (opts.onlyApplicationId) q = q.eq("id", opts.onlyApplicationId);
-  let { data: apps, error } = await q;
-  if (error && MISSING.test(String(error.message ?? "") + String(error.code ?? ""))) {
-    let q2 = admin
-      .from("applications")
-      .select("id,full_name,status,created_at,sms_consent,email,phone,deleted_at")
-      .eq("status", "approved")
-      .is("deleted_at", null);
-    if (opts.onlyApplicationId) q2 = q2.eq("id", opts.onlyApplicationId);
-    const fallback = await q2;
-    if (fallback.error || !Array.isArray(fallback.data)) return 0;
-    apps = fallback.data;
-  } else if (error || !Array.isArray(apps)) {
-    return 0;
-  }
+  const apps = await readApprovedApplications(admin, opts.onlyApplicationId);
   if (!apps.length) return 0;
 
-  const ids = apps.map((a: any) => a.id);
-  const [holds, rentals] = await Promise.all([
-    admin.from("application_waitlist_holds").select("application_id").in("application_id", ids).is("removed_at", null),
-    admin.from("rentals").select("application_id").in("application_id", ids).eq("status", "active"),
-  ]);
-  if (holds.error || rentals.error) return 0;
-  const held = new Set(((holds.data ?? []) as { application_id: string }[]).map((h) => h.application_id));
-  const renting = new Set(((rentals.data ?? []) as { application_id: string | null }[]).map((r) => r.application_id).filter(Boolean) as string[]);
+  const ids = apps.map((a: any) => a.id as string);
+  let heldRows: any[] = [];
+  let rentalRows: any[] = [];
+  try {
+    const { readInBatches } = await import("@/lib/waitlist-reads.server");
+    [heldRows, rentalRows] = await Promise.all([
+      readInBatches(ids, (slice, from, to) =>
+        admin.from("application_waitlist_holds").select("id,application_id", { count: "exact" }).in("application_id", slice).is("removed_at", null).order("id").range(from, to),
+      ),
+      readInBatches(ids, (slice, from, to) =>
+        admin.from("rentals").select("id,application_id", { count: "exact" }).in("application_id", slice).eq("status", "active").order("id").range(from, to),
+      ),
+    ]);
+  } catch (e) {
+    console.error("[capacity-waitlist] enroll read failed", (e as Error)?.message ?? e);
+    return 0;
+  }
+  const held = new Set(heldRows.map((h) => h.application_id as string));
+  const renting = new Set(rentalRows.map((r) => r.application_id).filter(Boolean) as string[]);
 
   const added: string[] = [];
   for (const app of apps) {
@@ -241,7 +247,35 @@ export async function enrollApprovedApplicants(
   return added.length;
 }
 
+async function readApprovedApplications(admin: Admin, onlyApplicationId?: string): Promise<any[]> {
+  const full = "id,full_name,status,created_at,approved_at,sms_consent,email,phone,deleted_at";
+  const fallback = "id,full_name,status,created_at,sms_consent,email,phone,deleted_at";
+  const probe = await admin.from("applications").select("id,approved_at").limit(1);
+  const columns = probe.error && schemaMissing(probe.error) ? fallback : full;
+  if (probe.error && !schemaMissing(probe.error)) return [];
+  try {
+    const { completeRead } = await import("@/lib/waitlist-reads.server");
+    return await completeRead((from, to) => {
+      let q = admin
+        .from("applications")
+        .select(columns, { count: "exact" })
+        .eq("status", "approved")
+        .is("deleted_at", null)
+        .order("id")
+        .range(from, to);
+      if (onlyApplicationId) q = q.eq("id", onlyApplicationId);
+      return q;
+    });
+  } catch (e) {
+    console.error("[capacity-waitlist] approved read failed", (e as Error)?.message ?? e);
+    return [];
+  }
+}
+
 async function insertHold(admin: Admin, applicationId: string, now: Date): Promise<boolean> {
+  // added_by stays null: this row is the capacity rule, not a person.
+  // The migration allows that only when source is auto_capacity.
+  // Before that migration, added_by is NOT NULL and this insert fails closed.
   const withSource = await admin.from("application_waitlist_holds").insert({
     application_id: applicationId,
     added_at: now.toISOString(),
@@ -249,7 +283,7 @@ async function insertHold(admin: Admin, applicationId: string, now: Date): Promi
   });
   if (!withSource.error) return true;
   if (String(withSource.error.code) === "23505") return false;
-  if (!MISSING.test(String(withSource.error.message ?? "") + String(withSource.error.code ?? ""))) {
+  if (!schemaMissing(withSource.error)) {
     console.error("[capacity-waitlist] hold insert failed", withSource.error.message);
     return false;
   }
@@ -265,18 +299,59 @@ async function insertHold(admin: Admin, applicationId: string, now: Date): Promi
   return true;
 }
 
-async function releaseHold(admin: Admin, applicationId: string): Promise<number> {
-  const { data, error } = await admin
+/**
+ * Close an open hold. A staff user is recorded in removed_by.
+ * With no user (a FLEET decline), only an auto_capacity hold can close,
+ * and only after the migration allows that. A manual hold stays until
+ * a person removes it. Never throws.
+ */
+export async function releaseApplicationHold(admin: Admin, applicationId: string, removedBy: string | null): Promise<number> {
+  return releaseHold(admin, applicationId, removedBy);
+}
+
+async function releaseHold(admin: Admin, applicationId: string, removedBy: string | null): Promise<number> {
+  const removedAt = new Date().toISOString();
+  if (removedBy) {
+    const { data, error } = await admin
+      .from("application_waitlist_holds")
+      .update({ removed_at: removedAt, removed_by: removedBy })
+      .eq("application_id", applicationId)
+      .is("removed_at", null)
+      .select("id");
+    if (error) {
+      console.error("[capacity-waitlist] hold release failed", error.message);
+      return 0;
+    }
+    return Array.isArray(data) ? data.length : 0;
+  }
+  const auto = await admin
     .from("application_waitlist_holds")
-    .update({ removed_at: new Date().toISOString() })
+    .update({ removed_at: removedAt })
     .eq("application_id", applicationId)
+    .eq("source", "auto_capacity")
     .is("removed_at", null)
     .select("id");
-  if (error) {
-    console.error("[capacity-waitlist] hold release failed", error.message);
+  if (auto.error) {
+    if (!schemaMissing(auto.error)) console.error("[capacity-waitlist] hold release failed", auto.error.message);
     return 0;
   }
-  return Array.isArray(data) ? data.length : 0;
+  return Array.isArray(auto.data) ? auto.data.length : 0;
+}
+
+/** Read capacity, run the write, then apply side effects. The write's errors still propagate. */
+export async function aroundCapacityChange(
+  admin: Admin,
+  vehicleId: string | null | undefined,
+  write: () => Promise<unknown>,
+): Promise<void> {
+  let capacityBefore: number | null = null;
+  try {
+    capacityBefore = await readFleetCapacity(admin);
+  } catch {
+    capacityBefore = null;
+  }
+  await write();
+  scheduleCapacitySideEffects(admin, { vehicleId: vehicleId ?? null, capacityBefore });
 }
 
 async function queueJoinedNotices(admin: Admin, entry: ApprovedWaitlistEntry, now: Date): Promise<void> {
