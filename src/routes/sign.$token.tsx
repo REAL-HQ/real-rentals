@@ -42,7 +42,7 @@ function SignPage() {
   const [portalAccess, setPortalAccess] = useState(false);
   // The $50 Reservation Fee step, from the server's answer after signing only.
   const [feeStep, setFeeStep] = useState<ReservationFeeSigningStep | null>(null);
-  const [smsChecked, setSmsChecked] = useState(true);
+  const [smsChecked, setSmsChecked] = useState(false);
   const [feeSms, setFeeSms] = useState<{ needed: boolean; ticket: string | null }>({ needed: false, ticket: null });
   const [error, setError] = useState<string | null>(null);
 
@@ -79,7 +79,7 @@ function SignPage() {
       setAwaitingOthers((res as { awaitingOthers?: boolean })?.awaitingOthers === true);
       setPortalAccess(res?.portalAccess === true);
       setFeeStep((res as any)?.reservationFee ?? null);
-      setSmsChecked(true);
+      setSmsChecked(false);
       setFeeSms({
         needed: (res as { smsConsentNeeded?: boolean })?.smsConsentNeeded === true,
         ticket: (res as { smsConsentTicket?: string | null })?.smsConsentTicket ?? null,

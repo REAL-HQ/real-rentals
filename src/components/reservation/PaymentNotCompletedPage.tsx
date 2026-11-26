@@ -37,7 +37,7 @@ export function PaymentNotCompletedPage({
 }) {
   const d = displayView(view);
   const askSms = d.smsConsentNeeded === true;
-  const [smsChecked, setSmsChecked] = useState(true);
+  const [smsChecked, setSmsChecked] = useState(false);
   const reserve = onReserve ? () => onReserve(askSms ? smsChecked : null) : undefined;
   const expiry = linkExpiryLabel(d.linkExpiresAt, now ?? new Date());
   const photos = d.vehicle?.photos ?? [];

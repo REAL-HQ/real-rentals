@@ -135,7 +135,7 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
   busy: boolean;
   error?: string | null;
   onSubmit: (v: { signerName: string; adoption: Adoption }) => void;
-  /** Shown only when this signer has no text consent. Pre-checked by the parent. */
+  /** Shown only when this signer has no text consent. The parent starts it unchecked. */
   smsConsent?: { checked: boolean; onChange: (v: boolean) => void } | null;
 }) {
   useSignatureFonts();

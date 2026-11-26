@@ -635,7 +635,7 @@ function AgreementsView() {
   const [name, setName] = useState("");
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [smsChecked, setSmsChecked] = useState(true);
+  const [smsChecked, setSmsChecked] = useState(false);
   // $50 Reservation Fee step after a portal signature: the same Checkout the email links to.
   const [feeStep, setFeeStep] = useState<ReservationFeeSigningStep | null>(null);
   const [feeSms, setFeeSms] = useState<{ needed: boolean; ticket: string | null }>({ needed: false, ticket: null });
@@ -735,7 +735,7 @@ function AgreementsView() {
                             },
                           });
                           setFeeStep((res as any)?.reservationFee ?? null);
-                          setSmsChecked(true);
+                          setSmsChecked(false);
                           setFeeSms({
                             needed: (res as { smsConsentNeeded?: boolean })?.smsConsentNeeded === true,
                             ticket: (res as { smsConsentTicket?: string | null })?.smsConsentTicket ?? null,

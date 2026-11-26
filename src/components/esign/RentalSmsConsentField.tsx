@@ -3,8 +3,8 @@ import { CheckboxInput } from "@/components/ui/checkbox-input";
 
 /**
  * Transactional rental-text opt-in. The label is the exact sentence in
- * RENTAL_SMS_CONSENT_TEXT. The parent starts it checked and hides the field
- * entirely when consent is already on file.
+ * RENTAL_SMS_CONSENT_TEXT. The parent starts it unchecked. The renter has to
+ * tick it. The field is hidden when consent is already on file.
  */
 export function RentalSmsConsentField({
   checked,

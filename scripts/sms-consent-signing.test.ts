@@ -104,7 +104,7 @@ describe("when the checkbox is shown", () => {
     expect(html).not.toContain("signing-sms-consent");
   });
 
-  test("shown and pre-checked when consent is missing", () => {
+  test("shown unchecked when consent is missing", () => {
     expect(smsConsentMissing(false)).toBe(true);
     expect(smsConsentMissing(null)).toBe(true);
     const html = renderToStaticMarkup(createElement(SigningPanel, {
@@ -112,12 +112,17 @@ describe("when the checkbox is shown", () => {
       defaultName: "Ada Lovelace",
       busy: false,
       onSubmit: () => {},
-      smsConsent: { checked: true, onChange: () => {} },
+      smsConsent: { checked: false, onChange: () => {} },
     }));
     expect(shown(html)).toContain(TEXT);
     expect(html).toContain('data-testid="signing-sms-consent"');
-    expect(html).toMatch(/name="rental_sms_consent"[^>]*checked/);
+    expect(html).not.toMatch(/name="rental_sms_consent"[^>]*\schecked(?:=|\s|>)/);
     expect(RENTAL_SMS_CONSENT_TEXT).toBe(TEXT);
+    for (const file of ["src/routes/sign.$token.tsx", "src/routes/portal.tsx", "src/components/reservation/PaymentNotCompletedPage.tsx"]) {
+      const source = readFileSync(file, "utf8");
+      expect(source).toContain("const [smsChecked, setSmsChecked] = useState(false)");
+      expect(source).not.toContain("setSmsChecked(true)");
+    }
   });
 
   test("Reservation Fee page shows the same wording only when still needed", () => {
@@ -130,16 +135,18 @@ describe("when the checkbox is shown", () => {
     expect(plain).not.toMatch(/deposit/i);
     const ask = renderToStaticMarkup(createElement(ReservationFeeNextStep, {
       step: { state: "pay", amount: 50, url: "https://checkout.stripe.com/c/pay/cs_1" },
-      smsConsent: { checked: true, onChange: () => {}, onCommit: async () => {} },
+      smsConsent: { checked: false, onChange: () => {}, onCommit: async () => {} },
     }));
     expect(shown(ask)).toContain(TEXT);
     expect(ask).toContain('data-testid="reservation-fee-sms-consent"');
+    expect(ask).not.toMatch(/name="rental_sms_consent"[^>]*\schecked(?:=|\s|>)/);
     expect(ask).not.toContain("Taking you to secure checkout");
     const page = renderToStaticMarkup(createElement(PaymentNotCompletedPage, {
       view: { ...EMPTY_PNC_VIEW, smsConsentNeeded: true, checkoutUrl: "https://checkout.stripe.com/c/pay/cs_1" },
       onReserve: async () => {},
     }));
     expect(shown(page)).toContain(TEXT);
+    expect(page).not.toMatch(/name="rental_sms_consent"[^>]*\schecked(?:=|\s|>)/);
     expect(page).not.toMatch(/deposit/i);
     const quiet = renderToStaticMarkup(createElement(PaymentNotCompletedPage, { view: EMPTY_PNC_VIEW }));
     expect(quiet).not.toContain(TEXT);
