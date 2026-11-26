@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckboxInput } from "@/components/ui/checkbox-input";
+import { RentalSmsConsentField } from "@/components/esign/RentalSmsConsentField";
 import {
   SIGNATURE_STYLES, SIGNATURE_FONTS_HREF, ackRows, defaultInitials, normalizeInitialsText,
-  type Adoption, type Mark, type SignatureStyle,
+  type Mark, type SignatureStyle, type SigningAdoption,
 } from "@/lib/signature-adoption";
 import { isStructured } from "@/lib/agreement-layout";
 
@@ -127,7 +128,7 @@ function MarkPicker({ kind, text, onAdopt }: { kind: "signature" | "initials"; t
   );
 }
 
-export function SigningPanel({ body, defaultName, companySigner, busy, error, onSubmit, document = false }: {
+export function SigningPanel({ body, defaultName, companySigner, busy, error, onSubmit, document = false, smsConsent = null }: {
   body: string;
   defaultName: string;
   companySigner?: string;
@@ -135,7 +136,9 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
   error?: string | null;
   /** A third-party PDF. The signature is still required; the wording is not a rental agreement. */
   document?: boolean;
-  onSubmit: (v: { signerName: string; adoption: Adoption | { signature: Mark; acks: boolean[] } }) => void;
+  onSubmit: (v: { signerName: string; adoption: SigningAdoption }) => void;
+  /** Rental agreements only, and only when this signer has no text consent. The parent starts it unchecked. */
+  smsConsent?: { checked: boolean; onChange: (v: boolean) => void } | null;
 }) {
   useSignatureFonts();
   const rows = useMemo(() => ackRows(body), [body]);
@@ -227,6 +230,11 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
             {!document && isStructured(body) ? " I initialed each Renter Acknowledgment individually." : null}
           </span>
         </label>
+        {!document && smsConsent ? (
+          <div className="mt-4" data-testid="signing-sms-consent">
+            <RentalSmsConsentField checked={smsConsent.checked} onChange={smsConsent.onChange} />
+          </div>
+        ) : null}
         {companySigner && !document && <p className="mt-3 text-[12px] text-[#8A8A93]">Countersigned by {companySigner}. Your name, date, IP address, browser and signature method are recorded for the audit trail.</p>}
         {document && <p className="mt-3 text-[12px] text-[#8A8A93]">Your name, date, IP address, browser and signature method are recorded for the audit trail.</p>}
         {error && <p className="mt-3 text-[14px] text-[#D03020]">{error}</p>}

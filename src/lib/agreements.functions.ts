@@ -1646,6 +1646,8 @@ export type SigningView = {
   signed_at: string | null;
   driver_name: string | null;
   company_signer_name: string;
+  /** False when this signer already has text consent. The page renders no checkbox then. */
+  sms_consent_needed: boolean;
   expired?: boolean;
   source?: string;
   source_pdf?: SourcePdfClient | null;
@@ -1657,10 +1659,11 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const hash = await hashToken(data.token);
     let recipientName: string | null = null;
+    let signerRecipientId: string | null = null;
     const { data: direct } = await supabaseAdmin
       .from("agreements")
       .select(
-        "id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at,source,metadata",
+        "id,application_id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at,source,metadata",
       )
       .eq("token_hash", hash)
       .maybeSingle();
@@ -1668,7 +1671,7 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
     if (!ag) {
       const { data: recipient } = await supabaseAdmin
         .from("esign_recipients")
-        .select("document_id,name,status,token_revoked_at,token_expires_at")
+        .select("id,document_id,name,status,token_revoked_at,token_expires_at,signing_order")
         .eq("token_hash", hash)
         .eq("role", "signer")
         .maybeSingle();
@@ -1677,15 +1680,16 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
         const { data: expiredDoc } = await supabaseAdmin.from("agreements").select("id,title,status,signer_name,signed_at,merge_data,company_signer_name").eq("id", recipient.document_id).maybeSingle();
         if (!expiredDoc) return null;
         const merge = (expiredDoc.merge_data ?? {}) as MergeData;
-        return { id: expiredDoc.id as string, title: expiredDoc.title as string, body: "", status: expiredDoc.status as string, signer_name: expiredDoc.signer_name as string | null, signed_at: expiredDoc.signed_at as string | null, driver_name: recipient.name ?? merge.driver_name ?? null, company_signer_name: expiredDoc.company_signer_name as string, expired: true };
+        return { id: expiredDoc.id as string, title: expiredDoc.title as string, body: "", status: expiredDoc.status as string, signer_name: expiredDoc.signer_name as string | null, signed_at: expiredDoc.signed_at as string | null, driver_name: recipient.name ?? merge.driver_name ?? null, company_signer_name: expiredDoc.company_signer_name as string, sms_consent_needed: false, expired: true };
       }
       const { data: doc } = await supabaseAdmin
         .from("agreements")
-        .select("id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at,source,metadata")
+        .select("id,application_id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at,source,metadata")
         .eq("id", recipient.document_id)
         .maybeSingle();
       ag = doc;
       recipientName = (recipient.name as string | null) ?? null;
+      signerRecipientId = recipient.id as string;
     }
     if (!ag) return null;
     const merge = (ag.merge_data ?? {}) as MergeData;
@@ -1701,7 +1705,7 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
     };
     if (ag.status === "voided") return null;
     if (ag.token_expires_at && new Date(ag.token_expires_at as string).getTime() < Date.now()) {
-      return { ...base, expired: true };
+      return { ...base, sms_consent_needed: false, expired: true };
     }
     if (ag.status === "sent" && !ag.viewed_at) {
       const now = new Date().toISOString();
@@ -1721,13 +1725,29 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
       const { noteSignerViewed } = await import("@/lib/agreement-resend.server");
       await noteSignerViewed(supabaseAdmin, ag.id as string, hash, new Date().toISOString());
     }
+    const standaloneDoc = (ag as { source?: string }).source === "standalone";
+    let sms_consent_needed = false;
     let source_pdf: SourcePdfClient | null = null;
-    if ((ag as { source?: string }).source === "standalone") {
+    if (standaloneDoc) {
       const { sourcePdfForClient } = await import("@/lib/standalone-doc.server");
       source_pdf = await sourcePdfForClient(supabaseAdmin, ag);
+    } else {
+      sms_consent_needed = true;
+      try {
+        const { resolveSignerConsent } = await import("@/lib/sms-consent-signing.server");
+        const subject = await resolveSignerConsent(supabaseAdmin, {
+          agreementId: ag.id as string,
+          applicationId: (ag.application_id as string | null) ?? null,
+          recipientId: signerRecipientId,
+        });
+        sms_consent_needed = !subject.consented;
+      } catch (e) {
+        console.error("[sms-consent] lookup failed", e);
+      }
     }
     return {
       ...base,
+      sms_consent_needed,
       body: ag.body as string,
       status: ag.status === "sent" ? "viewed" : (ag.status as string),
       source: (ag as { source?: string }).source,
@@ -1872,6 +1892,21 @@ async function sendSignedEmails(
   return portalAccess;
 }
 
+async function signingSmsOffer(
+  admin: any,
+  args: {
+    agreementId: string;
+    applicationId: string | null;
+    recipientId: string | null;
+    consent: boolean | undefined;
+    ip: string | null;
+    userAgent: string | null;
+  },
+) {
+  const { finishSigningSmsConsent } = await import("@/lib/sms-consent-signing.server");
+  return finishSigningSmsConsent(admin, args);
+}
+
 function claimError(result: string): never {
   if (result === "voided") throw new Error("This agreement was cancelled");
   if (result === "expired") throw new Error("This signing link has expired — please ask us to resend it");
@@ -1887,6 +1922,7 @@ export const signAgreement = createServerFn({ method: "POST" })
         signerName: z.string().trim().min(2).max(120),
         agree: z.literal(true),
         adoption: SigningAdoptionSchema.optional(),
+        smsConsent: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -1939,8 +1975,19 @@ export const signAgreement = createServerFn({ method: "POST" })
       adoption: data.adoption ?? null,
       recipientId,
     });
+    if (result !== "partial" && result !== "already_signed" && result !== "won") claimError(result);
+    const sms = standalone
+      ? { smsConsentNeeded: false, smsConsentTicket: null }
+      : await signingSmsOffer(supabaseAdmin, {
+          agreementId: ag.id as string,
+          applicationId: (ag.application_id as string | null) ?? null,
+          recipientId,
+          consent: data.smsConsent,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+        });
     if (result === "partial") {
-      return { ok: true, alreadySigned: false, awaitingOthers: true, portalAccess: false, reservationFee: null };
+      return { ok: true, alreadySigned: false, awaitingOthers: true, portalAccess: false, reservationFee: null, ...sms };
     }
     if (result === "already_signed") {
       if ((ag as { source?: string }).source === "standalone") {
@@ -1953,6 +2000,7 @@ export const signAgreement = createServerFn({ method: "POST" })
         alreadySigned: true,
         portalAccess: await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null),
         reservationFee: await existingReservationFeeStep(supabaseAdmin, ag.id as string),
+        ...sms,
       };
     }
     if (result !== "won") claimError(result);
@@ -1963,7 +2011,7 @@ export const signAgreement = createServerFn({ method: "POST" })
     }
     const out: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null } = {};
     const portalAccess = await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName, out);
-    return { ok: true, alreadySigned: false, portalAccess, reservationFee: out.reservationFee ?? null };
+    return { ok: true, alreadySigned: false, portalAccess, reservationFee: out.reservationFee ?? null, ...sms };
   });
 
 // ------------------------------------------------------------- driver portal
@@ -1981,27 +2029,34 @@ export const getMyAgreements = createServerFn({ method: "GET" })
       sent_at: string | null;
       body: string;
       document_id: string | null;
+      smsConsentNeeded: boolean;
       source?: string;
       source_pdf?: SourcePdfClient | null;
     };
     const { data: apps } = await context.supabase
       .from("applications")
-      .select("id")
+      .select("id,sms_consent")
       .eq("user_id", context.userId);
+    const needed = new Map((apps ?? []).map((a: any) => [a.id as string, a.sms_consent !== true]));
     const ids = (apps ?? []).map((a: any) => a.id);
     if (!ids.length) return [] as Mine[];
     const { data } = await context.supabase
       .from("agreements")
-      .select("id,title,status,signed_at,sent_at,body,document_id,source,metadata,token_expires_at")
+      .select("id,title,status,signed_at,sent_at,body,document_id,application_id,source,metadata,token_expires_at")
       .in("application_id", ids)
       .order("created_at", { ascending: false });
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { sourcePdfForClient } = await import("@/lib/standalone-doc.server");
     const out: Mine[] = [];
-    for (const row of data ?? []) {
-      const source_pdf = (row as { source?: string }).source === "standalone" ? await sourcePdfForClient(supabaseAdmin, row) : null;
-      const { metadata: _metadata, token_expires_at: _exp, ...rest } = row as Record<string, unknown>;
-      out.push({ ...(rest as Omit<Mine, "source_pdf">), source_pdf });
+    for (const row of (data ?? []) as any[]) {
+      const standalone = row.source === "standalone";
+      const source_pdf = standalone ? await sourcePdfForClient(supabaseAdmin, row) : null;
+      const { metadata: _metadata, token_expires_at: _exp, application_id, ...rest } = row;
+      out.push({
+        ...rest,
+        source_pdf,
+        smsConsentNeeded: !standalone && needed.get(application_id) === true,
+      });
     }
     return out;
   });
@@ -2015,6 +2070,7 @@ export const signMyAgreement = createServerFn({ method: "POST" })
         signerName: z.string().trim().min(2).max(120),
         agree: z.literal(true),
         adoption: SigningAdoptionSchema.optional(),
+        smsConsent: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -2064,13 +2120,24 @@ export const signMyAgreement = createServerFn({ method: "POST" })
       adoption: data.adoption ?? null,
       recipientId: (primaryRecipient?.id as string | undefined) ?? null,
     });
+    if (result !== "partial" && result !== "already_signed" && result !== "won") claimError(result);
+    const sms = standalone
+      ? { smsConsentNeeded: false, smsConsentTicket: null }
+      : await signingSmsOffer(supabaseAdmin, {
+          agreementId: data.agreementId,
+          applicationId: own.application_id as string,
+          recipientId: (primaryRecipient?.id as string | undefined) ?? null,
+          consent: data.smsConsent,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+        });
     if (result === "partial") {
-      return { ok: true, alreadySigned: false, awaitingOthers: true, reservationFee: null };
+      return { ok: true, alreadySigned: false, awaitingOthers: true, reservationFee: null, ...sms };
     }
     if (result === "already_signed") {
       if ((own as { source?: string }).source === "standalone") return { ok: true, alreadySigned: true, reservationFee: null };
       const { existingReservationFeeStep } = await import("@/lib/reservation-fee.server");
-      return { ok: true, alreadySigned: true, reservationFee: await existingReservationFeeStep(supabaseAdmin, data.agreementId) };
+      return { ok: true, alreadySigned: true, reservationFee: await existingReservationFeeStep(supabaseAdmin, data.agreementId), ...sms };
     }
     if (result !== "won") claimError(result);
     if ((own as { source?: string }).source === "standalone") {
@@ -2080,7 +2147,7 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     }
     const out: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null } = {};
     await sendSignedEmails(supabaseAdmin, data.agreementId, data.signerName, out);
-    return { ok: true, alreadySigned: false, reservationFee: out.reservationFee ?? null };
+    return { ok: true, alreadySigned: false, reservationFee: out.reservationFee ?? null, ...sms };
   });
 
 /**

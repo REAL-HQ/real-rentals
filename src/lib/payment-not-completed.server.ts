@@ -79,6 +79,7 @@ async function latestStaffTerms(admin: Admin, applicationId: string): Promise<an
 type Verified = {
   view: Extract<PaymentNotCompletedView, { ok: true }>;
   agreementId: string;
+  applicationId: string;
 };
 
 async function verify(admin: Admin, sessionId: unknown, deps: PaymentNotCompletedDeps): Promise<Verified | Extract<PaymentNotCompletedView, { ok: false }>> {
@@ -105,7 +106,7 @@ async function verify(admin: Admin, sessionId: unknown, deps: PaymentNotComplete
   const [payRes, agRes, appRes] = await Promise.all([
     admin.from("payments").select("id,driver_id,reason,notes,status,amount").eq("id", paymentId).maybeSingle(),
     admin.from("agreements").select("id,application_id,status,vehicle_id,metadata").eq("id", agreementId).maybeSingle(),
-    admin.from("applications").select("id,status,vehicle_id,market_id,deleted_at").eq("id", applicationId).maybeSingle(),
+    admin.from("applications").select("id,status,vehicle_id,market_id,deleted_at,sms_consent").eq("id", applicationId).maybeSingle(),
   ]);
   const pay = payRes?.data;
   const ag = agRes?.data;
@@ -120,7 +121,7 @@ async function verify(admin: Admin, sessionId: unknown, deps: PaymentNotComplete
   const now = (deps.now ?? (() => new Date()))();
   const stripePaid = session.payment_status === "paid";
   if (stripePaid || pay.status === "paid") {
-    return { view: { ok: true, alreadyPaid: true, sessionId: stripePaid ? sessionId : null }, agreementId };
+    return { view: { ok: true, alreadyPaid: true, sessionId: stripePaid ? sessionId : null }, agreementId, applicationId };
   }
 
   const terms = await latestStaffTerms(admin, applicationId);
@@ -183,9 +184,26 @@ async function verify(admin: Admin, sessionId: unknown, deps: PaymentNotComplete
       openSlotsThisWeek,
       linkExpiresAt,
       checkoutUrl: pay.status === "pending" ? null : checkoutUrl,
+      smsConsentNeeded: app.sms_consent !== true,
     },
     agreementId,
+    applicationId,
   };
+}
+
+/** The primary renter tied to a Reservation Fee Checkout Session, or null. */
+export async function reservationFeePayer(
+  admin: Admin,
+  sessionId: unknown,
+  deps: PaymentNotCompletedDeps = {},
+): Promise<{ agreementId: string; applicationId: string } | null> {
+  try {
+    const v = await verify(admin, sessionId, deps);
+    if (!("agreementId" in v) || !("applicationId" in v)) return null;
+    return { agreementId: v.agreementId, applicationId: v.applicationId };
+  } catch {
+    return null;
+  }
 }
 
 export async function lookupPaymentNotCompleted(admin: Admin, sessionId: unknown, deps: PaymentNotCompletedDeps = {}): Promise<PaymentNotCompletedView> {

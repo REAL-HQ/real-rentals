@@ -34,6 +34,7 @@ import {
   type RentalBilling,
 } from "@/lib/rental-payments.functions";
 import { getMyAgreements, signMyAgreement, getAgreementPdf } from "@/lib/agreements.functions";
+import { recordReservationFeeSmsConsent } from "@/lib/sms-consent-signing.functions";
 import { ReservationFeeNextStep } from "@/components/esign/ReservationFeeNextStep";
 import type { ReservationFeeSigningStep } from "@/lib/reservation-fee";
 import { portalAgreementState, portalAgreementStatusLabel } from "@/lib/portal-agreement-state";
@@ -625,6 +626,7 @@ function DocumentsView() {
 function AgreementsView() {
   const fetchAgreements = usePortalRead(getMyAgreements);
   const sign = usePortalWrite(signMyAgreement);
+  const recordFeeConsent = useServerFn(recordReservationFeeSmsConsent);
   const getPdf = useServerFn(getAgreementPdf);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-agreements"],
@@ -634,14 +636,25 @@ function AgreementsView() {
   const [name, setName] = useState("");
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [smsChecked, setSmsChecked] = useState(false);
   // $50 Reservation Fee step after a portal signature: the same Checkout the email links to.
   const [feeStep, setFeeStep] = useState<ReservationFeeSigningStep | null>(null);
+  const [feeSms, setFeeSms] = useState<{ needed: boolean; ticket: string | null }>({ needed: false, ticket: null });
 
   if (isLoading) return null;
   const feeCard = feeStep ? (
     <div className="rounded-2xl border border-border bg-white p-5">
       <h3 className="font-semibold">Agreement Signed</h3>
-      <ReservationFeeNextStep step={feeStep} />
+      <ReservationFeeNextStep
+        step={feeStep}
+        smsConsent={feeSms.needed && feeSms.ticket ? {
+          checked: smsChecked,
+          onChange: setSmsChecked,
+          onCommit: async (checked) => {
+            await recordFeeConsent({ data: { ticket: feeSms.ticket as string, consent: checked } });
+          },
+        } : null}
+      />
     </div>
   ) : null;
   // Drafts are not issued agreements and never reach the driver. Voided rows
@@ -714,11 +727,25 @@ function AgreementsView() {
                       defaultName={name}
                       busy={busy}
                       document={a.source === "standalone"}
+                      smsConsent={a.source !== "standalone" && a.smsConsentNeeded ? { checked: smsChecked, onChange: setSmsChecked } : null}
                       onSubmit={async (v) => {
                         setBusy(true);
                         try {
-                          const res = await sign({ data: { agreementId: a.id, signerName: v.signerName, agree: true, adoption: v.adoption } });
+                          const res = await sign({
+                            data: {
+                              agreementId: a.id,
+                              signerName: v.signerName,
+                              agree: true,
+                              adoption: v.adoption,
+                              ...(a.source !== "standalone" && a.smsConsentNeeded ? { smsConsent: smsChecked } : {}),
+                            },
+                          });
                           setFeeStep((res as any)?.reservationFee ?? null);
+                          setSmsChecked(false);
+                          setFeeSms({
+                            needed: (res as { smsConsentNeeded?: boolean })?.smsConsentNeeded === true,
+                            ticket: (res as { smsConsentTicket?: string | null })?.smsConsentTicket ?? null,
+                          });
                           toast.success(a.source === "standalone" ? "Document signed" : "Agreement signed");
                           setOpenId(null);
                           await refetch();
