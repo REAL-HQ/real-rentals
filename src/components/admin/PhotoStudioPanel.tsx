@@ -8,6 +8,10 @@ import { listStudioMedia, setOriginalPhotoClass } from "@/lib/photo-studio-media
 import { generateMarketingShots, getPhotoStudioStatus, reviewMarketingShot, setCarMarketingPublished } from "@/lib/photo-studio.functions";
 import { SHOT_SLOTS, SLOT_LABELS, carSetStatus, type PhotoClass, type ShotSlot } from "@/lib/photo-studio";
 import { PhotoClassLabel, PhotoClassSelect } from "./PhotoClassSelect";
+import { AutoLabelPhotos } from "./AutoLabelPhotos";
+import { PhotoStudioFleet } from "./PhotoStudioFleet";
+import { approveAndPublishStudio } from "@/lib/photo-studio-fleet.functions";
+import { carReadyToPublish } from "@/lib/photo-studio-fleet";
 import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 type Media = Awaited<ReturnType<typeof listStudioMedia>>["items"][number];
@@ -21,6 +25,7 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
   const review = useServerFn(reviewMarketingShot);
   const publish = useServerFn(setCarMarketingPublished);
   const setClass = useServerFn(setOriginalPhotoClass);
+  const approvePublish = useServerFn(approveAndPublishStudio);
   const [items, setItems] = useState<Media[]>([]);
   const [classAvailable, setClassAvailable] = useState(true);
   const [st, setSt] = useState<Awaited<ReturnType<typeof getPhotoStudioStatus>> | null>(null);
@@ -77,7 +82,25 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
     if (!r.ok) toast.error(r.error); await load();
   };
 
+  const ready = carReadyToPublish(shots.map((s: any) => ({
+    slot: s.shot_slot ?? null, status: s.studio_review_status ?? null, published: !!s.published, check: s.studio_check ?? null,
+  })));
+  const approveThis = async () => {
+    if (!window.confirm("Approve and publish this set? Only shots that passed the identity check are included.")) return;
+    setBusy(true);
+    try {
+      const r = await approvePublish({ data: { vehicleId } });
+      if (!r.ok) toast.error(r.error);
+      else toast.success("Approved and published.");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error && e.message === "Forbidden" ? "Publishing is Owner-only." : "Could not publish.");
+    } finally { setBusy(false); }
+  };
+
   return (
+    <>
+    <PhotoStudioFleet onChanged={() => void load()} />
     <SectionCard title="Marketing Photos (AI Studio)">
       {!st?.enabled && <p className="text-sm text-muted-foreground">Photo Studio is off. The Owner can turn it on in Settings.</p>}
       {st?.enabled && !st.configured && <p className="text-sm text-amber-700">The image provider is not configured yet.</p>}
@@ -86,6 +109,9 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
         <Badge variant={setStatus === "approved" ? "default" : "secondary"}>Set: {formatStatusLabel(setStatus)}</Badge>
         {published && <Badge>On website</Badge>}
         {canEdit && <Button size="sm" disabled={busy || !st?.enabled || originals.length === 0} onClick={() => run()}>{shots.length ? "Regenerate All" : "Generate Shots"}</Button>}
+        {st?.canPublish && ready && !published && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => void approveThis()}>Approve & Publish</Button>
+        )}
         {st?.canPublish && setStatus === "approved" && (
           <Button size="sm" variant="outline" onClick={async () => { const r = await publish({ data: { vehicleId, published: !published } }); if (!r.ok) toast.error(r.error); await load(); }}>
             {published ? "Take Off Website" : "Publish To Website"}
@@ -118,7 +144,10 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
         })}
       </div>
       <div className="mt-4">
-        <MicroLabel>Originals (Team Only)</MicroLabel>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <MicroLabel>Originals (Team Only)</MicroLabel>
+          {canEdit && classAvailable && <AutoLabelPhotos vehicleId={vehicleId} onDone={() => void load()} />}
+        </div>
         {originals.length === 0 ? <EmptyState title="No Originals Yet" hint="Car photos linked in Fleet Inbox appear here." /> : (
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mt-1">
             {originals.map((o: any) => (
@@ -137,5 +166,6 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
         )}
       </div>
     </SectionCard>
+    </>
   );
 }
