@@ -203,7 +203,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const REFUND_SKIP = new Set(["pending", "failed", "canceled", "cancelled"]);
 const COLLECTED = new Set(["paid", "refunded"]);
 const REVENUE_TYPES = new Set(["rent", "late_fee", "other", "toll", "damage", "fee", "reservation"]);
-const STRIPE_METHODS = new Set(["stripe", "card", "credit", "credit_card", "debit", "debit_card", "visa", "mastercard", "amex", "american_express", "apple_pay"]);
+const STRIPE_METHODS = new Set(["stripe", "card", "credit", "credit_card", "debit", "debit_card", "visa", "mastercard", "amex", "american_express", "apple_pay", "link", "ach"]);
 const RECORDED_SOURCES: Record<string, OwnerIncomeSource> = {
   cash_app: "cash_app",
   cashapp: "cash_app",
@@ -227,10 +227,14 @@ function referenceText(value: string | null | undefined): string {
 
 export function paymentSource(payment: OwnerPaymentLink): OwnerIncomeSource {
   const method = normalizeMethod(payment.paymentMethod);
+  const stripeRef = !!(referenceText(payment.paymentIntentId) || referenceText(payment.invoiceId));
+  // Staff Cash App has no Stripe id. Stripe's own Cash App charge does, and
+  // stays with that charge so the same dollars are not also recorded income.
+  if (method === "cash_app" && stripeRef) return "stripe";
   const named = RECORDED_SOURCES[method];
   if (named) return named;
   if (STRIPE_METHODS.has(method)) return "stripe";
-  if (!method && (referenceText(payment.paymentIntentId) || referenceText(payment.invoiceId))) return "stripe";
+  if (stripeRef) return "stripe";
   return "other";
 }
 
