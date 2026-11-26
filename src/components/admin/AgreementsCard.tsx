@@ -23,6 +23,8 @@ import { AgreementPdfViewer } from "./AgreementPdfViewer";
 import { AgreementViewerDialog } from "./AgreementViewerDialog";
 import { PrepareAgreementDialog } from "./PrepareAgreementDialog";
 import { formatStatusLabel } from "@/lib/ui-display-labels";
+import { SEND_DOCUMENT_FOR_SIGNATURE_ENABLED } from "@/lib/send-document-flag";
+import { SendDocumentDialog } from "./SendDocumentDialog";
 
 const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
 const chTone = (v: string) =>
@@ -51,7 +53,7 @@ type PreviewRes = {
   generatedAt: string;
 };
 
-export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: { applicationId: string; onOpenTab?: (tab: string) => void; applicationStatus?: string | null }) {
+export function AgreementsCard({ applicationId, onOpenTab, applicationStatus, renterName = null, renterEmail = null }: { applicationId: string; onOpenTab?: (tab: string) => void; applicationStatus?: string | null; renterName?: string | null; renterEmail?: string | null }) {
   const beforeApproval = applicationStatus != null && !["approved", "active"].includes(String(applicationStatus).toLowerCase());
   const load = useServerFn(listAgreements);
   const doPreview = useServerFn(previewAgreement);
@@ -74,6 +76,7 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
   const [resendFor, setResendFor] = useState<AgreementRow | null>(null);
   const [resendWho, setResendWho] = useState("all");
   const [emailOnly, setEmailOnly] = useState(false);
+  const [docOpen, setDocOpen] = useState(false);
 
   function reportDelivery(d: { email: string; sms: string; delivered: boolean } | undefined, okMsg: string) {
     if (!d) return toast.success(okMsg);
@@ -160,17 +163,45 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
       padded={false}
       title="Rental Agreement"
       right={
-        <button
-          onClick={() => setPrepOpen(true)}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#D03020] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
-        >
-          {busy && !preview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSignature className="w-3.5 h-3.5" />}
-          Prepare Agreement
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {SEND_DOCUMENT_FOR_SIGNATURE_ENABLED ? (
+            <button
+              type="button"
+              onClick={() => setDocOpen(true)}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E6E6EA] bg-white text-[#28282E] text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Send Document For Signature
+            </button>
+          ) : null}
+          <button
+            onClick={() => setPrepOpen(true)}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#D03020] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
+          >
+            {busy && !preview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSignature className="w-3.5 h-3.5" />}
+            Prepare Agreement
+          </button>
+        </div>
       }
     >
       {viewing && <AgreementViewerDialog agreementId={viewing.id} title={viewing.title} onClose={() => setViewing(null)} />}
+      {docOpen && SEND_DOCUMENT_FOR_SIGNATURE_ENABLED ? (
+        <SendDocumentDialog
+          applicationId={applicationId}
+          renterName={renterName}
+          renterEmail={renterEmail}
+          onClose={() => setDocOpen(false)}
+          onSent={(res) => {
+            if (res.fallback && res.fallbackReason) toast.message(res.fallbackReason);
+            reportDelivery(res.delivery, "Document sent for signature");
+            if (res.url) setLinks((l) => ({ ...l, [res.id]: res.url }));
+            setDocOpen(false);
+            void refresh();
+          }}
+        />
+      ) : null}
       {resendFor ? (
         <ModalShell onClose={() => setResendFor(null)} size="sm" label="Resend Signing Link">
           <ModalHeader title="Resend Signing Link" subtitle="Each signer gets their own link." onClose={() => setResendFor(null)} />
@@ -357,6 +388,9 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] font-medium text-[#111114] truncate">{a.title}</span>
+                    {a.source === "standalone" ? (
+                      <span className="text-[10.5px] font-semibold rounded-full border border-[#E6E6EA] bg-[#FAFAFB] text-[#55555E] px-2 py-0.5">Uploaded Document</span>
+                    ) : null}
                     <span className={`text-[10.5px] font-semibold tracking-wide rounded-full border px-2 py-0.5 ${toneFor(a.status)}`}>
                       {formatStatusLabel(a.status)}
                     </span>

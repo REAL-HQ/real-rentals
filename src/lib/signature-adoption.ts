@@ -53,6 +53,18 @@ export const AdoptionSchema = z.object({
 });
 export type Adoption = z.infer<typeof AdoptionSchema>;
 
+/**
+ * Same evidence as a rental signature, except initials may be omitted.
+ * A standalone PDF has no initials boxes, so the renter is not asked for them.
+ * Rental handlers still require initials before they call adoptionProblems.
+ */
+export const SigningAdoptionSchema = z.object({
+  signature: MarkSchema,
+  initials: MarkSchema.transform((m) => normalizeInitialsMark(m)).optional(),
+  acks: z.array(z.boolean()).max(60),
+});
+export type SigningAdoption = z.infer<typeof SigningAdoptionSchema>;
+
 export function ackRows(body: string): string[] {
   if (!isStructured(body)) return [];
   const out: string[] = [];

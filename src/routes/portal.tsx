@@ -3,6 +3,7 @@ import { chargeTypeLabel, enumDisplayLabel, formatStatusLabel } from "@/lib/ui-d
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { initialPortalTab, rememberPayIntent, wantsPay } from "@/lib/portal-pay-link";
 import { SigningPanel } from "@/components/esign/SigningPanel";
+import { StandaloneDocumentView } from "@/components/esign/StandaloneDocumentView";
 import { layoutToText } from "@/lib/agreement-layout";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -699,21 +700,26 @@ function AgreementsView() {
 
             {openId === a.id && (a.state === "signed" || a.state === "awaiting_signature") ? (
               <div className="mt-3 rounded-xl border border-border bg-muted/30 p-4">
-                <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">
-                  {layoutToText(a.body)}
-                </pre>
+                {a.source === "standalone" && a.source_pdf ? (
+                  <StandaloneDocumentView source={a.source_pdf} />
+                ) : (
+                  <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">
+                    {layoutToText(a.body)}
+                  </pre>
+                )}
                 {a.state === "awaiting_signature" ? (
                   <div className="mt-4">
                     <SigningPanel
                       body={a.body}
                       defaultName={name}
                       busy={busy}
+                      document={a.source === "standalone"}
                       onSubmit={async (v) => {
                         setBusy(true);
                         try {
                           const res = await sign({ data: { agreementId: a.id, signerName: v.signerName, agree: true, adoption: v.adoption } });
                           setFeeStep((res as any)?.reservationFee ?? null);
-                          toast.success("Agreement signed");
+                          toast.success(a.source === "standalone" ? "Document signed" : "Agreement signed");
                           setOpenId(null);
                           await refetch();
                         } catch (e: any) {

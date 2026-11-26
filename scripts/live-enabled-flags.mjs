@@ -11,8 +11,10 @@
 // ROADSIDE_SMS_ALERTS_ENABLED is not here either. It does not exist on
 // 7e3e6eb. It exists only on RC12, in driver-issue-alert.server.ts.
 
-// Literal `true` under src/ on 7e3e6eb. The only `*_ENABLED = true`.
-export const LIVE_TRUE_FLAGS = ["STRIPE_COLLECTIONS_ENABLED"];
+// Literal `true` under src/. STRIPE_COLLECTIONS_ENABLED was the only one on
+// 7e3e6eb. SEND_DOCUMENT_FOR_SIGNATURE_ENABLED was turned on when the Owner
+// approved third-party PDF signing for live use.
+export const LIVE_TRUE_FLAGS = ["SEND_DOCUMENT_FOR_SIGNATURE_ENABLED", "STRIPE_COLLECTIONS_ENABLED"];
 
 // Env-gated on 7e3e6eb. Production may already have these set to "true".
 export const LIVE_ENV_GATED_FLAGS = [

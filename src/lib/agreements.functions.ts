@@ -15,8 +15,10 @@ import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, DEFAULT_LIBRARY_KEY,
 import { applyPrep, PrepSchema, type AgreementDetails, type AgreementPrep } from "@/lib/agreement-prep";
 import { recordFillsFromDetails, type AppliedFill } from "@/lib/agreement-fills";
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
-import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
+import { SigningAdoptionSchema, adoptionProblems, type Adoption } from "@/lib/signature-adoption";
 import { publicAppOrigin } from "@/lib/public-app-url";
+import { SEND_DOCUMENT_FOR_SIGNATURE_ENABLED } from "@/lib/send-document-flag";
+import { StandaloneFieldSchema, refuseStandaloneLink, standaloneSignatureProblems, type SourcePdfClient } from "@/lib/standalone-doc";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -49,6 +51,7 @@ export type AgreementRow = {
   sms_error: string | null;
   company_signer_name: string | null;
   company_signer_title: string | null;
+  source?: string;
   timeline: { at: string; label: string }[];
   signers: { id: string; name: string | null; email: string | null; role: string; status: string; signing_order: number; signed_at: string | null }[];
 };
@@ -929,7 +932,7 @@ export const listAgreements = createServerFn({ method: "GET" })
     const { data: rows } = await supabaseAdmin
       .from("agreements")
       .select(
-        "id,application_id,vehicle_id,title,body,status,sent_at,viewed_at,signed_at,voided_at,signer_name,signer_email,created_at,document_id,archive_status,archive_error,sha256,email_status,email_error,sms_status,sms_error,company_signer_name,company_signer_title",
+        "id,application_id,vehicle_id,title,body,status,source,sent_at,viewed_at,signed_at,voided_at,signer_name,signer_email,created_at,document_id,archive_status,archive_error,sha256,email_status,email_error,sms_status,sms_error,company_signer_name,company_signer_title",
       )
       .eq("application_id", data.applicationId)
       .order("created_at", { ascending: false });
@@ -1558,6 +1561,32 @@ export const getAgreementPdf = createServerFn({ method: "POST" })
     };
   });
 
+/**
+ * Staff sends an uploaded PDF for the renter to sign. The same Manager
+ * check as sendAgreement. The flag is still read first so turning the
+ * constant off stops the upload before any read.
+ */
+export const sendStandaloneDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({
+      applicationId: z.string().uuid(),
+      title: z.string().trim().min(1).max(160),
+      pdfBase64: z.string().min(20).max(28_000_000),
+      fields: z.array(StandaloneFieldSchema).max(30),
+      insurerEmail: z.string().trim().min(3).max(254),
+      cc: z.array(z.string().trim().max(254)).max(8).optional(),
+      copyRenter: z.boolean().optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    if (!SEND_DOCUMENT_FOR_SIGNATURE_ENABLED) throw new Error("Send Document For Signature is turned off.");
+    const actor = await requireTierFor(context.userId, "manager");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { createStandaloneDocument } = await import("@/lib/standalone-doc.server");
+    return createStandaloneDocument(supabaseAdmin, { ...data, actor });
+  });
+
 // ------------------------------------------------------------- public signing
 
 export type SigningView = {
@@ -1570,6 +1599,8 @@ export type SigningView = {
   driver_name: string | null;
   company_signer_name: string;
   expired?: boolean;
+  source?: string;
+  source_pdf?: SourcePdfClient | null;
 } | null;
 
 export const getAgreementByToken = createServerFn({ method: "POST" })
@@ -1581,7 +1612,7 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
     const { data: direct } = await supabaseAdmin
       .from("agreements")
       .select(
-        "id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at",
+        "id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at,source,metadata",
       )
       .eq("token_hash", hash)
       .maybeSingle();
@@ -1602,7 +1633,7 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
       }
       const { data: doc } = await supabaseAdmin
         .from("agreements")
-        .select("id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at")
+        .select("id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at,source,metadata")
         .eq("id", recipient.document_id)
         .maybeSingle();
       ag = doc;
@@ -1642,10 +1673,17 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
       const { noteSignerViewed } = await import("@/lib/agreement-resend.server");
       await noteSignerViewed(supabaseAdmin, ag.id as string, hash, new Date().toISOString());
     }
+    let source_pdf: SourcePdfClient | null = null;
+    if ((ag as { source?: string }).source === "standalone") {
+      const { sourcePdfForClient } = await import("@/lib/standalone-doc.server");
+      source_pdf = await sourcePdfForClient(supabaseAdmin, ag);
+    }
     return {
       ...base,
       body: ag.body as string,
       status: ag.status === "sent" ? "viewed" : (ag.status as string),
+      source: (ag as { source?: string }).source,
+      source_pdf,
     };
   });
 
@@ -1669,10 +1707,11 @@ async function sendSignedEmails(
 ): Promise<boolean> {
   const { data: ag } = await admin
     .from("agreements")
-    .select("application_id,signer_email,merge_data,metadata")
+    .select("application_id,signer_email,merge_data,metadata,source")
     .eq("id", id)
     .maybeSingle();
   if (!ag) return false;
+  if ((ag as { source?: string }).source === "standalone") return false;
   const merge = (ag.merge_data ?? {}) as MergeData;
   // An updated agreement for an active rental (rental-amendment.server.ts):
   // no Reservation Fee and no first-week payment link. The renter's email
@@ -1799,7 +1838,7 @@ export const signAgreement = createServerFn({ method: "POST" })
         token: z.string().min(20).max(200),
         signerName: z.string().trim().min(2).max(120),
         agree: z.literal(true),
-        adoption: AdoptionSchema.optional(),
+        adoption: SigningAdoptionSchema.optional(),
       })
       .parse(d),
   )
@@ -1809,7 +1848,7 @@ export const signAgreement = createServerFn({ method: "POST" })
     const hash = await hashToken(data.token);
     const { data: byAgreement } = await supabaseAdmin
       .from("agreements")
-      .select("id,application_id,body")
+      .select("id,application_id,body,source,status,token_expires_at")
       .eq("token_hash", hash)
       .maybeSingle();
     let ag = byAgreement;
@@ -1823,7 +1862,7 @@ export const signAgreement = createServerFn({ method: "POST" })
         .maybeSingle();
       if (!recipient || recipient.token_revoked_at || recipient.status === "signed") throw new Error("This signing link is no longer valid");
       if (recipient.token_expires_at && new Date(recipient.token_expires_at as string).getTime() < Date.now()) throw new Error("This signing link has expired — please ask us to resend it");
-      const { data: doc } = await supabaseAdmin.from("agreements").select("id,application_id,body,status").eq("id", recipient.document_id).maybeSingle();
+      const { data: doc } = await supabaseAdmin.from("agreements").select("id,application_id,body,status,source,token_expires_at").eq("id", recipient.document_id).maybeSingle();
       if (!doc || doc.status === "voided" || doc.status === "signed") throw new Error("This signing link is no longer valid");
       ag = doc;
       recipientId = recipient.id as string;
@@ -1832,7 +1871,14 @@ export const signAgreement = createServerFn({ method: "POST" })
       recipientId = (recipient?.id as string | undefined) ?? null;
     }
     if (!ag) throw new Error("This signing link is no longer valid");
-    const problems = adoptionProblems(ag.body as string, data.adoption, data.signerName);
+    const standalone = (ag as { source?: string }).source === "standalone";
+    if (standalone) refuseStandaloneLink(ag as { status?: string | null; token_expires_at?: string | null });
+    if (!standalone && data.adoption && !data.adoption.initials) {
+      throw new Error("Adopt a signature and initials, and initial each acknowledgment.");
+    }
+    const problems = standalone
+      ? standaloneSignatureProblems(data.adoption, data.signerName)
+      : adoptionProblems(ag.body as string, data.adoption as Adoption | undefined, data.signerName);
     if (problems.length) throw new Error(problems[0]);
     const meta = requestMeta(getRequest());
     const { result } = await completeSigning(supabaseAdmin, {
@@ -1849,6 +1895,9 @@ export const signAgreement = createServerFn({ method: "POST" })
       return { ok: true, alreadySigned: false, awaitingOthers: true, portalAccess: false, reservationFee: null };
     }
     if (result === "already_signed") {
+      if ((ag as { source?: string }).source === "standalone") {
+        return { ok: true, alreadySigned: true, portalAccess: false, reservationFee: null };
+      }
       // Read-only: the open Checkout from the first signing, never a new one.
       const { existingReservationFeeStep } = await import("@/lib/reservation-fee.server");
       return {
@@ -1859,6 +1908,11 @@ export const signAgreement = createServerFn({ method: "POST" })
       };
     }
     if (result !== "won") claimError(result);
+    if ((ag as { source?: string }).source === "standalone") {
+      const { deliverSignedStandalone } = await import("@/lib/standalone-doc.server");
+      await deliverSignedStandalone(supabaseAdmin, ag.id as string);
+      return { ok: true, alreadySigned: false, portalAccess: false, reservationFee: null };
+    }
     const out: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null } = {};
     const portalAccess = await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName, out);
     return { ok: true, alreadySigned: false, portalAccess, reservationFee: out.reservationFee ?? null };
@@ -1879,6 +1933,8 @@ export const getMyAgreements = createServerFn({ method: "GET" })
       sent_at: string | null;
       body: string;
       document_id: string | null;
+      source?: string;
+      source_pdf?: SourcePdfClient | null;
     };
     const { data: apps } = await context.supabase
       .from("applications")
@@ -1888,10 +1944,18 @@ export const getMyAgreements = createServerFn({ method: "GET" })
     if (!ids.length) return [] as Mine[];
     const { data } = await context.supabase
       .from("agreements")
-      .select("id,title,status,signed_at,sent_at,body,document_id")
+      .select("id,title,status,signed_at,sent_at,body,document_id,source,metadata,token_expires_at")
       .in("application_id", ids)
       .order("created_at", { ascending: false });
-    return (data ?? []) as Mine[];
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { sourcePdfForClient } = await import("@/lib/standalone-doc.server");
+    const out: Mine[] = [];
+    for (const row of data ?? []) {
+      const source_pdf = (row as { source?: string }).source === "standalone" ? await sourcePdfForClient(supabaseAdmin, row) : null;
+      const { metadata: _metadata, token_expires_at: _exp, ...rest } = row as Record<string, unknown>;
+      out.push({ ...(rest as Omit<Mine, "source_pdf">), source_pdf });
+    }
+    return out;
   });
 
 export const signMyAgreement = createServerFn({ method: "POST" })
@@ -1902,7 +1966,7 @@ export const signMyAgreement = createServerFn({ method: "POST" })
         agreementId: z.string().uuid(),
         signerName: z.string().trim().min(2).max(120),
         agree: z.literal(true),
-        adoption: AdoptionSchema.optional(),
+        adoption: SigningAdoptionSchema.optional(),
       })
       .parse(d),
   )
@@ -1912,11 +1976,18 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     // to someone else simply isn't found. The emailed link is left intact.
     const { data: own } = await context.supabase
       .from("agreements")
-      .select("id,status,application_id,body")
+      .select("id,status,application_id,body,source,token_expires_at")
       .eq("id", data.agreementId)
       .maybeSingle();
     if (!own) throw new Error("Agreement not found");
-    const problems = adoptionProblems(own.body as string, data.adoption, data.signerName);
+    const standalone = (own as { source?: string }).source === "standalone";
+    if (standalone) refuseStandaloneLink(own as { status?: string | null; token_expires_at?: string | null });
+    if (!standalone && data.adoption && !data.adoption.initials) {
+      throw new Error("Adopt a signature and initials, and initial each acknowledgment.");
+    }
+    const problems = standalone
+      ? standaloneSignatureProblems(data.adoption, data.signerName)
+      : adoptionProblems(own.body as string, data.adoption as Adoption | undefined, data.signerName);
     if (problems.length) throw new Error(problems[0]);
     const { data: mine } = await context.supabase
       .from("applications")
@@ -1949,10 +2020,16 @@ export const signMyAgreement = createServerFn({ method: "POST" })
       return { ok: true, alreadySigned: false, awaitingOthers: true, reservationFee: null };
     }
     if (result === "already_signed") {
+      if ((own as { source?: string }).source === "standalone") return { ok: true, alreadySigned: true, reservationFee: null };
       const { existingReservationFeeStep } = await import("@/lib/reservation-fee.server");
       return { ok: true, alreadySigned: true, reservationFee: await existingReservationFeeStep(supabaseAdmin, data.agreementId) };
     }
     if (result !== "won") claimError(result);
+    if ((own as { source?: string }).source === "standalone") {
+      const { deliverSignedStandalone } = await import("@/lib/standalone-doc.server");
+      await deliverSignedStandalone(supabaseAdmin, data.agreementId);
+      return { ok: true, alreadySigned: false, reservationFee: null };
+    }
     const out: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null } = {};
     await sendSignedEmails(supabaseAdmin, data.agreementId, data.signerName, out);
     return { ok: true, alreadySigned: false, reservationFee: out.reservationFee ?? null };

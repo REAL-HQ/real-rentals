@@ -127,13 +127,15 @@ function MarkPicker({ kind, text, onAdopt }: { kind: "signature" | "initials"; t
   );
 }
 
-export function SigningPanel({ body, defaultName, companySigner, busy, error, onSubmit }: {
+export function SigningPanel({ body, defaultName, companySigner, busy, error, onSubmit, document = false }: {
   body: string;
   defaultName: string;
   companySigner?: string;
   busy: boolean;
   error?: string | null;
-  onSubmit: (v: { signerName: string; adoption: Adoption }) => void;
+  /** A third-party PDF. The signature is still required; the wording is not a rental agreement. */
+  document?: boolean;
+  onSubmit: (v: { signerName: string; adoption: Adoption | { signature: Mark; acks: boolean[] } }) => void;
 }) {
   useSignatureFonts();
   const rows = useMemo(() => ackRows(body), [body]);
@@ -148,7 +150,8 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
   const nameOk = name.trim().split(/\s+/).length >= 2;
   const sigMatches = !sig || sig.method !== "typed" || sig.text.toLowerCase() === name.trim().toLowerCase();
   const allAcks = acks.every(Boolean);
-  const ready = nameOk && !!sig && sigMatches && !!ini && allAcks && agree && !busy;
+  const initialsOk = document || !!ini;
+  const ready = nameOk && !!sig && sigMatches && initialsOk && allAcks && agree && !busy;
   const left = acks.filter((a) => !a).length;
 
   const card = "rounded-xl border border-[#EDEDF0] bg-white p-5 sm:p-6";
@@ -175,7 +178,7 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
         {!sigMatches && <p className="mt-2 text-[13px] text-[#D03020]">Your typed signature must match your legal name. Adopt it again.</p>}
       </section>
 
-      <section className={card}>
+      {document ? null : <section className={card}>
         <h2 className={h2}>3. Adopt Your Initials</h2>
         {ini ? (
           <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-[#CDEFD6] bg-[#F4FBF5] px-4 py-3">
@@ -192,9 +195,9 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
             <MarkPicker kind="initials" text={initialsText} onAdopt={setIni} />
           </div>
         )}
-      </section>
+      </section>}
 
-      {rows.length > 0 && (
+      {!document && rows.length > 0 && (
         <section className={card}>
           <h2 className={h2}>4. Initial Each Acknowledgment</h2>
           <p className="mt-1 text-[13px] text-[#55555E]">Read each statement and tap Initial to confirm it. {ini ? (left ? `${left} remaining.` : "All initialed.") : "Adopt your initials first."}</p>
@@ -214,24 +217,33 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
       )}
 
       <section className={card}>
-        <h2 className={h2}>{rows.length ? "5" : "4"}. Sign</h2>
+        <h2 className={h2}>{document ? "3" : rows.length ? "5" : "4"}. Sign</h2>
         <label className="mt-3 flex cursor-pointer items-start gap-3 text-[14px] text-[#28282E]">
           <CheckboxInput checked={agree} onChange={(e) => setAgree(e.target.checked)} boxClassName="mt-0.5" />
           <span>
-            I have read and agree to this rental agreement. I adopt the signature and initials shown above as my legal electronic signature and initials, equivalent to handwritten ones.
-            {isStructured(body) ? " I initialed each Renter Acknowledgment individually." : null}
+            {document
+              ? "I have reviewed this document. I adopt the signature shown above as my legal electronic signature, equivalent to a handwritten one."
+              : "I have read and agree to this rental agreement. I adopt the signature and initials shown above as my legal electronic signature and initials, equivalent to handwritten ones."}
+            {!document && isStructured(body) ? " I initialed each Renter Acknowledgment individually." : null}
           </span>
         </label>
-        {companySigner && <p className="mt-3 text-[12px] text-[#8A8A93]">Countersigned by {companySigner}. Your name, date, IP address, browser and signature method are recorded for the audit trail.</p>}
+        {companySigner && !document && <p className="mt-3 text-[12px] text-[#8A8A93]">Countersigned by {companySigner}. Your name, date, IP address, browser and signature method are recorded for the audit trail.</p>}
+        {document && <p className="mt-3 text-[12px] text-[#8A8A93]">Your name, date, IP address, browser and signature method are recorded for the audit trail.</p>}
         {error && <p className="mt-3 text-[14px] text-[#D03020]">{error}</p>}
         <button type="button" disabled={!ready}
-          onClick={() => sig && ini && onSubmit({ signerName: name.trim(), adoption: { signature: sig, initials: ini, acks } })}
+          onClick={() => {
+            if (!sig || (!document && !ini)) return;
+            onSubmit({
+              signerName: name.trim(),
+              adoption: document ? { signature: sig, acks: [] } : { signature: sig, initials: ini!, acks },
+            });
+          }}
           className="mt-4 min-h-12 w-full rounded-lg bg-[#D03020] px-6 text-[16px] font-semibold text-white disabled:opacity-40 sm:w-auto">
-          {busy ? "Signing…" : "Sign Agreement"}
+          {busy ? "Signing…" : document ? "Sign Document" : "Sign Agreement"}
         </button>
         {!ready && !busy && (
           <p className="mt-2 text-[12px] text-[#77777F]">
-            {!nameOk ? "Enter your full legal name." : !sig ? "Adopt your signature." : !ini ? "Adopt your initials." : !allAcks ? `Initial the remaining ${left} acknowledgment${left > 1 ? "s" : ""}.` : !agree ? "Check the consent box." : ""}
+            {!nameOk ? "Enter your full legal name." : !sig ? "Adopt your signature." : !initialsOk ? "Adopt your initials." : !allAcks ? `Initial the remaining ${left} acknowledgment${left > 1 ? "s" : ""}.` : !agree ? "Check the consent box." : ""}
           </p>
         )}
       </section>

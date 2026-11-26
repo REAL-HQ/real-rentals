@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit.server";
 import type { Actor } from "@/lib/roles.server";
 import { renderCompletedPdf, sha256Hex } from "@/lib/esign-pdf.server";
 import { signingClosesDocument } from "@/lib/additional-drivers";
+import { voidReleasesReservation } from "@/lib/standalone-doc";
 
 export type ClaimResult = "won" | "partial" | "already_signed" | "in_progress" | "voided" | "expired" | "invalid";
 
@@ -27,7 +28,7 @@ type SigningArgs = {
   ip: string | null;
   userAgent: string | null;
   authMethod: "email_link" | "portal";
-  adoption?: import("@/lib/signature-adoption").Adoption | null;
+  adoption?: import("@/lib/signature-adoption").SigningAdoption | null;
   recipientId?: string | null;
 };
 
@@ -171,7 +172,7 @@ export async function completeSigning(
     entityId: args.id,
     ...(args.adoption ? { metadata: {
       signature: args.adoption.signature.method === "typed" ? `typed:${args.adoption.signature.style}` : "drawn",
-      initials: args.adoption.initials.method === "typed" ? `typed:${args.adoption.initials.style}` : "drawn",
+      initials: !args.adoption.initials ? "not_required" : args.adoption.initials.method === "typed" ? `typed:${args.adoption.initials.style}` : "drawn",
       acknowledgments: `${args.adoption.acks.filter(Boolean).length}/${args.adoption.acks.length}`,
       evidence_sha256: evidence?.sha256 ?? (metadata as { signature?: { sha256?: string } } | undefined)?.signature?.sha256,
     } } : {}),
@@ -182,6 +183,10 @@ export async function completeSigning(
   // first-signing event, and the reservation check below is skipped.
   const isAmendment = Boolean((ag as any)?.metadata?.amendment);
   const archived = await archiveDocument(admin, ag, null);
+  // A third-party PDF is not a rental agreement: no FLEET event, no reservation
+  // confirmation, and no reservation fee. The insurer email is sent by the
+  // signing handlers after this returns.
+  if (ag.source === "standalone") return { result: "won", archived };
   // FLEET: renter signed. Never blocks or fails the signature.
   try {
     const { notifyFleetAgreementSigned } = await import("@/lib/fleet-webhook.server");
@@ -365,6 +370,10 @@ function signedDocumentLabel(ag: any): string {
 }
 
 export async function archiveDocument(admin: any, ag: any, actor: Actor | null): Promise<boolean> {
+  if (ag?.source === "standalone") {
+    const { archiveStandaloneDocument } = await import("@/lib/standalone-doc.server");
+    return archiveStandaloneDocument(admin, ag, actor);
+  }
   // completed-v1 layout is off until Dolmar turns the flag on. Today's archives
   // stay at {applicationId}/agreement-{id}.pdf on the existing bucket.
   if (SIGNED_ARCHIVE_V1_ENABLED) return archiveCompletedV1(admin, ag, actor);
@@ -521,12 +530,22 @@ export async function deliverSigningLink(
 ): Promise<{ email: ChannelStatus; sms: ChannelStatus; delivered: boolean }> {
   const allowSms = args.allowSms !== false;
   const at = new Date().toISOString();
+  let documentLink = false;
+  try {
+    const { data: kind } = await admin.from("agreements").select("source").eq("id", args.id).maybeSingle();
+    documentLink = kind?.source === "standalone";
+  } catch {
+    documentLink = false;
+  }
+  const smsBody = documentLink
+    ? `REAL RENTALS: Your document is ready to sign: ${args.url} Reply STOP to opt out.`
+    : `REAL RENTALS: Your rental agreement is ready to sign: ${args.url} Reply STOP to opt out.`;
   let email: ChannelStatus = "not_attempted";
   let emailError: string | null = "No email on file";
   if (args.email) {
     try {
       const { sendAgreementEmail } = await import("@/lib/email.server");
-      const r = await sendAgreementEmail({ to: args.email, firstName: args.name, url: args.url, vehicle: args.vehicle });
+      const r = await sendAgreementEmail({ to: args.email, firstName: args.name, url: args.url, vehicle: args.vehicle, document: documentLink });
       email = r.ok ? "sent" : "failed";
       emailError = r.ok ? null : (r.error ?? "Email send failed").slice(0, 300);
     } catch (e) {
@@ -564,7 +583,7 @@ export async function deliverSigningLink(
       const { sendSms } = await import("@/lib/sms.server");
       const r: any = await sendSms({
         to: args.phone,
-        body: `REAL RENTALS: Your rental agreement is ready to sign: ${args.url} Reply STOP to opt out.`,
+        body: smsBody,
         kind: "agreement_sent",
         applicationId: args.applicationId ?? undefined,
       });
@@ -581,7 +600,7 @@ export async function deliverSigningLink(
     try {
       const { sendAgreementEmail } = await import("@/lib/email.server");
       for (const to of extraEmails) {
-        const r = await sendAgreementEmail({ to, firstName: args.name, url: args.url, vehicle: args.vehicle });
+        const r = await sendAgreementEmail({ to, firstName: args.name, url: args.url, vehicle: args.vehicle, document: documentLink });
         if (r.ok && email !== "sent") { email = "sent"; emailError = null; }
       }
     } catch (e) {
@@ -594,7 +613,7 @@ export async function deliverSigningLink(
   if (allowSms && extraPhones.length) {
     try {
       const { sendSms } = await import("@/lib/sms.server");
-      const body = `REAL RENTALS: Your rental agreement is ready to sign: ${args.url} Reply STOP to opt out.`;
+      const body = smsBody;
       for (const to of extraPhones) {
         const r: any = await sendSms({ to, body, kind: "agreement_sent", applicationId: args.applicationId ?? undefined });
         if (r.ok && sms !== "sent") { sms = "sent"; smsError = null; }
@@ -631,8 +650,8 @@ export async function voidDocument(admin: any, id: string, actor: Actor | null):
   if (data === "voided") {
     await logAudit(actor, { action: "document.voided", summary: "eSign document voided", entityType: "esign_document", entityId: id });
     try {
-      const { data: ag } = await admin.from("agreements").select("application_id").eq("id", id).maybeSingle();
-      if (ag?.application_id) {
+      const { data: ag } = await admin.from("agreements").select("application_id,source").eq("id", id).maybeSingle();
+      if (ag?.application_id && voidReleasesReservation(ag.source)) {
         const { releasePendingReservation } = await import("@/lib/pending-reservation.server");
         await releasePendingReservation(admin, { applicationId: ag.application_id, reason: "agreement_voided" });
       }
