@@ -1,4 +1,6 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { AppSelect } from "@/components/ui/app-select";
+import { rowOpenProps, ROW_OPEN_CLASS, rowNav } from "@/lib/row-click";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -53,6 +55,7 @@ export const STANDARD_SCHEDULE: Array<{
     interval_miles: null,
     interval_days: 365,
   },
+  { item: "Monthly Inspection", category: "inspection", interval_miles: null, interval_days: 30 },
 ];
 
 export type DueState = { due: boolean; soon: boolean; reasons: string[] };
@@ -205,10 +208,7 @@ export function MaintenanceSchedules() {
               >
                 <header className="px-5 py-3 border-b border-[#EDEDF0] flex items-center gap-3 flex-wrap">
                   <div className="text-[13px] font-semibold text-[#111114]">
-                    {label}
-                    {v.license_plate ? (
-                      <span className="text-[#9A9AA3] font-normal"> · {v.license_plate}</span>
-                    ) : null}
+                    <LinkedVehicleCell vehicleId={v.id} fallback={{ label, plate: v.license_plate }} />
                   </div>
                   <div className="text-[11px] text-[#9A9AA3] tabular-nums">
                     {v.current_odometer
@@ -236,15 +236,14 @@ export function MaintenanceSchedules() {
 
                 {items.length === 0 ? (
                   <div className="px-5 py-4 text-[12px] text-[#9A9AA3]">
-                    No service items yet. Use the standard schedule to add oil, tires, brakes and
-                    registration.
+                    No service items yet. Use Standard Schedule to add Oil, Tires, Brakes, Registration, and Monthly Inspection.
                   </div>
                 ) : (
                   <ul className="divide-y divide-[#F4F4F6]">
                     {items.map((s) => {
                       const state = scheduleDueState(s, v.current_odometer);
                       return (
-                        <li key={s.id} className="px-5 py-2.5 flex items-center gap-3 flex-wrap">
+                        <li key={s.id} className={`px-5 py-2.5 flex items-center gap-3 flex-wrap ${ROW_OPEN_CLASS}`} {...rowOpenProps(() => setEditing({ vehicleId: v.id, schedule: s }))}>
                           <div className="min-w-[160px] flex-1">
                             <div className="text-[13px] text-[#111114]">{s.item}</div>
                             <div className="text-[11px] text-[#9A9AA3]">
@@ -430,9 +429,9 @@ function ScheduleForm({
           onChange={(e) => setCategory(e.target.value)}
           className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
         >
-          {["routine", "safety", "compliance", "repair"].map((c) => (
+          {["routine", "safety", "compliance", "repair", "inspection"].map((c) => (
             <option key={c} value={c}>
-              {({ routine: "Routine", safety: "Safety", compliance: "Compliance", repair: "Repair" } as Record<string, string>)[c]}
+              {({ routine: "Routine", safety: "Safety", compliance: "Compliance", repair: "Repair", inspection: "Inspection" } as Record<string, string>)[c]}
             </option>
           ))}
         </AppSelect>

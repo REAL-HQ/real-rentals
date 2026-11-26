@@ -196,37 +196,47 @@ export const recordPartnerPayout = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const actor = await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error } = await supabaseAdmin
+    const { columnMissing } = await import("@/lib/partner-intake.server");
+    const base = {
+      partner_id: data.partnerId,
+      period_start: data.periodStart,
+      period_end: data.periodEnd,
+      gross_rent: data.grossRent,
+      partner_share: data.partnerShare,
+      maintenance_share: data.expenses,
+      net_amount: data.net,
+      status: data.paidAt ? "paid" : "pending",
+      paid_at: data.paidAt ? `${data.paidAt}T12:00:00-05:00` : null,
+    };
+    let row = (await supabaseAdmin
       .from("payouts")
-      .insert({
-        partner_id: data.partnerId,
-        period_start: data.periodStart,
-        period_end: data.periodEnd,
-        gross_rent: data.grossRent,
-        partner_share: data.partnerShare,
-        maintenance_share: data.expenses,
-        expenses_total: data.expenses,
-        net_amount: data.net,
-        status: data.paidAt ? "paid" : "pending",
-        paid_at: data.paidAt ? `${data.paidAt}T12:00:00-05:00` : null,
-        method: data.method,
-        reference: data.reference,
-      } as any)
+      .insert({ ...base, expenses_total: data.expenses, method: data.method, reference: data.reference } as any)
       .select("id")
-      .single();
-    if (error) throw new Error(/duplicate|unique/i.test(error.message) ? "A payout for that period already exists." : error.message);
+      .single());
+    // The v2 columns (and the receipt bucket) arrive with the migration. Until
+    // then the amounts still record, and the method sits in notes.
+    if (row.error && columnMissing(row.error)) {
+      const note = [data.method, data.reference].filter(Boolean).join(" · ") || null;
+      row = await supabaseAdmin.from("payouts").insert({ ...base, notes: note } as any).select("id").single();
+      if (!row.error) {
+        await logAudit(actor, { action: "partner.payout.recorded", summary: `Recorded a partner payout of $${data.net.toFixed(2)}`, entityType: "partner", entityId: data.partnerId, metadata: { payout_id: row.data.id, period: [data.periodStart, data.periodEnd], schema: "legacy" } });
+        return { ok: true as const, payoutId: row.data.id as string, upload: null, receiptUnavailable: !!data.receipt };
+      }
+    }
+    const { data: saved, error } = row;
+    if (error || !saved) throw new Error(/duplicate|unique/i.test(error?.message ?? "") ? "A payout for that period already exists." : (error?.message || "Could not record the payout."));
     let upload: { path: string; token: string } | null = null;
     if (data.receipt) {
       const { intakeFileProblem, payoutReceiptPath, safeExt, PARTNER_DOCS_BUCKET } = await import("@/lib/partner-portal");
       const problem = intakeFileProblem({ kind: "registration", ...data.receipt });
       if (problem) throw new Error(problem);
-      const path = payoutReceiptPath(data.partnerId, row.id, crypto.randomUUID(), safeExt(data.receipt.name, data.receipt.type));
+      const path = payoutReceiptPath(data.partnerId, saved.id, crypto.randomUUID(), safeExt(data.receipt.name, data.receipt.type));
       const s = await supabaseAdmin.storage.from(PARTNER_DOCS_BUCKET).createSignedUploadUrl(path);
       if (s.error || !s.data) throw new Error("Payout saved, but the receipt upload could not start.");
       upload = { path, token: s.data.token };
     }
-    await logAudit(actor, { action: "partner.payout.recorded", summary: `Recorded a partner payout of $${data.net.toFixed(2)}`, entityType: "partner", entityId: data.partnerId, metadata: { payout_id: row.id, period: [data.periodStart, data.periodEnd] } });
-    return { ok: true, payoutId: row.id as string, upload };
+    await logAudit(actor, { action: "partner.payout.recorded", summary: `Recorded a partner payout of $${data.net.toFixed(2)}`, entityType: "partner", entityId: data.partnerId, metadata: { payout_id: saved.id, period: [data.periodStart, data.periodEnd] } });
+    return { ok: true as const, payoutId: saved.id as string, upload, receiptUnavailable: false };
   });
 
 export const attachPayoutReceipt = createServerFn({ method: "POST" })

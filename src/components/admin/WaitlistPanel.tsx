@@ -1,4 +1,6 @@
 import { AppSelect } from "@/components/ui/app-select";
+import { useNavigate } from "@tanstack/react-router";
+import { rowOpenProps, ROW_OPEN_CLASS, rowNav } from "@/lib/row-click";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -50,6 +52,7 @@ export function WaitlistPanel({
   onEntriesChange?: (n: number) => void;
   onPromoted?: () => void;
 } = {}) {
+  const navigate = useNavigate();
   const list = useServerFn(listWaitlist);
   const saveAvailability = useServerFn(setCarsAvailable);
   const notifyTop = useServerFn(notifyWaitlistTop);
@@ -392,7 +395,7 @@ export function WaitlistPanel({
                 {visibleEntries.length === 0 ? (
                   <tr><td colSpan={8} className="p-5"><EmptyState title="No Matching Entries" hint="Clear the tag filter to see the full Waitlist." /></td></tr>
                 ) : visibleEntries.map((e) => (
-                  <tr key={e.id} className="border-b border-[#EDEDF0] last:border-0 hover:bg-[#FAFAFB]">
+                  <tr key={e.id} {...rowNav(navigate, e.promoted_application_id ? { tab: "drivers", id: e.promoted_application_id } : null, "border-b border-[#EDEDF0] last:border-0")}>
                     <td className="px-5 py-3 text-[13px] font-semibold text-[#111114]">
                       {e.position ?? "—"}
                     </td>

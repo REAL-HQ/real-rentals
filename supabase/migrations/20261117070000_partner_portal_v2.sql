@@ -199,10 +199,14 @@ BEGIN
   END IF;
   v_status := CASE WHEN _list_now THEN 'available' ELSE 'onboarding' END;
   IF v_id IS NULL THEN
+    -- Title status stays on the submission. Writing vehicles.title_status would
+    -- divert into Owner-only vehicle_titles and set title_on_file, which only
+    -- happens when an Owner records a title. Mileage is written as current_odometer
+    -- so the existing odometer trigger appends one reading.
     INSERT INTO public.vehicles (year, make, model, trim, vin, color, license_plate,
-      registration_state, title_status, current_odometer, weekly_rate, status, partner_id)
+      registration_state, current_odometer, weekly_rate, status, partner_id)
     VALUES (s.year, s.make, s.model, s.trim, upper(s.vin), s.color, nullif(upper(btrim(coalesce(s.license_plate, ''))), ''),
-      s.registration_state, s.title_status, s.mileage, _weekly_rate, v_status, p_id)
+      s.registration_state, s.mileage, _weekly_rate, v_status, p_id)
     RETURNING id INTO v_id;
   ELSE
     UPDATE public.vehicles SET partner_id = p_id,

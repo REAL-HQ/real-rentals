@@ -38,4 +38,10 @@ describe("Next Step reservation payment facts", () => {
     expect(checklistAction(payment)?.target).toEqual({ kind: "section", tab: "payments", anchor: "" });
     expect(payment.enforcement).toBe("advisory");
   });
+
+  it("shows Refunded - reason when the reservation fee was refunded", () => {
+    const payment = driverNextStepRequirements([], "refunded:insurance_declined").find((item) => item.key === "reservation_paid");
+    expect(payment?.met).not.toBe(true);
+    expect(payment?.detail).toBe("Refunded - Insurance Declined");
+  });
 });

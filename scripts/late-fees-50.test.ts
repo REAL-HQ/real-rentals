@@ -165,3 +165,33 @@ describe("production dry run, Nov 16 2026 (read-only snapshot)", () => {
     expect(r.details!.map((d) => [d.payment_id, d.addition])).toEqual([["3fa3f400", 0], ["d40bab77", 150]]);
   });
 });
+
+describe("one rent standing: rent paid on another row, and daily plans (Nov 19 2026)", () => {
+  test("a week paid through a Payment Link on another row gets no fee (Schrita)", async () => {
+    const db = fakeDb(base({ payments: [
+      pay("open", "2026-11-16", { status: "overdue", stripe_invoice_id: "in_x" }),
+      { id: "link", rental_id: R2, type: "rent", amount: 350, status: "paid", due_date: "2026-11-16", paid_date: "2026-11-18" },
+    ] }));
+    const run = await lf.applyLateFees("2026-11-19", { admin: db, policy: POLICY });
+    expect(run.charged).toBe(0);
+    expect(run.details!.find((d) => d.payment_id === "open")?.reason).toBe("rent paid on another row");
+    expect(db.state.payments.find((p: Row) => p.id === "open").late_fees).toBe(0);
+  });
+  test("a payment typed Fee does not settle rent (the data fix retypes it)", async () => {
+    const db = fakeDb(base({ payments: [
+      pay("open", "2026-11-16", { status: "overdue" }),
+      { id: "link", rental_id: R2, type: "fee", amount: 350, status: "paid", due_date: "2026-11-18", paid_date: "2026-11-18" },
+    ] }));
+    const run = await lf.applyLateFees("2026-11-19", { admin: db, policy: POLICY });
+    expect(run.charged).toBe(1);
+  });
+  test("a daily rent plan replaces the weekly row: no fee (Regina)", async () => {
+    const db = fakeDb(base({
+      payments: [pay("week", "2026-11-16", { status: "overdue" })],
+      app_settings: [{ key: "daily_rent_plans", value: { [R2]: { dailyRate: 50, startsOn: "2026-11-16" } } }],
+    }));
+    const run = await lf.applyLateFees("2026-11-19", { admin: db, policy: POLICY });
+    expect(run.charged).toBe(0);
+    expect(run.details!.find((d) => d.payment_id === "week")?.reason).toBe("daily rent plan");
+  });
+});

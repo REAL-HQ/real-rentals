@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import { useServerFn } from "@tanstack/react-start";
 import { fmtDate } from "@/lib/date-format";
 import { displayPersonName } from "@/lib/display-normalize";
@@ -16,6 +17,7 @@ function showDetail(detail: string): string {
 }
 
 function Section({ title, section }: { title: string; section: OverviewTodaySection }) {
+  const navigate = useNavigate();
   return (
     <section className="rounded-2xl border border-[#EDEDF0] bg-white p-4">
       <h3 className="text-[13px] font-semibold text-[#111114]">
@@ -27,7 +29,7 @@ function Section({ title, section }: { title: string; section: OverviewTodaySect
       ) : (
         <ul className="mt-2 space-y-2">
           {section.rows.map((row) => (
-            <li key={row.id} className="text-[13px] text-[#111114]">
+            <li key={row.id} {...rowNav(navigate, row.href ? { tab: "drivers", id: row.id } : null, "text-[13px] text-[#111114] rounded-md")}>
               {row.href ? (
                 <Link to="/admin" search={{ tab: "drivers", id: row.id }} className="font-medium hover:text-[#D03020]">
                   {displayPersonName(row.title)}

@@ -62,7 +62,7 @@ describe("fleet filters flag", () => {
     assert.doesNotMatch(searchFn, /readFleetSearch|fleetSearchParams|filtersOn|false as boolean/);
     assert.match(
       route,
-      /\.from\("vehicles_public"\)\s*\.select\("\*"\)\s*\.neq\("status", "retired"\)\s*\.order\("weekly_rate", \{ ascending: true \}\)/,
+      /\.from\("vehicles_public"\)\s*\.select\("\*"\)\s*\.neq\("status", "retired"\)\s*\.neq\("status", "for_sale"\)\s*\.order\("weekly_rate", \{ ascending: true \}\)/,
     );
     const fetchGate = route.indexOf("const mod = await import(\"@/lib/fleet-filters\")");
     assert.ok(fetchGate > gate);

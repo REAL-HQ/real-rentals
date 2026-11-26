@@ -13,6 +13,7 @@ import {
   type StaffSubmission,
 } from "@/lib/partner-admin.functions";
 import { PARTNER_DOCS_BUCKET } from "@/lib/partner-portal";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 import { EmptyState } from "./ui";
 import { FileUploader } from "@/components/FileUploader";
 import { AppSelect } from "@/components/ui/app-select";
@@ -23,13 +24,14 @@ import { AppSelect } from "@/components/ui/app-select";
  * and the one-button decision: "List This Car" activates the partner, creates
  * the vehicle at the rate you type, and publishes the photos you tick.
  */
-export function PartnerSubmissions({ onChanged }: { onChanged?: () => void }) {
+export function PartnerSubmissions({ onChanged, preview }: { onChanged?: () => void; preview?: { submissions: StaffSubmission[]; schema: "v2" | "legacy" } }) {
   const list = useServerFn(listPartnerSubmissions);
-  const q = useQuery({ queryKey: ["admin", "partner-submissions"], queryFn: () => list() });
+  const q = useQuery({ queryKey: ["admin", "partner-submissions"], queryFn: () => list(), enabled: !preview });
   const [filter, setFilter] = useState<"open" | "approved" | "declined" | "all">("open");
-  if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading submissions…</p>;
-  if (q.error || !q.data) return <p className="text-sm text-real-red">{(q.error as Error)?.message ?? "Could not load submissions."}</p>;
-  const rows = q.data.submissions.filter((s) => {
+  const data = preview ?? q.data;
+  if (!preview && q.isLoading) return <p className="text-sm text-muted-foreground">Loading submissions…</p>;
+  if (!data) return <p className="text-sm text-real-red">{(q.error as Error)?.message ?? "Could not load submissions."}</p>;
+  const rows = data.submissions.filter((s) => {
     const st = s.status.toLowerCase();
     if (filter === "all") return true;
     if (filter === "approved") return st === "approved" || st === "enrolled";
@@ -45,10 +47,10 @@ export function PartnerSubmissions({ onChanged }: { onChanged?: () => void }) {
             {f === "open" ? "Needs Review" : f[0].toUpperCase() + f.slice(1)}
           </button>
         ))}
-        {q.data.schema === "legacy" && <span className="text-[11px] text-amber-700">Partner Portal database update not installed — listing is unavailable until it is.</span>}
+        {data.schema === "legacy" && <span className="text-[11px] text-amber-700">Partner Portal database update not installed — listing is unavailable until it is.</span>}
       </div>
       <div className="space-y-3">
-        {rows.map((s) => <SubmissionCard key={s.id} s={s} legacy={q.data!.schema === "legacy"} onChanged={() => { void q.refetch(); onChanged?.(); }} />)}
+        {rows.map((s) => <SubmissionCard key={s.id} s={s} legacy={data.schema === "legacy"} onChanged={() => { if (!preview) void q.refetch(); onChanged?.(); }} />)}
         {rows.length === 0 && <EmptyState title="Nothing Here" hint="New submissions from drivereal.com/partners appear here." />}
       </div>
     </div>
@@ -74,7 +76,7 @@ function SubmissionCard({ s, legacy, onChanged }: { s: StaffSubmission; legacy: 
     <div className="rounded-xl bg-soft p-4" data-testid="partner-submission-card">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex-1 min-w-[240px]">
-          <div className="font-medium">{s.year} {s.make} {s.model}{s.trim ? ` ${s.trim}` : ""} <span className="text-xs text-muted-foreground">· {s.status}</span></div>
+          <div className="font-medium">{s.year} {s.make} {s.model}{s.trim ? ` ${s.trim}` : ""} <span className="text-xs text-muted-foreground">· {formatStatusLabel(s.status)}</span></div>
           <div className="text-xs text-muted-foreground mt-0.5">VIN {s.vin}{s.plate ? ` · Plate ${s.plate}` : ""}{s.color ? ` · ${s.color}` : ""}{s.mileage != null ? ` · ${s.mileage.toLocaleString()} mi` : ""}</div>
           <div className="text-xs text-muted-foreground mt-0.5">{[s.titleStatus && `Title: ${s.titleStatus}`, s.lienStatus, s.registrationState && `Reg: ${s.registrationState}`, s.condition && `Condition: ${s.condition}`, s.currentlyInsured != null && `Insured now: ${s.currentlyInsured ? "Yes" : "No"}`].filter(Boolean).join(" · ")}</div>
           <div className="text-xs mt-2">{s.fullName}{s.businessName ? ` · ${s.businessName}` : ""} · {s.email} · {s.phone}{s.smsConsent ? " · SMS OK" : ""}</div>
@@ -126,7 +128,7 @@ function ListDialog({ s, onClose, onDone }: { s: StaffSubmission; onClose: () =>
         <p className="mt-1 text-xs text-muted-foreground">Makes {s.fullName} an active partner (unlocks their earnings, payouts and bank setup) and adds the car to the fleet.</p>
         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <label className="block"><span className="text-[11px] text-muted-foreground">Weekly Rate ($)</span>
-            <input value={rate} onChange={(e) => setRate(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="mt-1 w-full rounded-md bg-soft px-3 py-2" placeholder="e.g. 375" /></label>
+            <input value={rate} onChange={(e) => setRate(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="mt-1 w-full rounded-md bg-soft px-3 py-2" placeholder="375" /></label>
           <label className="block"><span className="text-[11px] text-muted-foreground">Partner Split (%)</span>
             <input value={split} onChange={(e) => setSplit(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="mt-1 w-full rounded-md bg-soft px-3 py-2" /></label>
         </div>
@@ -134,7 +136,8 @@ function ListDialog({ s, onClose, onDone }: { s: StaffSubmission; onClose: () =>
         {!listNow && <p className="mt-1 text-xs text-muted-foreground">The car goes in as Needs Setup; photos are copied to its gallery but not published.</p>}
         {s.photos.length > 0 && (
           <div className="mt-4">
-            <div className="text-[11px] text-muted-foreground mb-1">{listNow ? "Listing photos (first ticked is the lead image)" : "Photos to copy into the gallery"}</div>
+            <div className="text-[11px] text-muted-foreground mb-1">{listNow ? "Listing Photos" : "Gallery Photos"}</div>
+            <p className="text-[11px] text-muted-foreground mb-2">{listNow ? "The first ticked photo is the lead image." : "These are copied into the gallery and stay unpublished."}</p>
             <div className="grid grid-cols-4 gap-2">
               {s.photos.map((p) => (
                 <label key={p.path} className={`relative block rounded overflow-hidden border-2 ${picked.has(p.path) ? "border-real-red" : "border-transparent"}`}>
@@ -180,7 +183,7 @@ export function RecordPayoutButton({ partnerId, partnerName }: { partnerId: stri
         if (error) toast.error("Payout saved, but the receipt didn't upload.");
         else await attach({ data: { payoutId: r.payoutId, path: r.upload.path } });
       }
-      toast.success("Payout recorded");
+      toast.success(r.receiptUnavailable ? "Payout recorded. Receipts need the Partner Portal database update." : "Payout recorded");
       setOpen(false);
       await qc.invalidateQueries({ queryKey: ["admin", "partner-payouts"] });
     } catch (e: any) { toast.error(e?.message || "Could not record payout"); }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { LateFeesCard } from "./LateFeesCard";
 import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -22,19 +23,19 @@ import { BookingActions } from "@/components/admin/BookingActions";
 import { CloseoutPreview } from "@/components/admin/CloseoutPreview";
 import { CLOSEOUT_PREVIEW_ENABLED, showsCloseoutPreview } from "@/lib/closeout-preview-flag";
 import { listConditionMedia } from "@/lib/inspections.functions";
-import { getAgreementPdf } from "@/lib/agreements.functions";
 import { listAuditLog, type AuditRow } from "@/lib/team.functions";
-import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
+import { AgreementViewerDialog } from "@/components/admin/AgreementViewerDialog";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol } from "./VehicleProfileFields";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
-import { BOOKING_PHASE_LABEL, bookingDates, bookingVehicleName } from "@/lib/bookings-list";
+import { BOOKING_PHASE_LABEL, autopayBadge, bookingDates, bookingVehicleName } from "@/lib/bookings-list";
 import { persistedNumber } from "@/lib/record-numbers";
 import { RecordNumber } from "@/components/admin/RecordNumber";
 import { BookingVehicleHistory } from "@/components/admin/BookingVehicleHistory";
 import { CloseoutSummary } from "@/components/admin/CloseoutSummary";
 import { CLOSEOUT_SUMMARY_ENABLED, closeoutApplies } from "@/lib/closeout-summary";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 // A booking, read.
 //
@@ -141,7 +142,7 @@ export function BookingDetails({
       }}
     >
       <div
-        className="min-w-0 w-full max-w-5xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]"
+        className="min-w-0 w-full max-w-6xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-4 pb-0">
@@ -155,7 +156,13 @@ export function BookingDetails({
                   <StatusPill
                     status={b.phase}
                     tone={
-                      b.phase === "active" ? "green" : b.phase === "cancelled" ? "red" : "neutral"
+                      b.phase === "active"
+                        ? "green"
+                        : b.phase === "cancelled"
+                          ? "red"
+                          : b.phase === "swap" || b.phase === "reserved"
+                            ? "amber"
+                            : "neutral"
                     }
                   >
                     {BOOKING_PHASE_LABEL[b.phase]}
@@ -169,6 +176,12 @@ export function BookingDetails({
                     {bookingVehicleName(b)}
                     <span className="mx-1.5 text-[#C4C4CB]">|</span>
                     {bookingDates(b.startDate, b.endDate, b.phase)}
+                    {b.lengthLabel ? (
+                      <>
+                        <span className="mx-1.5 text-[#C4C4CB]">|</span>
+                        <span data-testid="rental-length">{b.lengthLabel}</span>
+                      </>
+                    ) : null}
                   </>
                 ) : (
                   " "
@@ -303,6 +316,12 @@ function Overview({
                   value={b.weeklyRate == null ? "Not Set" : usd(b.weeklyRate)}
                 />
               )}
+              {d.canSeeMoney && (
+                <Row
+                  label="Autopay"
+                  value={<span data-testid="autopay-badge">{autopayBadge(b)}</span>}
+                />
+              )}
             </div>
           </TwoCol>
           {d.unavailable.length > 0 && (
@@ -396,10 +415,6 @@ function Overview({
           )}
         </SectionCard>
 
-        <SectionCard title="Vehicles" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
-          <BookingVehicleHistory rentalId={b.id} showSwap={b.phase === "active"} />
-        </SectionCard>
-
         <SectionCard
           title="On This Booking"
           icon={<FileText className="w-4 h-4" strokeWidth={1.75} />}
@@ -442,7 +457,7 @@ function Overview({
                       {titleCase(i.status) ?? "—"}
                     </StatusPill>
                     {i.drivable === false && (
-                      <span className="rounded-full bg-[rgba(208,48,32,0.08)] px-2 py-0.5 text-[10px] text-[#D03020]">
+                      <span className={`rounded-full ${DANGER_BADGE} px-2 py-0.5 text-[10px]`}>
                         Not Drivable
                       </span>
                     )}
@@ -513,6 +528,13 @@ function Overview({
             </ul>
           </SectionCard>
         )}
+      </div>
+
+      {/* Swap history and Pickup Photos span the booking page. */}
+      <div className="min-w-0 lg:col-span-3" data-testid="booking-vehicle-swaps">
+        <SectionCard title="Vehicles" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
+          <BookingVehicleHistory rentalId={b.id} showSwap={b.phase === "active"} />
+        </SectionCard>
       </div>
     </div>
   );
@@ -665,21 +687,7 @@ function Inspections({ d }: { d: BookingDetail }) {
  * question: is this booking papered or not.
  */
 function Agreements({ d }: { d: BookingDetail }) {
-  const pdf = useServerFn(getAgreementPdf);
-  const [base64, setBase64] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  async function open(id: string) {
-    setBusy(id);
-    try {
-      const r = await pdf({ data: { agreementId: id } });
-      setBase64((r as { base64: string }).base64);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not open that agreement.");
-    } finally {
-      setBusy(null);
-    }
-  }
+  const [viewing, setViewing] = useState<{ id: string; title: string | null } | null>(null);
 
   return (
     <div className="space-y-5">
@@ -719,13 +727,11 @@ function Agreements({ d }: { d: BookingDetail }) {
                   a.archiveStatus === "archived" &&
                   (d.canManage ? (
                     <button
-                      onClick={() => void open(a.id)}
-                      disabled={busy === a.id}
+                      onClick={() => setViewing({ id: a.id, title: a.title })}
                       data-testid="open-agreement-pdf"
-                      className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] px-2.5 py-1 text-[12px] font-medium disabled:opacity-50"
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] px-2.5 py-1 text-[12px] font-medium"
                     >
-                      {busy === a.id && <Loader2 className="w-3 h-3 animate-spin" />} Open Signed
-                      PDF
+                      View Signed Agreement
                     </button>
                   ) : (
                     <p
@@ -743,27 +749,8 @@ function Agreements({ d }: { d: BookingDetail }) {
         )}
       </SectionCard>
 
-      {base64 && (
-        <div
-          className="fixed inset-0 z-[90] overflow-y-auto bg-black/80 p-4"
-          onClick={() => setBase64(null)}
-        >
-          <div
-            className="mx-auto max-w-3xl rounded-xl bg-white p-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-end">
-              <button
-                onClick={() => setBase64(null)}
-                aria-label="Close"
-                className="rounded-md p-1 text-[#9A9AA3] hover:text-[#111114]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <AgreementPdfViewer base64={base64} />
-          </div>
-        </div>
+      {viewing && (
+        <AgreementViewerDialog agreementId={viewing.id} title={viewing.title} onClose={() => setViewing(null)} />
       )}
     </div>
   );
@@ -792,6 +779,10 @@ function Money({ d }: { d: BookingDetail }) {
           </div>
         </TwoCol>
       </SectionCard>
+
+      {d.booking.status === "active" ? (
+        <LateFeesCard rentalId={d.booking.id} driverName={d.driver.name ?? "Driver"} />
+      ) : null}
 
       <SectionCard title="Payments" icon={<CreditCard className="w-4 h-4" strokeWidth={1.75} />}>
         {m.payments.length === 0 ? (

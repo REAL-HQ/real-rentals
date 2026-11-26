@@ -222,3 +222,27 @@ export async function provisionDriverAccount(
 
   return { userId, conflict: false, created, inviteUrl };
 }
+
+/**
+ * A one-time set-password link for an existing login, for the pickup
+ * welcome email (portal-welcome.server.ts).
+ *
+ * provisionDriverAccount only mints one on the call that creates the user,
+ * and Reserved now creates the user well before pickup — so the welcome used
+ * to fall back to a bare portal link with no way to set a password. This
+ * mints the same recovery link on demand. Returns null when it cannot.
+ */
+export async function mintSetPasswordLink(admin: AdminClient, email: string): Promise<string | null> {
+  try {
+    const { publicAppUrl, recoveryUrlFromGenerateLink } = await import("@/lib/public-app-url");
+    const { data: link } = await admin.auth.admin.generateLink({
+      type: "recovery",
+      email: email.trim().toLowerCase(),
+      options: { redirectTo: publicAppUrl("/set-password") },
+    });
+    return recoveryUrlFromGenerateLink(link);
+  } catch (e) {
+    console.error("[driver-account] set-password link failed", e);
+    return null;
+  }
+}

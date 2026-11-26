@@ -9,10 +9,12 @@ import {
   normalizeFinalCharge,
   normalizeSkipReason,
   photosReady,
+  returnVehicleIdentity,
   sumBalanceCents,
   type FinalChargeDraft,
   type ReturnBalanceLine,
   type ReturnBalanceSummary,
+  type ReturnVehicleIdentity,
   type SubscriptionCancelMode,
 } from "@/lib/return-flow";
 import {
@@ -96,14 +98,16 @@ export const getReturnBalance = createServerFn({ method: "POST" })
     }
 
     let vehicleLabel: string | null = null;
+    let vehicleIdentity: ReturnVehicleIdentity | null = null;
     const vehicleId = (rental.vehicle_id as string | null) ?? null;
     if (vehicleId) {
       const { data: v } = await supabaseAdmin
         .from("vehicles")
-        .select("year,make,model,unit_number,license_plate")
+        .select("year,make,model,unit_number,license_plate,vin")
         .eq("id", vehicleId)
         .maybeSingle();
       if (v) {
+        vehicleIdentity = returnVehicleIdentity(v);
         vehicleLabel = [v.year, v.make, v.model].filter(Boolean).join(" ") || null;
         if (v.unit_number) vehicleLabel = `${vehicleLabel ?? "Vehicle"} · ${v.unit_number}`;
         if (v.license_plate) vehicleLabel = `${vehicleLabel ?? "Vehicle"} · ${v.license_plate}`;
@@ -161,6 +165,7 @@ export const getReturnBalance = createServerFn({ method: "POST" })
       applicationId,
       vehicleId,
       vehicleLabel: vehicleLabel ?? "Unknown",
+      vehicleIdentity,
     };
   });
 
@@ -212,6 +217,9 @@ export const createFinalInvoice = createServerFn({ method: "POST" })
       throw new Error("This renter has no Stripe customer. Record the amount owed and send payment options manually.");
     }
 
+    const { chargeMetadataForRental } = await import("@/lib/stripe-charge-metadata.server");
+    const { easternDay, invoiceChargeMetadata, stampInvoicePaymentIntent } = await import("@/lib/stripe-charge-metadata");
+    const chargeMetadata = await chargeMetadataForRental(supabaseAdmin, data.rentalId, "final_return", easternDay());
     const { createStripeClient } = await import("@/lib/stripe.server");
     const stripe = createStripeClient("live");
     const extras = (data.extraCharges ?? [])
@@ -243,10 +251,11 @@ export const createFinalInvoice = createServerFn({ method: "POST" })
       customer: customerId,
       collection_method: "send_invoice",
       days_until_due: 7,
-      metadata: { rentalId: data.rentalId, ...(rental.application_id ? { applicationId: String(rental.application_id) } : {}), purpose: "final_return" },
+      ...invoiceChargeMetadata({ ...chargeMetadata, purpose: "final_return" }),
       auto_advance: false,
     });
     const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+    await stampInvoicePaymentIntent(stripe, finalized as { payment_intent?: unknown }, chargeMetadata);
     const url =
       typeof finalized.hosted_invoice_url === "string" && finalized.hosted_invoice_url.startsWith("https://invoice.stripe.com/")
         ? finalized.hosted_invoice_url

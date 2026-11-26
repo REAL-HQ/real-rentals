@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
  * can review the full document on desktop or phone without downloading it.
  * pdf.js is loaded only after mount — never during server rendering.
  */
-export function AgreementPdfViewer({ base64 }: { base64: string }) {
+export function AgreementPdfViewer({ base64, url, onError }: { base64?: string; url?: string; onError?: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState(0);
   const [err, setErr] = useState<string | null>(null);
@@ -16,9 +16,18 @@ export function AgreementPdfViewer({ base64 }: { base64: string }) {
       try {
         const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
         pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString();
-        const bin = atob(base64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        let bytes: Uint8Array;
+        if (base64 != null) {
+          const bin = atob(base64);
+          bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        } else if (url) {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error("The file could not be loaded");
+          bytes = new Uint8Array(await res.arrayBuffer());
+        } else {
+          throw new Error("Nothing to display");
+        }
         const doc = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled || !host.current) return;
         host.current.innerHTML = "";
@@ -49,13 +58,16 @@ export function AgreementPdfViewer({ base64 }: { base64: string }) {
         }
         setPages(doc.numPages);
       } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Could not display the agreement");
+        if (!cancelled) {
+          setErr(e instanceof Error ? e.message : "Could not display the agreement");
+          onError?.();
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [base64]);
+  }, [base64, url]);
 
   return (
     <div>

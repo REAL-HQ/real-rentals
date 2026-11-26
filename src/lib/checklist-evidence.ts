@@ -125,8 +125,13 @@ export function documentCollection(input: {
   events: readonly EvidenceEvent[];
   documents: readonly (VaultDocFact & { applicationId: string })[];
 }) {
+  // The vault list sent to the browser never carries storage_path (it is not
+  // exposed to the client), so a strict path check would call every received
+  // file "not uploaded". Receipt here means the same thing the Documents tab
+  // uses: a current, not-rejected file with an id.
+  const documents = input.documents.map((doc) => ({ ...doc, storage_path: doc.storage_path === undefined && doc.id ? `vault:${doc.id}` : doc.storage_path }));
   const fields = REQUIRED_VAULT_CATEGORIES.map((field) => projectCollectionEvidence({
-    ...input, field, itemComplete: false,
+    ...input, documents, field, itemComplete: false,
   }));
   return {
     fields,

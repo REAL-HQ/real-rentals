@@ -1,4 +1,6 @@
 import { AppSelect } from "@/components/ui/app-select";
+import { useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import { useEffect, useState } from "react";
 import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { FleetServiceCenter } from "./FleetServiceCenter";
@@ -49,15 +51,15 @@ export function computeDueReasons(v: VehicleLite): string[] {
   const interval = v.oil_interval_miles ?? 5000;
   // Guardrail: only count as Due when real interval data exists.
   if (cur != null && cur > 0 && last != null && cur - last >= interval) {
-    reasons.push(`Oil change (+${(cur - last).toLocaleString()} mi)`);
+    reasons.push(`Oil Change (+${(cur - last).toLocaleString()} mi)`);
   }
   if (v.last_tire_date) {
     const tireMonths = monthsSince(v.last_tire_date);
-    if (tireMonths != null && tireMonths >= 12) reasons.push("Tires 12+ mo");
+    if (tireMonths != null && tireMonths >= 12) reasons.push("Tires 12+ Mo");
   }
   if (v.last_brake_inspection_date) {
     const brakeMonths = monthsSince(v.last_brake_inspection_date);
-    if (brakeMonths != null && brakeMonths >= 12) reasons.push("Brake inspection 12+ mo");
+    if (brakeMonths != null && brakeMonths >= 12) reasons.push("Brake Inspection 12+ Mo");
   }
   return reasons;
 }
@@ -66,10 +68,41 @@ export function needsOdometer(v: VehicleLite): boolean {
   return v.current_odometer == null || v.current_odometer <= 0;
 }
 
-export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolean } = {}) {
-  const [rows, setRows] = useState<Row[]>([]);
-  const [vehicles, setVehicles] = useState<VehicleLite[]>([]);
-  const [loading, setLoading] = useState(true);
+export function recordCount(n: number): string {
+  return n === 1 ? "1 Record" : `${n} Records`;
+}
+
+/** A recorded cost, or an em dash when nothing was entered. */
+export function serviceCost(amount: number | null | undefined): string {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n === 0) return "—";
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
+  routine: "Routine",
+  repair: "Repair",
+  recall: "Recall",
+  inspection: "Inspection",
+};
+
+function categoryLabel(category: string | null | undefined): string {
+  if (!category) return "—";
+  return CATEGORY_LABEL[category] ?? category;
+}
+
+export function MaintenancePanel({
+  autoOpenAdd = false,
+  preview,
+}: {
+  autoOpenAdd?: boolean;
+  /** Skip the server read and render these rows. The layout test uses this. */
+  preview?: { rows: Row[]; vehicles: VehicleLite[] };
+} = {}) {
+  const navigate = useNavigate();
+  const [rows, setRows] = useState<Row[]>(preview?.rows ?? []);
+  const [vehicles, setVehicles] = useState<VehicleLite[]>(preview?.vehicles ?? []);
+  const [loading, setLoading] = useState(!preview);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
   const [bulkMode, setBulkMode] = useState(false);
@@ -93,7 +126,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
     setLoading(false);
   }
   useEffect(() => {
-    load();
+    if (!preview) load();
   }, []);
 
   const downVehicles = vehicles.filter((v) => v.status === "maintenance");
@@ -203,7 +236,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
           </header>
           <ul className="divide-y divide-[#F4F4F6] max-h-[520px] overflow-auto">
             {vehicles.map((v) => (
-              <li key={v.id} className="px-5 py-2.5 flex items-center gap-3">
+              <li key={v.id} {...rowNav(navigate, { tab: "vehicles", id: v.id }, "px-5 py-2.5 flex items-center gap-3")}>
                 <div className="text-[13px] text-[#111114] flex-1 truncate">
                   {`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim() || v.id.slice(0, 8)}
                 </div>
@@ -213,7 +246,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
                 <input
                   type="text"
                   inputMode="numeric"
-                  placeholder="New reading"
+                  placeholder="New Reading"
                   value={odoDrafts[v.id] ?? ""}
                   onChange={(e) => setOdoDrafts((d) => ({ ...d, [v.id]: e.target.value }))}
                   className="w-32 rounded-md border border-[#EDEDF0] px-2 py-1 text-[12px] tabular-nums focus:outline-none focus:border-[#111114]"
@@ -242,7 +275,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
           </header>
           <ul className="divide-y divide-[#F4F4F6]">
             {downVehicles.map((v) => (
-              <li key={v.id} className="px-5 py-2.5 flex items-center gap-3">
+              <li key={v.id} {...rowNav(navigate, { tab: "vehicles", id: v.id }, "px-5 py-2.5 flex items-center gap-3")}>
                 <div className="text-[13px] text-[#111114] flex-1">
                   {`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()}
                 </div>
@@ -267,7 +300,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
           </header>
           <ul className="divide-y divide-[#F4F4F6]">
             {dueVehicles.map(({ v, reasons }) => (
-              <li key={v.id} className="px-5 py-2.5 flex items-center gap-3 flex-wrap">
+              <li key={v.id} {...rowNav(navigate, { tab: "vehicles", id: v.id }, "px-5 py-2.5 flex items-center gap-3 flex-wrap")}>
                 <div className="text-[13px] text-[#111114] flex-1 min-w-[180px]">
                   {`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()}
                 </div>
@@ -298,14 +331,14 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
           </header>
           <ul className="divide-y divide-[#F4F4F6]">
             {needsOdoVehicles.map((v) => (
-              <li key={v.id} className="px-5 py-2.5 flex items-center gap-3">
+              <li key={v.id} {...rowNav(navigate, { tab: "vehicles", id: v.id }, "px-5 py-2.5 flex items-center gap-3")}>
                 <div className="text-[13px] text-[#111114] flex-1">
                   {`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()}
                 </div>
                 <input
                   type="text"
                   inputMode="numeric"
-                  placeholder="Log reading"
+                  placeholder="Log Reading"
                   value={odoDrafts[v.id] ?? ""}
                   onChange={(e) => setOdoDrafts((d) => ({ ...d, [v.id]: e.target.value }))}
                   className="w-32 rounded-md border border-[#EDEDF0] px-2 py-1 text-[12px] tabular-nums focus:outline-none focus:border-[#111114]"
@@ -324,7 +357,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
       )}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-sm text-muted-foreground">{filtered.length} record(s)</div>
+        <div className="text-sm text-muted-foreground">{recordCount(filtered.length)}</div>
         <button
           onClick={() => setShowForm(true)}
           className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150"
@@ -343,38 +376,43 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
         />
       ) : (
         <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-[#FAFAFB] text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3] text-left">
+          <table className="w-full table-fixed text-left text-sm" data-testid="service-records-table">
+            <thead className="bg-[#FAFAFB] text-[11px] font-semibold text-[#55555E]">
               <tr>
-                <th className="px-4 py-2">Vehicle</th>
-                <th>Status</th>
-                <th>Item</th>
-                <th>Category</th>
-                <th>Due</th>
-                <th>Cost</th>
-                <th></th>
+                <th className="w-[22%] px-3 py-2">Vehicle</th>
+                <th className="w-[16%] px-3 py-2">Status</th>
+                <th className="w-[14%] px-3 py-2">Item</th>
+                <th className="w-[12%] px-3 py-2">Category</th>
+                <th className="w-[12%] px-3 py-2">Due</th>
+                <th className="w-[10%] px-3 py-2">Cost</th>
+                <th className="w-[14%] px-3 py-2">Notes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-4 py-2"><span className="flex items-center gap-2"><VehiclePickerPhoto vehicleId={r.vehicle_id} className="h-8 w-11 rounded-md" iconClassName="h-3.5 w-3.5" /><span className="truncate">{vName(r.vehicle_id)}</span></span></td>
-                  <td>
+                <tr key={r.id} {...rowNav(navigate, r.vehicle_id ? { tab: "vehicles", id: r.vehicle_id } : null)}>
+                  <td className="px-3 py-2">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <VehiclePickerPhoto vehicleId={r.vehicle_id} className="h-8 w-11 shrink-0 rounded-md" iconClassName="h-3.5 w-3.5" />
+                      <span className="min-w-0 truncate">{vName(r.vehicle_id)}</span>
+                    </span>
+                  </td>
+                  <td className="min-w-0 px-3 py-2">
                     <AppSelect aria-label="Maintenance Status"
                       value={r.status}
                       onChange={(e) => updateStatus(r.id, e.target.value)}
-                      className="rounded border border-border bg-white px-2 py-1 text-xs"
+                      className="h-8 w-full max-w-full rounded border border-border bg-white px-2 py-1 text-xs"
                     >
                       <option value="scheduled">Scheduled</option>
                       <option value="in_progress">In Progress</option>
                       <option value="completed">Completed</option>
                     </AppSelect>
                   </td>
-                  <td>{r.item}</td>
-                  <td className="">{r.category ?? "—"}</td>
-                  <td>{r.due_date ? fmtDate(r.due_date) : "—"}</td>
-                  <td>{r.total_cost ? `$${r.total_cost}` : "—"}</td>
-                  <td className="px-4 py-2 text-xs text-muted-foreground">{r.notes}</td>
+                  <td className="px-3 py-2"><span className="block truncate">{r.item}</span></td>
+                  <td className="px-3 py-2">{categoryLabel(r.category)}</td>
+                  <td className="whitespace-nowrap px-3 py-2">{r.due_date ? fmtDate(r.due_date) : "—"}</td>
+                  <td className="whitespace-nowrap px-3 py-2">{serviceCost(r.total_cost)}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground"><span className="block break-words">{r.notes}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -451,7 +489,7 @@ function NewMaintenanceForm({
         <input
           value={item}
           onChange={(e) => setItem(e.target.value)}
-          placeholder="Item (e.g. Oil change)"
+          placeholder="Item (e.g. Oil Change)"
           className="w-full rounded border border-border px-3 py-2 text-sm"
         />
         <AppSelect aria-label="Category"

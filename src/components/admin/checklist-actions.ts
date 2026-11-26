@@ -52,6 +52,9 @@ export function checklistAction(requirement: ActivationRequirement): ChecklistAc
       return { label: "View", target: { kind: "section", tab: "application", anchor: "" } };
     case "gig_platform":
       return null;
+    case "terms_confirmed":
+      // Its own Move Forward control (TermsConfirmedControl); never a navigation shortcut.
+      return null;
     case "reservation_paid":
       return { label: "View", target: { kind: "section", tab: "payments", anchor: "" } };
     case "pickup":

@@ -12,6 +12,7 @@ import { savePartialApplication } from "@/lib/applications.functions";
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAvailability, joinWaitlist } from "@/lib/waitlist.functions";
 import { getAttribution } from "@/lib/attribution";
+import { applySubmitErrorMessage, dismissKeyboard } from "@/lib/apply-submit-error";
 import { FadeUp } from "./FadeUp";
 import heroBg from "@/assets/hero-bg.jpg";
 
@@ -46,7 +47,7 @@ export function CityHeroLeadForm({
 
   const navigate = useNavigate();
   const saveApplication = useServerFn(savePartialApplication);
-  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number; fresh?: boolean } | null>(null);
+  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number; fresh?: boolean; maskedEmailOnFile?: string } | null>(null);
   const getAvail = useServerFn(getAvailability);
   const join = useServerFn(joinWaitlist);
   // How many cars the team says are open right now, set in the back office.
@@ -81,6 +82,7 @@ export function CityHeroLeadForm({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
 
@@ -105,6 +107,8 @@ export function CityHeroLeadForm({
 
   async function submit() {
     if (hp) return; // bot
+    dismissKeyboard();
+    setSubmitError(null);
     if (!validate()) {
       toast.error("Please fix the highlighted fields.");
       return;
@@ -153,13 +157,23 @@ export function CityHeroLeadForm({
       if (!data.token) {
         // We matched an application that already exists. The link goes to the
         // address on that record, not to whoever filled this form in.
-        setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120, fresh: "fresh" in data && data.fresh === true });
+        const review = data.linkStatus === "review";
+        setReturning({
+          email: review ? "" : form.email,
+          status: data.linkStatus ?? "sent",
+          retryAfterSeconds: data.retryAfterSeconds ?? 120,
+          fresh: "fresh" in data && data.fresh === true,
+          maskedEmailOnFile: "maskedEmailOnFile" in data && typeof data.maskedEmailOnFile === "string" ? data.maskedEmailOnFile : undefined,
+        });
         return;
       }
       markStepOneJustSubmitted();
       navigate({ to: "/thank-you", search: { t: data.token } });
-    } catch (error: any) {
-      toast.error(error?.message || "Could not submit your application. Please try again.");
+    } catch (error: unknown) {
+      console.error("[city-lead] submit failed", error);
+      const message = applySubmitErrorMessage(error);
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -191,7 +205,7 @@ export function CityHeroLeadForm({
         <FadeUp delay={80} className="w-full">
           <div ref={cardRef} className="bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
             {returning !== null ? (
-              <WelcomeBack email={returning.email} initial={returning} fresh={returning.fresh} onBack={() => setReturning(null)} />
+              <WelcomeBack email={returning.status === "review" ? undefined : returning.email} maskedEmailOnFile={returning.maskedEmailOnFile} initial={returning} fresh={returning.fresh} onBack={() => setReturning(null)} />
             ) : joined ? (
               <div className="py-8 text-center">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-real-red/10">
@@ -251,6 +265,11 @@ export function CityHeroLeadForm({
                 {/* Same optional opt-in in both modes, so waitlist leads can get the follow-up texts once promoted. */}
                 <SmsConsentField className="mt-5" checked={form.sms_consent} onChange={(v) => update("sms_consent", v)} />
 
+                {submitError ? (
+                  <p role="alert" data-testid="city-lead-submit-error" className="mt-5 rounded-lg border border-real-red/40 bg-white px-3 py-2 text-sm text-real-red">
+                    {submitError}
+                  </p>
+                ) : null}
                 <button
                   type="button"
                   onClick={submit}

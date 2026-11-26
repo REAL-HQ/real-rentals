@@ -8,7 +8,7 @@ import { etYmd } from "./weekly-cash-flow";
 
 export const FEE_UNAVAILABLE = "Unavailable";
 export const DIRECTORY_INCOMPLETE = "Tax records were incomplete";
-export const REVENUE_TYPES = ["rent", "late_fee", "other", "toll", "damage", "fee"] as const;
+export const REVENUE_TYPES = ["rent", "late_fee", "other", "toll", "damage", "fee", "reservation"] as const;
 export const TAX_GAPS = [
   "Stripe processing fees are not stored on payments or payment_refunds. This export does not call Stripe, so every fee is Unavailable.",
   "Rental income uses the payment's current net collected. A refund recorded later has already reduced that net. The refunds file lists those refunds and is not subtracted again.",

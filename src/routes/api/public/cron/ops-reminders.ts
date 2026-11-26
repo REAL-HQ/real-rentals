@@ -21,6 +21,7 @@ import {
   type CollectionsPlanPayment,
   type CollectionsPlanRental,
 } from "@/lib/collections-plan";
+import { isUnpaidReservationFee } from "@/lib/payments-summary";
 
 export const Route = createFileRoute("/api/public/cron/ops-reminders")({
   server: {
@@ -75,7 +76,7 @@ async function handle(request: Request): Promise<Response> {
   // on the same day-1 / 3 / 7 / weekly schedule. Rent Reminders own renter mail.
   const { data: duePayments } = await supabaseAdmin
     .from("payments")
-    .select("id,driver_id,amount,balance_due,due_date,status")
+    .select("id,driver_id,amount,balance_due,due_date,status,type,reason,notes")
     .lt("due_date", todayStr)
     .not("driver_id", "is", null)
     .in("status", [...UNPAID_STATUSES])
@@ -83,6 +84,7 @@ async function handle(request: Request): Promise<Response> {
 
   const byDriver = new Map<string, { amount: number; dueDate: string | null }>();
   for (const p of duePayments ?? []) {
+    if (isUnpaidReservationFee(p)) continue;
     const owed = Number(p.balance_due ?? 0) || Number(p.amount ?? 0);
     if (owed <= 0) continue;
     const prev = byDriver.get(p.driver_id as string);
@@ -192,12 +194,13 @@ async function handle(request: Request): Promise<Response> {
 
       const { data: duePayRows } = await supabaseAdmin
         .from("payments")
-        .select("id,rental_id,driver_id,due_date,amount,balance_due,status,payment_method,type")
+        .select("id,rental_id,driver_id,due_date,amount,balance_due,status,payment_method,type,reason,notes")
         .in("due_date", [todayStr, tomorrowStr])
         .in("status", [...UNPAID_STATUSES, ...UPCOMING_STATUSES])
         .limit(400);
 
-      const payAppIds = [...new Set((duePayRows ?? []).map((p) => p.driver_id).filter(Boolean))] as string[];
+      const planSource = (duePayRows ?? []).filter((p) => !isUnpaidReservationFee(p));
+      const payAppIds = [...new Set(planSource.map((p) => p.driver_id).filter(Boolean))] as string[];
       const missingApps = payAppIds.filter((id) => !appById.has(id));
       if (missingApps.length) {
         const { data: moreApps } = await supabaseAdmin
@@ -208,7 +211,7 @@ async function handle(request: Request): Promise<Response> {
         for (const a of moreApps ?? []) appById.set(a.id as string, (a.full_name as string | null) ?? null);
       }
 
-      const planPayments: CollectionsPlanPayment[] = (duePayRows ?? []).map((p) => ({
+      const planPayments: CollectionsPlanPayment[] = planSource.map((p) => ({
         id: p.id as string,
         rentalId: (p.rental_id as string | null) ?? null,
         driverId: (p.driver_id as string | null) ?? null,
@@ -461,6 +464,27 @@ async function handle(request: Request): Promise<Response> {
     }
   }
 
+  // ---- Stripe Charge Reconciliation (default OFF): succeeded charges with no
+  // payments row. Read-only against Stripe. One team alert per charge id.
+  // The team-alert kind is also default off, so both switches must be on.
+  let stripeChargeCheck = "off";
+  if (on("stripe_charge_reconciliation")) {
+    try {
+      const { loadTeamAlertSettings } = await import("@/lib/team-alerts.server");
+      const { runStripeChargeReconciliation } = await import("@/lib/stripe-charge-reconcile.server");
+      const settings = await loadTeamAlertSettings(supabaseAdmin);
+      if (!settings.stripe_payment_gap) stripeChargeCheck = "team_alert_off";
+      else {
+        const { createReadOnlyStripe } = await import("@/lib/stripe-reader.server");
+        const result = await runStripeChargeReconciliation(supabaseAdmin, { stripe: createReadOnlyStripe("live"), settings });
+        stripeChargeCheck = result.status === "gaps" ? `gaps:${result.gaps}` : result.status;
+      }
+    } catch (err) {
+      stripeChargeCheck = "error";
+      console.error("[ops-reminders] stripe charge reconciliation failed", err);
+    }
+  }
+
   // ---- Stripe Link Check (default OFF): paid Stripe money not recorded or not
   // tied to a rental. Read-only; emails team@ at most once per ET day.
   let stripeLinkCheck = "off";
@@ -481,6 +505,7 @@ async function handle(request: Request): Promise<Response> {
 
   return Response.json({
     ok: true,
+    stripe_charge_check: stripeChargeCheck,
     stripe_link_check: stripeLinkCheck,
     past_due_sent: pastDue,
     team_past_due_alerts: teamPastDue,

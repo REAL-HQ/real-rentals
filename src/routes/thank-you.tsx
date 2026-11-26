@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { openResumeLink } from "@/lib/applications.functions";
 import { ApplicationWizard } from "@/components/site/ApplicationWizard";
+import { ApplicantDocumentsPanel } from "@/components/site/ApplicantDocumentsPanel";
 import { useResumeToken, storeResumeToken } from "@/lib/resume-token";
 import { WelcomeBack } from "@/components/site/WelcomeBack";
 import { thankYouView } from "@/lib/secure-link-copy";
@@ -35,10 +36,10 @@ type OpenState =
   | { kind: "wait" }
   | { kind: "missing" }
   | { kind: "expired" }
-  | { kind: "wizard"; token: string }
+  | { kind: "wizard"; token: string; documentsOnly?: boolean }
   | { kind: "approved"; email: string };
 
-const exchanges = new Map<string, Promise<{ token: string | null; portal?: { email: string } | null }>>();
+const exchanges = new Map<string, Promise<{ token: string | null; portal?: { email: string } | null; documentsOnly?: boolean }>>();
 
 function ThankYouPage() {
   const { t } = Route.useSearch();
@@ -77,7 +78,7 @@ function ThankYouPage() {
           return;
         }
         if (r.token && r.token !== raw) storeResumeToken(r.token);
-        if (r.token) setState({ kind: "wizard", token: r.token });
+        if (r.token) setState({ kind: "wizard", token: r.token, documentsOnly: r.documentsOnly === true });
         else setState({ kind: "expired" });
       })
       .catch(() => live && setState({ kind: "expired" }));
@@ -116,9 +117,9 @@ function ThankYouPage() {
           <div className="flex justify-center">
             <Logo offset={false} />
           </div>
-          <h1 className="mt-6 text-2xl font-semibold">You're Approved — Sign In To Your Account</h1>
+          <h1 className="mt-6 text-2xl font-semibold">Sign In To Your Driver Portal</h1>
           <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
-            Your application is approved. Sign in to upload documents, sign your agreement, and finish setup. We'll
+            Your rental is underway. Sign in to your driver portal to see your payments, receipts and documents. We'll
             email you a sign-in code — no password needed.
           </p>
           <Link
@@ -126,7 +127,7 @@ function ThankYouPage() {
             search={state.email ? ({ email: state.email } as any) : ({} as any)}
             className="mt-6 inline-flex min-h-11 items-center justify-center rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
           >
-            Sign In To Your Account
+            Sign In To Your Driver Portal
           </Link>
           <p className="mt-4 text-xs text-muted-foreground break-all">{href}</p>
         </div>
@@ -135,6 +136,8 @@ function ThankYouPage() {
   }
 
   if (state.kind !== "wizard") return null;
+  // Approved, not picked up yet (t466u): documents only, no wizard.
+  if (state.documentsOnly) return <ApplicantDocumentsPanel token={state.token} />;
   if (welcome) {
     return (
       <StepOneThankYou

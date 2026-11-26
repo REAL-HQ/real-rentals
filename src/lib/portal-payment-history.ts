@@ -76,6 +76,10 @@ export type HistoryRow = {
   payment_method: string | null;
   stripe_payment_intent_id?: string | null;
   stripe_invoice_id?: string | null;
+  /** Stripe's own receipt page (charge.receipt_url), when the webhook stored one. */
+  stripe_receipt_url?: string | null;
+  /** "reservation_fee" labels the $50 Reservation Fee. */
+  reason?: string | null;
 };
 
 export type HistoryCharge = {
@@ -99,6 +103,8 @@ export type HistoryPayment = {
   sourceLabel: string;
   dueDate: string | null;
   paidDate: string | null;
+  /** Stripe receipt link (https, stripe.com only). Null: the Invoice PDF is the fallback. */
+  receiptUrl: string | null;
 };
 
 export type PortalPaymentHistory = {
@@ -158,6 +164,24 @@ export function historyStatusLabel(status: string | null | undefined): string {
   const key = statusKey(status);
   if (!key) return "Not Recorded";
   return STATUS_LABEL[key] ?? key.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+/** Stripe receipt pages only: https on stripe.com. Anything else is dropped. */
+export function historyReceiptUrl(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const u = new URL(raw.trim());
+    if (u.protocol !== "https:") return null;
+    if (!/(^|\.)stripe\.com$/i.test(u.hostname)) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function rowTypeLabel(row: Pick<HistoryRow, "type" | "reason">): string {
+  if (typeof row.reason === "string" && row.reason.trim().toLowerCase() === "reservation_fee") return "Reservation Fee";
+  return historyTypeLabel(row.type);
 }
 
 export function historyTypeLabel(type: string | null | undefined): string {
@@ -220,7 +244,7 @@ export function buildPortalPaymentHistory(input: {
     const balanceDueCents = cents(row.balance_due);
     charges.push({
       id: row.id,
-      typeLabel: historyTypeLabel(row.type),
+      typeLabel: rowTypeLabel(row),
       statusLabel: historyStatusLabel(row.status),
       amountCents: cents(row.amount),
       balanceDueCents,
@@ -236,7 +260,7 @@ export function buildPortalPaymentHistory(input: {
       const collectedCents = row.net_collected != null && row.net_collected !== "" ? cents(row.net_collected) : cents(row.amount);
       payments.push({
         id: row.id,
-        typeLabel: historyTypeLabel(row.type),
+        typeLabel: rowTypeLabel(row),
         statusLabel: historyStatusLabel(row.status),
         amountCents: cents(row.amount),
         collectedCents,
@@ -244,6 +268,7 @@ export function buildPortalPaymentHistory(input: {
         sourceLabel: source,
         dueDate: row.due_date,
         paidDate: row.paid_date,
+        receiptUrl: historyReceiptUrl(row.stripe_receipt_url),
       });
     }
   }
@@ -281,7 +306,7 @@ export type PaymentHistoryClient = {
 };
 
 const PAYMENT_COLUMNS =
-  "id,type,status,amount,balance_due,net_collected,refunded_amount,due_date,paid_date,created_at,payment_method,stripe_payment_intent_id,stripe_invoice_id";
+  "id,type,status,amount,balance_due,net_collected,refunded_amount,due_date,paid_date,created_at,payment_method,stripe_payment_intent_id,stripe_invoice_id,stripe_receipt_url,reason";
 
 function chunks(ids: readonly string[]): string[][] {
   const groups: string[][] = [];

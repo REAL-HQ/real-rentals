@@ -24,6 +24,7 @@ import { Route as PartnerRouteImport } from './routes/partner'
 import { Route as PartnersRouteImport } from './routes/partners'
 import { Route as PortalRouteImport } from './routes/portal'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ReservationFeeRouteImport } from './routes/reservation-fee'
 import { Route as SetPasswordRouteImport } from './routes/set-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SmsConsentRouteImport } from './routes/sms-consent'
@@ -31,6 +32,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ThankYouRouteImport } from './routes/thank-you'
 import { Route as AuthConfirmRouteImport } from './routes/auth/confirm'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
+import { Route as DIdRouteImport } from './routes/d.$id'
 import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 import { Route as PickupRentalIdRouteImport } from './routes/pickup.$rentalId'
@@ -48,23 +50,33 @@ import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/publ
 import { Route as ApiPublicCronRentRemindersRouteImport } from './routes/api/public/cron/rent-reminders'
 import { Route as ApiPublicCronRenterRemindersRouteImport } from './routes/api/public/cron/renter-reminders'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
+import { Route as ApiPublicFleetAgreementSignersRouteImport } from './routes/api/public/fleet/agreement-signers'
 import { Route as ApiPublicFleetAmendAgreementRouteImport } from './routes/api/public/fleet/amend-agreement'
 import { Route as ApiPublicFleetApplicantDecisionRouteImport } from './routes/api/public/fleet/applicant-decision'
 import { Route as ApiPublicFleetApplicantsRouteImport } from './routes/api/public/fleet/applicants'
 import { Route as ApiPublicFleetAssignVehicleRouteImport } from './routes/api/public/fleet/assign-vehicle'
+import { Route as ApiPublicFleetBackgroundReportRouteImport } from './routes/api/public/fleet/background-report'
 import { Route as ApiPublicFleetDriverDocumentRouteImport } from './routes/api/public/fleet/driver-document'
 import { Route as ApiPublicFleetGpsReadingsRouteImport } from './routes/api/public/fleet/gps-readings'
 import { Route as ApiPublicFleetHandoffRouteImport } from './routes/api/public/fleet/handoff'
+import { Route as ApiPublicFleetInsuranceAppliedRouteImport } from './routes/api/public/fleet/insurance-applied'
 import { Route as ApiPublicFleetInsuranceCardRouteImport } from './routes/api/public/fleet/insurance-card'
 import { Route as ApiPublicFleetLicenseFactsRouteImport } from './routes/api/public/fleet/license-facts'
+import { Route as ApiPublicFleetMileageReadingRouteImport } from './routes/api/public/fleet/mileage-reading'
 import { Route as ApiPublicFleetMissingItemsRouteImport } from './routes/api/public/fleet/missing-items'
+import { Route as ApiPublicFleetMonthlyInspectionRouteImport } from './routes/api/public/fleet/monthly-inspection'
 import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api/public/fleet/payment-text-pause'
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
+import { Route as ApiPublicFleetProfileNoteRouteImport } from './routes/api/public/fleet/profile-note'
+import { Route as ApiPublicFleetRefundReservationRouteImport } from './routes/api/public/fleet/refund-reservation'
 import { Route as ApiPublicFleetResendLinkRouteImport } from './routes/api/public/fleet/resend-link'
+import { Route as ApiPublicFleetReservationFeeLinkRouteImport } from './routes/api/public/fleet/reservation-fee-link'
 import { Route as ApiPublicFleetScreeningResultRouteImport } from './routes/api/public/fleet/screening-result'
 import { Route as ApiPublicFleetSendAgreementRouteImport } from './routes/api/public/fleet/send-agreement'
+import { Route as ApiPublicFleetServiceDueRouteImport } from './routes/api/public/fleet/service-due'
 import { Route as ApiPublicFleetStatusRouteImport } from './routes/api/public/fleet/status'
 import { Route as ApiPublicFleetTeamAlertRouteImport } from './routes/api/public/fleet/team-alert'
+import { Route as ApiPublicFleetVehicleMaintenanceRouteImport } from './routes/api/public/fleet/vehicle-maintenance'
 import { Route as ApiPublicInboundEmailRouteImport } from './routes/api/public/inbound/email'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
@@ -149,6 +161,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReservationFeeRoute = ReservationFeeRouteImport.update({
+  id: '/reservation-fee',
+  path: '/reservation-fee',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SetPasswordRoute = SetPasswordRouteImport.update({
   id: '/set-password',
   path: '/set-password',
@@ -182,6 +199,11 @@ const AuthConfirmRoute = AuthConfirmRouteImport.update({
 const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
   id: '/card/$applicationId',
   path: '/card/$applicationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DIdRoute = DIdRouteImport.update({
+  id: '/d/$id',
+  path: '/d/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FleetIndexRoute = FleetIndexRouteImport.update({
@@ -276,6 +298,12 @@ const ApiPublicCronWizardRecoveryRoute =
     path: '/api/public/cron/wizard-recovery',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetAgreementSignersRoute =
+  ApiPublicFleetAgreementSignersRouteImport.update({
+    id: '/api/public/fleet/agreement-signers',
+    path: '/api/public/fleet/agreement-signers',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetAmendAgreementRoute =
   ApiPublicFleetAmendAgreementRouteImport.update({
     id: '/api/public/fleet/amend-agreement',
@@ -300,6 +328,12 @@ const ApiPublicFleetAssignVehicleRoute =
     path: '/api/public/fleet/assign-vehicle',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetBackgroundReportRoute =
+  ApiPublicFleetBackgroundReportRouteImport.update({
+    id: '/api/public/fleet/background-report',
+    path: '/api/public/fleet/background-report',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetDriverDocumentRoute =
   ApiPublicFleetDriverDocumentRouteImport.update({
     id: '/api/public/fleet/driver-document',
@@ -317,6 +351,12 @@ const ApiPublicFleetHandoffRoute = ApiPublicFleetHandoffRouteImport.update({
   path: '/api/public/fleet/handoff',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicFleetInsuranceAppliedRoute =
+  ApiPublicFleetInsuranceAppliedRouteImport.update({
+    id: '/api/public/fleet/insurance-applied',
+    path: '/api/public/fleet/insurance-applied',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetInsuranceCardRoute =
   ApiPublicFleetInsuranceCardRouteImport.update({
     id: '/api/public/fleet/insurance-card',
@@ -329,10 +369,22 @@ const ApiPublicFleetLicenseFactsRoute =
     path: '/api/public/fleet/license-facts',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetMileageReadingRoute =
+  ApiPublicFleetMileageReadingRouteImport.update({
+    id: '/api/public/fleet/mileage-reading',
+    path: '/api/public/fleet/mileage-reading',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetMissingItemsRoute =
   ApiPublicFleetMissingItemsRouteImport.update({
     id: '/api/public/fleet/missing-items',
     path: '/api/public/fleet/missing-items',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicFleetMonthlyInspectionRoute =
+  ApiPublicFleetMonthlyInspectionRouteImport.update({
+    id: '/api/public/fleet/monthly-inspection',
+    path: '/api/public/fleet/monthly-inspection',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicFleetPaymentTextPauseRoute =
@@ -347,10 +399,28 @@ const ApiPublicFleetPickupSlotsRoute =
     path: '/api/public/fleet/pickup-slots',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetProfileNoteRoute =
+  ApiPublicFleetProfileNoteRouteImport.update({
+    id: '/api/public/fleet/profile-note',
+    path: '/api/public/fleet/profile-note',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicFleetRefundReservationRoute =
+  ApiPublicFleetRefundReservationRouteImport.update({
+    id: '/api/public/fleet/refund-reservation',
+    path: '/api/public/fleet/refund-reservation',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetResendLinkRoute =
   ApiPublicFleetResendLinkRouteImport.update({
     id: '/api/public/fleet/resend-link',
     path: '/api/public/fleet/resend-link',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicFleetReservationFeeLinkRoute =
+  ApiPublicFleetReservationFeeLinkRouteImport.update({
+    id: '/api/public/fleet/reservation-fee-link',
+    path: '/api/public/fleet/reservation-fee-link',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicFleetScreeningResultRoute =
@@ -365,6 +435,12 @@ const ApiPublicFleetSendAgreementRoute =
     path: '/api/public/fleet/send-agreement',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetServiceDueRoute =
+  ApiPublicFleetServiceDueRouteImport.update({
+    id: '/api/public/fleet/service-due',
+    path: '/api/public/fleet/service-due',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetStatusRoute = ApiPublicFleetStatusRouteImport.update({
   id: '/api/public/fleet/status',
   path: '/api/public/fleet/status',
@@ -375,6 +451,12 @@ const ApiPublicFleetTeamAlertRoute = ApiPublicFleetTeamAlertRouteImport.update({
   path: '/api/public/fleet/team-alert',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicFleetVehicleMaintenanceRoute =
+  ApiPublicFleetVehicleMaintenanceRouteImport.update({
+    id: '/api/public/fleet/vehicle-maintenance',
+    path: '/api/public/fleet/vehicle-maintenance',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicInboundEmailRoute = ApiPublicInboundEmailRouteImport.update({
   id: '/api/public/inbound/email',
   path: '/api/public/inbound/email',
@@ -436,6 +518,7 @@ export interface FileRoutesByFullPath {
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/reservation-fee': typeof ReservationFeeRoute
   '/set-password': typeof SetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
@@ -443,6 +526,7 @@ export interface FileRoutesByFullPath {
   '/thank-you': typeof ThankYouRoute
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
+  '/d/$id': typeof DIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal/help': typeof PortalHelpRoute
@@ -460,23 +544,33 @@ export interface FileRoutesByFullPath {
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/fleet/agreement-signers': typeof ApiPublicFleetAgreementSignersRoute
   '/api/public/fleet/amend-agreement': typeof ApiPublicFleetAmendAgreementRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/background-report': typeof ApiPublicFleetBackgroundReportRoute
   '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
+  '/api/public/fleet/insurance-applied': typeof ApiPublicFleetInsuranceAppliedRoute
   '/api/public/fleet/insurance-card': typeof ApiPublicFleetInsuranceCardRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
+  '/api/public/fleet/mileage-reading': typeof ApiPublicFleetMileageReadingRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
+  '/api/public/fleet/monthly-inspection': typeof ApiPublicFleetMonthlyInspectionRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
+  '/api/public/fleet/profile-note': typeof ApiPublicFleetProfileNoteRoute
+  '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
+  '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/service-due': typeof ApiPublicFleetServiceDueRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
+  '/api/public/fleet/vehicle-maintenance': typeof ApiPublicFleetVehicleMaintenanceRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -502,6 +596,7 @@ export interface FileRoutesByTo {
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/reservation-fee': typeof ReservationFeeRoute
   '/set-password': typeof SetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
@@ -509,6 +604,7 @@ export interface FileRoutesByTo {
   '/thank-you': typeof ThankYouRoute
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
+  '/d/$id': typeof DIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal/help': typeof PortalHelpRoute
@@ -526,23 +622,33 @@ export interface FileRoutesByTo {
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/fleet/agreement-signers': typeof ApiPublicFleetAgreementSignersRoute
   '/api/public/fleet/amend-agreement': typeof ApiPublicFleetAmendAgreementRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/background-report': typeof ApiPublicFleetBackgroundReportRoute
   '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
+  '/api/public/fleet/insurance-applied': typeof ApiPublicFleetInsuranceAppliedRoute
   '/api/public/fleet/insurance-card': typeof ApiPublicFleetInsuranceCardRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
+  '/api/public/fleet/mileage-reading': typeof ApiPublicFleetMileageReadingRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
+  '/api/public/fleet/monthly-inspection': typeof ApiPublicFleetMonthlyInspectionRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
+  '/api/public/fleet/profile-note': typeof ApiPublicFleetProfileNoteRoute
+  '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
+  '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/service-due': typeof ApiPublicFleetServiceDueRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
+  '/api/public/fleet/vehicle-maintenance': typeof ApiPublicFleetVehicleMaintenanceRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -569,6 +675,7 @@ export interface FileRoutesById {
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/reservation-fee': typeof ReservationFeeRoute
   '/set-password': typeof SetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
@@ -576,6 +683,7 @@ export interface FileRoutesById {
   '/thank-you': typeof ThankYouRoute
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
+  '/d/$id': typeof DIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal_/help': typeof PortalHelpRoute
@@ -593,23 +701,33 @@ export interface FileRoutesById {
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/fleet/agreement-signers': typeof ApiPublicFleetAgreementSignersRoute
   '/api/public/fleet/amend-agreement': typeof ApiPublicFleetAmendAgreementRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/background-report': typeof ApiPublicFleetBackgroundReportRoute
   '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
+  '/api/public/fleet/insurance-applied': typeof ApiPublicFleetInsuranceAppliedRoute
   '/api/public/fleet/insurance-card': typeof ApiPublicFleetInsuranceCardRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
+  '/api/public/fleet/mileage-reading': typeof ApiPublicFleetMileageReadingRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
+  '/api/public/fleet/monthly-inspection': typeof ApiPublicFleetMonthlyInspectionRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
+  '/api/public/fleet/profile-note': typeof ApiPublicFleetProfileNoteRoute
+  '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
+  '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/service-due': typeof ApiPublicFleetServiceDueRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
+  '/api/public/fleet/vehicle-maintenance': typeof ApiPublicFleetVehicleMaintenanceRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -637,6 +755,7 @@ export interface FileRouteTypes {
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/reservation-fee'
     | '/set-password'
     | '/sitemap.xml'
     | '/sms-consent'
@@ -644,6 +763,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/auth/confirm'
     | '/card/$applicationId'
+    | '/d/$id'
     | '/fleet/$id'
     | '/pickup/$rentalId'
     | '/portal/help'
@@ -661,23 +781,33 @@ export interface FileRouteTypes {
     | '/api/public/cron/rent-reminders'
     | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/fleet/agreement-signers'
     | '/api/public/fleet/amend-agreement'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/background-report'
     | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
+    | '/api/public/fleet/insurance-applied'
     | '/api/public/fleet/insurance-card'
     | '/api/public/fleet/license-facts'
+    | '/api/public/fleet/mileage-reading'
     | '/api/public/fleet/missing-items'
+    | '/api/public/fleet/monthly-inspection'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
+    | '/api/public/fleet/profile-note'
+    | '/api/public/fleet/refund-reservation'
     | '/api/public/fleet/resend-link'
+    | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/service-due'
     | '/api/public/fleet/status'
     | '/api/public/fleet/team-alert'
+    | '/api/public/fleet/vehicle-maintenance'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -703,6 +833,7 @@ export interface FileRouteTypes {
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/reservation-fee'
     | '/set-password'
     | '/sitemap.xml'
     | '/sms-consent'
@@ -710,6 +841,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/auth/confirm'
     | '/card/$applicationId'
+    | '/d/$id'
     | '/fleet/$id'
     | '/pickup/$rentalId'
     | '/portal/help'
@@ -727,23 +859,33 @@ export interface FileRouteTypes {
     | '/api/public/cron/rent-reminders'
     | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/fleet/agreement-signers'
     | '/api/public/fleet/amend-agreement'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/background-report'
     | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
+    | '/api/public/fleet/insurance-applied'
     | '/api/public/fleet/insurance-card'
     | '/api/public/fleet/license-facts'
+    | '/api/public/fleet/mileage-reading'
     | '/api/public/fleet/missing-items'
+    | '/api/public/fleet/monthly-inspection'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
+    | '/api/public/fleet/profile-note'
+    | '/api/public/fleet/refund-reservation'
     | '/api/public/fleet/resend-link'
+    | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/service-due'
     | '/api/public/fleet/status'
     | '/api/public/fleet/team-alert'
+    | '/api/public/fleet/vehicle-maintenance'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -769,6 +911,7 @@ export interface FileRouteTypes {
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/reservation-fee'
     | '/set-password'
     | '/sitemap.xml'
     | '/sms-consent'
@@ -776,6 +919,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/auth/confirm'
     | '/card/$applicationId'
+    | '/d/$id'
     | '/fleet/$id'
     | '/pickup/$rentalId'
     | '/portal_/help'
@@ -793,23 +937,33 @@ export interface FileRouteTypes {
     | '/api/public/cron/rent-reminders'
     | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/fleet/agreement-signers'
     | '/api/public/fleet/amend-agreement'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/background-report'
     | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
+    | '/api/public/fleet/insurance-applied'
     | '/api/public/fleet/insurance-card'
     | '/api/public/fleet/license-facts'
+    | '/api/public/fleet/mileage-reading'
     | '/api/public/fleet/missing-items'
+    | '/api/public/fleet/monthly-inspection'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
+    | '/api/public/fleet/profile-note'
+    | '/api/public/fleet/refund-reservation'
     | '/api/public/fleet/resend-link'
+    | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/service-due'
     | '/api/public/fleet/status'
     | '/api/public/fleet/team-alert'
+    | '/api/public/fleet/vehicle-maintenance'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -836,6 +990,7 @@ export interface RootRouteChildren {
   PartnersRoute: typeof PartnersRoute
   PortalRoute: typeof PortalRoute
   PrivacyRoute: typeof PrivacyRoute
+  ReservationFeeRoute: typeof ReservationFeeRoute
   SetPasswordRoute: typeof SetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   SmsConsentRoute: typeof SmsConsentRoute
@@ -843,6 +998,7 @@ export interface RootRouteChildren {
   ThankYouRoute: typeof ThankYouRoute
   AuthConfirmRoute: typeof AuthConfirmRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
+  DIdRoute: typeof DIdRoute
   FleetIdRoute: typeof FleetIdRoute
   PickupRentalIdRoute: typeof PickupRentalIdRoute
   PortalHelpRoute: typeof PortalHelpRoute
@@ -860,23 +1016,33 @@ export interface RootRouteChildren {
   ApiPublicCronRentRemindersRoute: typeof ApiPublicCronRentRemindersRoute
   ApiPublicCronRenterRemindersRoute: typeof ApiPublicCronRenterRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
+  ApiPublicFleetAgreementSignersRoute: typeof ApiPublicFleetAgreementSignersRoute
   ApiPublicFleetAmendAgreementRoute: typeof ApiPublicFleetAmendAgreementRoute
   ApiPublicFleetApplicantDecisionRoute: typeof ApiPublicFleetApplicantDecisionRoute
   ApiPublicFleetApplicantsRoute: typeof ApiPublicFleetApplicantsRoute
   ApiPublicFleetAssignVehicleRoute: typeof ApiPublicFleetAssignVehicleRoute
+  ApiPublicFleetBackgroundReportRoute: typeof ApiPublicFleetBackgroundReportRoute
   ApiPublicFleetDriverDocumentRoute: typeof ApiPublicFleetDriverDocumentRoute
   ApiPublicFleetGpsReadingsRoute: typeof ApiPublicFleetGpsReadingsRoute
   ApiPublicFleetHandoffRoute: typeof ApiPublicFleetHandoffRoute
+  ApiPublicFleetInsuranceAppliedRoute: typeof ApiPublicFleetInsuranceAppliedRoute
   ApiPublicFleetInsuranceCardRoute: typeof ApiPublicFleetInsuranceCardRoute
   ApiPublicFleetLicenseFactsRoute: typeof ApiPublicFleetLicenseFactsRoute
+  ApiPublicFleetMileageReadingRoute: typeof ApiPublicFleetMileageReadingRoute
   ApiPublicFleetMissingItemsRoute: typeof ApiPublicFleetMissingItemsRoute
+  ApiPublicFleetMonthlyInspectionRoute: typeof ApiPublicFleetMonthlyInspectionRoute
   ApiPublicFleetPaymentTextPauseRoute: typeof ApiPublicFleetPaymentTextPauseRoute
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
+  ApiPublicFleetProfileNoteRoute: typeof ApiPublicFleetProfileNoteRoute
+  ApiPublicFleetRefundReservationRoute: typeof ApiPublicFleetRefundReservationRoute
   ApiPublicFleetResendLinkRoute: typeof ApiPublicFleetResendLinkRoute
+  ApiPublicFleetReservationFeeLinkRoute: typeof ApiPublicFleetReservationFeeLinkRoute
   ApiPublicFleetScreeningResultRoute: typeof ApiPublicFleetScreeningResultRoute
   ApiPublicFleetSendAgreementRoute: typeof ApiPublicFleetSendAgreementRoute
+  ApiPublicFleetServiceDueRoute: typeof ApiPublicFleetServiceDueRoute
   ApiPublicFleetStatusRoute: typeof ApiPublicFleetStatusRoute
   ApiPublicFleetTeamAlertRoute: typeof ApiPublicFleetTeamAlertRoute
+  ApiPublicFleetVehicleMaintenanceRoute: typeof ApiPublicFleetVehicleMaintenanceRoute
   ApiPublicInboundEmailRoute: typeof ApiPublicInboundEmailRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
@@ -994,6 +1160,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reservation-fee': {
+      id: '/reservation-fee'
+      path: '/reservation-fee'
+      fullPath: '/reservation-fee'
+      preLoaderRoute: typeof ReservationFeeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/set-password': {
       id: '/set-password'
       path: '/set-password'
@@ -1041,6 +1214,13 @@ declare module '@tanstack/react-router' {
       path: '/card/$applicationId'
       fullPath: '/card/$applicationId'
       preLoaderRoute: typeof CardApplicationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/d/$id': {
+      id: '/d/$id'
+      path: '/d/$id'
+      fullPath: '/d/$id'
+      preLoaderRoute: typeof DIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/fleet/': {
@@ -1162,6 +1342,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronWizardRecoveryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/agreement-signers': {
+      id: '/api/public/fleet/agreement-signers'
+      path: '/api/public/fleet/agreement-signers'
+      fullPath: '/api/public/fleet/agreement-signers'
+      preLoaderRoute: typeof ApiPublicFleetAgreementSignersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/amend-agreement': {
       id: '/api/public/fleet/amend-agreement'
       path: '/api/public/fleet/amend-agreement'
@@ -1190,6 +1377,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetAssignVehicleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/background-report': {
+      id: '/api/public/fleet/background-report'
+      path: '/api/public/fleet/background-report'
+      fullPath: '/api/public/fleet/background-report'
+      preLoaderRoute: typeof ApiPublicFleetBackgroundReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/driver-document': {
       id: '/api/public/fleet/driver-document'
       path: '/api/public/fleet/driver-document'
@@ -1211,6 +1405,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetHandoffRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/insurance-applied': {
+      id: '/api/public/fleet/insurance-applied'
+      path: '/api/public/fleet/insurance-applied'
+      fullPath: '/api/public/fleet/insurance-applied'
+      preLoaderRoute: typeof ApiPublicFleetInsuranceAppliedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/insurance-card': {
       id: '/api/public/fleet/insurance-card'
       path: '/api/public/fleet/insurance-card'
@@ -1225,11 +1426,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetLicenseFactsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/mileage-reading': {
+      id: '/api/public/fleet/mileage-reading'
+      path: '/api/public/fleet/mileage-reading'
+      fullPath: '/api/public/fleet/mileage-reading'
+      preLoaderRoute: typeof ApiPublicFleetMileageReadingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/missing-items': {
       id: '/api/public/fleet/missing-items'
       path: '/api/public/fleet/missing-items'
       fullPath: '/api/public/fleet/missing-items'
       preLoaderRoute: typeof ApiPublicFleetMissingItemsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/monthly-inspection': {
+      id: '/api/public/fleet/monthly-inspection'
+      path: '/api/public/fleet/monthly-inspection'
+      fullPath: '/api/public/fleet/monthly-inspection'
+      preLoaderRoute: typeof ApiPublicFleetMonthlyInspectionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/fleet/payment-text-pause': {
@@ -1246,11 +1461,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetPickupSlotsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/profile-note': {
+      id: '/api/public/fleet/profile-note'
+      path: '/api/public/fleet/profile-note'
+      fullPath: '/api/public/fleet/profile-note'
+      preLoaderRoute: typeof ApiPublicFleetProfileNoteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/refund-reservation': {
+      id: '/api/public/fleet/refund-reservation'
+      path: '/api/public/fleet/refund-reservation'
+      fullPath: '/api/public/fleet/refund-reservation'
+      preLoaderRoute: typeof ApiPublicFleetRefundReservationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/resend-link': {
       id: '/api/public/fleet/resend-link'
       path: '/api/public/fleet/resend-link'
       fullPath: '/api/public/fleet/resend-link'
       preLoaderRoute: typeof ApiPublicFleetResendLinkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/reservation-fee-link': {
+      id: '/api/public/fleet/reservation-fee-link'
+      path: '/api/public/fleet/reservation-fee-link'
+      fullPath: '/api/public/fleet/reservation-fee-link'
+      preLoaderRoute: typeof ApiPublicFleetReservationFeeLinkRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/fleet/screening-result': {
@@ -1267,6 +1503,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetSendAgreementRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/service-due': {
+      id: '/api/public/fleet/service-due'
+      path: '/api/public/fleet/service-due'
+      fullPath: '/api/public/fleet/service-due'
+      preLoaderRoute: typeof ApiPublicFleetServiceDueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/status': {
       id: '/api/public/fleet/status'
       path: '/api/public/fleet/status'
@@ -1279,6 +1522,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/fleet/team-alert'
       fullPath: '/api/public/fleet/team-alert'
       preLoaderRoute: typeof ApiPublicFleetTeamAlertRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/vehicle-maintenance': {
+      id: '/api/public/fleet/vehicle-maintenance'
+      path: '/api/public/fleet/vehicle-maintenance'
+      fullPath: '/api/public/fleet/vehicle-maintenance'
+      preLoaderRoute: typeof ApiPublicFleetVehicleMaintenanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/inbound/email': {
@@ -1356,6 +1606,7 @@ const rootRouteChildren: RootRouteChildren = {
   PartnersRoute: PartnersRoute,
   PortalRoute: PortalRoute,
   PrivacyRoute: PrivacyRoute,
+  ReservationFeeRoute: ReservationFeeRoute,
   SetPasswordRoute: SetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   SmsConsentRoute: SmsConsentRoute,
@@ -1363,6 +1614,7 @@ const rootRouteChildren: RootRouteChildren = {
   ThankYouRoute: ThankYouRoute,
   AuthConfirmRoute: AuthConfirmRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
+  DIdRoute: DIdRoute,
   FleetIdRoute: FleetIdRoute,
   PickupRentalIdRoute: PickupRentalIdRoute,
   PortalHelpRoute: PortalHelpRoute,
@@ -1380,23 +1632,33 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCronRentRemindersRoute: ApiPublicCronRentRemindersRoute,
   ApiPublicCronRenterRemindersRoute: ApiPublicCronRenterRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
+  ApiPublicFleetAgreementSignersRoute: ApiPublicFleetAgreementSignersRoute,
   ApiPublicFleetAmendAgreementRoute: ApiPublicFleetAmendAgreementRoute,
   ApiPublicFleetApplicantDecisionRoute: ApiPublicFleetApplicantDecisionRoute,
   ApiPublicFleetApplicantsRoute: ApiPublicFleetApplicantsRoute,
   ApiPublicFleetAssignVehicleRoute: ApiPublicFleetAssignVehicleRoute,
+  ApiPublicFleetBackgroundReportRoute: ApiPublicFleetBackgroundReportRoute,
   ApiPublicFleetDriverDocumentRoute: ApiPublicFleetDriverDocumentRoute,
   ApiPublicFleetGpsReadingsRoute: ApiPublicFleetGpsReadingsRoute,
   ApiPublicFleetHandoffRoute: ApiPublicFleetHandoffRoute,
+  ApiPublicFleetInsuranceAppliedRoute: ApiPublicFleetInsuranceAppliedRoute,
   ApiPublicFleetInsuranceCardRoute: ApiPublicFleetInsuranceCardRoute,
   ApiPublicFleetLicenseFactsRoute: ApiPublicFleetLicenseFactsRoute,
+  ApiPublicFleetMileageReadingRoute: ApiPublicFleetMileageReadingRoute,
   ApiPublicFleetMissingItemsRoute: ApiPublicFleetMissingItemsRoute,
+  ApiPublicFleetMonthlyInspectionRoute: ApiPublicFleetMonthlyInspectionRoute,
   ApiPublicFleetPaymentTextPauseRoute: ApiPublicFleetPaymentTextPauseRoute,
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
+  ApiPublicFleetProfileNoteRoute: ApiPublicFleetProfileNoteRoute,
+  ApiPublicFleetRefundReservationRoute: ApiPublicFleetRefundReservationRoute,
   ApiPublicFleetResendLinkRoute: ApiPublicFleetResendLinkRoute,
+  ApiPublicFleetReservationFeeLinkRoute: ApiPublicFleetReservationFeeLinkRoute,
   ApiPublicFleetScreeningResultRoute: ApiPublicFleetScreeningResultRoute,
   ApiPublicFleetSendAgreementRoute: ApiPublicFleetSendAgreementRoute,
+  ApiPublicFleetServiceDueRoute: ApiPublicFleetServiceDueRoute,
   ApiPublicFleetStatusRoute: ApiPublicFleetStatusRoute,
   ApiPublicFleetTeamAlertRoute: ApiPublicFleetTeamAlertRoute,
+  ApiPublicFleetVehicleMaintenanceRoute: ApiPublicFleetVehicleMaintenanceRoute,
   ApiPublicInboundEmailRoute: ApiPublicInboundEmailRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,

@@ -1,10 +1,13 @@
 import { PaperAgreements } from "./PaperAgreements";
+import { FloridaAddendumPanel } from "./FloridaAddendumPanel";
 import { saveAgreementPdf } from "@/lib/agreement-download";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { FileSignature, Send, Ban, RefreshCw, Loader2, Download, Copy, AlertTriangle } from "lucide-react";
+import { FileSignature, Send, Ban, RefreshCw, Loader2, Download, Copy, AlertTriangle, Eye } from "lucide-react";
 import { SectionCard } from "./ui";
+import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton } from "./modal";
+import { AppSelect } from "@/components/ui/app-select";
 import {
   listAgreements,
   previewAgreement,
@@ -17,7 +20,11 @@ import {
 } from "@/lib/agreements.functions";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { AgreementPdfViewer } from "./AgreementPdfViewer";
+import { AgreementViewerDialog } from "./AgreementViewerDialog";
 import { PrepareAgreementDialog } from "./PrepareAgreementDialog";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
+import { SEND_DOCUMENT_FOR_SIGNATURE_ENABLED } from "@/lib/send-document-flag";
+import { SendDocumentDialog } from "./SendDocumentDialog";
 
 const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
 const chTone = (v: string) =>
@@ -31,6 +38,7 @@ function toneFor(status: string) {
 }
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
+type Note = { field: string; label: string; why: string };
 type PreviewRes = {
   pdfBase64: string | null;
   fingerprint: string | null;
@@ -41,10 +49,11 @@ type PreviewRes = {
   sendRefusal: string | null;
   missing: string[];
   blockers: Blocker[];
+  notes?: Note[];
   generatedAt: string;
 };
 
-export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: { applicationId: string; onOpenTab?: (tab: string) => void; applicationStatus?: string | null }) {
+export function AgreementsCard({ applicationId, onOpenTab, applicationStatus, renterName = null, renterEmail = null }: { applicationId: string; onOpenTab?: (tab: string) => void; applicationStatus?: string | null; renterName?: string | null; renterEmail?: string | null }) {
   const beforeApproval = applicationStatus != null && !["approved", "active"].includes(String(applicationStatus).toLowerCase());
   const load = useServerFn(listAgreements);
   const doPreview = useServerFn(previewAgreement);
@@ -60,9 +69,14 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
   const [preview, setPreview] = useState<PreviewRes | null>(null);
   const [busy, setBusy] = useState(false);
   const [prepOpen, setPrepOpen] = useState(false);
+  const [viewing, setViewing] = useState<{ id: string; title: string | null } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Latest signing link per agreement, held only in memory for Copy.
   const [links, setLinks] = useState<Record<string, string>>({});
+  const [resendFor, setResendFor] = useState<AgreementRow | null>(null);
+  const [resendWho, setResendWho] = useState("all");
+  const [emailOnly, setEmailOnly] = useState(false);
+  const [docOpen, setDocOpen] = useState(false);
 
   function reportDelivery(d: { email: string; sms: string; delivered: boolean } | undefined, okMsg: string) {
     if (!d) return toast.success(okMsg);
@@ -118,6 +132,14 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
     }
   }
 
+  async function runResend(agreementId: string, signerId?: string, channels?: "email" | "email_and_sms") {
+    const r = await doResend({ data: { agreementId, signerId, channels } });
+    const url = r.url;
+    if (url) setLinks((l) => ({ ...l, [agreementId]: url }));
+    reportDelivery(r.delivery, "Signing link sent");
+    await refresh();
+  }
+
   function fixLink(b: Blocker) {
     if (!b.fix) return null;
     if ("vehicleId" in b.fix)
@@ -141,16 +163,88 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
       padded={false}
       title="Rental Agreement"
       right={
-        <button
-          onClick={() => setPrepOpen(true)}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#D03020] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
-        >
-          {busy && !preview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSignature className="w-3.5 h-3.5" />}
-          Prepare Agreement
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {SEND_DOCUMENT_FOR_SIGNATURE_ENABLED ? (
+            <button
+              type="button"
+              onClick={() => setDocOpen(true)}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E6E6EA] bg-white text-[#28282E] text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Send Document For Signature
+            </button>
+          ) : null}
+          <button
+            onClick={() => setPrepOpen(true)}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#D03020] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
+          >
+            {busy && !preview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSignature className="w-3.5 h-3.5" />}
+            Prepare Agreement
+          </button>
+        </div>
       }
     >
+      {viewing && <AgreementViewerDialog agreementId={viewing.id} title={viewing.title} onClose={() => setViewing(null)} />}
+      {docOpen && SEND_DOCUMENT_FOR_SIGNATURE_ENABLED ? (
+        <SendDocumentDialog
+          applicationId={applicationId}
+          renterName={renterName}
+          renterEmail={renterEmail}
+          onClose={() => setDocOpen(false)}
+          onSent={(res) => {
+            if (res.fallback && res.fallbackReason) toast.message(res.fallbackReason);
+            reportDelivery(res.delivery, "Document sent for signature");
+            if (res.url) setLinks((l) => ({ ...l, [res.id]: res.url }));
+            setDocOpen(false);
+            void refresh();
+          }}
+        />
+      ) : null}
+      {resendFor ? (
+        <ModalShell onClose={() => setResendFor(null)} size="sm" label="Resend Signing Link">
+          <ModalHeader title="Resend Signing Link" subtitle="Each signer gets their own link." onClose={() => setResendFor(null)} />
+          <ModalBody>
+            <label className="block space-y-1.5">
+              <span className="text-[13px] font-medium text-foreground">Send To</span>
+              <AppSelect aria-label="Send To" value={resendWho} onChange={(e) => setResendWho(e.target.value)} className="h-11 w-full">
+                <option value="all">All Unsigned Signers</option>
+                {(resendFor.signers ?? []).filter((s) => s.status !== "signed" && !s.signed_at).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name || s.email || "Signer"}</option>
+                ))}
+              </AppSelect>
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-foreground">
+              <input type="checkbox" checked={emailOnly} onChange={(e) => setEmailOnly(e.target.checked)} />
+              Email Only
+            </label>
+          </ModalBody>
+          <ModalFooter>
+            <ModalButton onClick={() => setResendFor(null)}>Cancel</ModalButton>
+            <ModalButton
+              variant="primary"
+              disabled={busy}
+              onClick={async () => {
+                const id = resendFor.id;
+                const signerId = resendWho === "all" ? undefined : resendWho;
+                const channels = emailOnly ? "email" : "email_and_sms";
+                setBusy(true);
+                try {
+                  await runResend(id, signerId, channels);
+                  setResendFor(null);
+                } catch (e: any) {
+                  toast.error(e?.message || "Could not resend");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Resend Link
+            </ModalButton>
+          </ModalFooter>
+        </ModalShell>
+      ) : null}
       {prepOpen && (
         <PrepareAgreementDialog
           applicationId={applicationId}
@@ -213,6 +307,17 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                   ))}
                 </ul>
                 <p className="mt-2.5 text-[11.5px] text-[#8A6A00]">Correct the details, then press Regenerate.</p>
+              </div>
+            ) : null}
+            {(preview.notes?.length ?? 0) > 0 ? (
+              <div className="m-4 rounded-lg border border-[#E6E6EA] bg-[#FAFAFB] p-4" data-testid="agreement-notes">
+                <ul className="space-y-1">
+                  {preview.notes!.map((n, i) => (
+                    <li key={n.field + i} className="text-[12px] text-[#55555E]">
+                      <span className="font-semibold">{n.label}.</span> {n.why}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             {preview.sendRefusal ? (
@@ -283,8 +388,11 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] font-medium text-[#111114] truncate">{a.title}</span>
+                    {a.source === "standalone" ? (
+                      <span className="text-[10.5px] font-semibold rounded-full border border-[#E6E6EA] bg-[#FAFAFB] text-[#55555E] px-2 py-0.5">Uploaded Document</span>
+                    ) : null}
                     <span className={`text-[10.5px] font-semibold tracking-wide rounded-full border px-2 py-0.5 ${toneFor(a.status)}`}>
-                      {a.status}
+                      {formatStatusLabel(a.status)}
                     </span>
                   </div>
                   <div className="text-[11.5px] text-[#77777F] mt-0.5">
@@ -317,6 +425,11 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                       Company signer: {a.company_signer_name}{a.company_signer_title ? `, ${a.company_signer_title}` : ""}
                     </div>
                   ) : null}
+                  {(a.signers ?? []).length > 1 ? (
+                    <div className="mt-1 text-[11px] text-[#55555E]">
+                      {a.signers.map((s) => `${s.name || s.email || "Signer"}: ${s.status === "signed" || s.signed_at ? "Signed" : "Unsigned"}`).join(" · ")}
+                    </div>
+                  ) : null}
                   {a.timeline?.length ? (
                     <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10.5px] text-[#77777F]">
                       {a.timeline.map((t, i) => (
@@ -333,6 +446,16 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                   ) : null}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {a.status === "signed" && a.archive_status === "archived" ? (
+                    <button
+                      title="View Signed Agreement"
+                      data-testid="view-agreement"
+                      onClick={() => setViewing({ id: a.id, title: a.title })}
+                      className="inline-flex items-center gap-1 rounded-md border border-[#E6E6EA] px-2 py-1 text-[11px] font-semibold text-[#55555E] hover:bg-[#F4F4F6]"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> View
+                    </button>
+                  ) : null}
                   {a.status === "signed" && a.archive_status === "archived" ? (
                     <button
                       title="Download Signed PDF"
@@ -379,13 +502,16 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                         </button>
                       ) : null}
                       <button
-                        title="Retry Delivery (issues a new link; the old one stops working)"
+                        title="Resend the signing link"
                         onClick={async () => {
+                          if ((a.signers ?? []).length > 1) {
+                            setResendWho("all");
+                            setEmailOnly(false);
+                            setResendFor(a);
+                            return;
+                          }
                           try {
-                            const r = await doResend({ data: { agreementId: a.id } });
-                            if (r.url) setLinks((l) => ({ ...l, [a.id]: r.url }));
-                            reportDelivery(r.delivery, "New signing link sent");
-                            await refresh();
+                            await runResend(a.id);
                           } catch (e: any) {
                             toast.error(e?.message || "Could not resend");
                           }
@@ -417,6 +543,7 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
           </ul>
         )}
       </div>
+    <FloridaAddendumPanel applicationId={applicationId} />
     <PaperAgreements applicationId={applicationId} />
     </SectionCard>
   );

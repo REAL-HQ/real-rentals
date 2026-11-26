@@ -206,8 +206,11 @@ eq(critical({ has_dui: true }).state, "needs_attention", "  and forces Needs Att
 ok(critical({ license_active: false }).disqualifiers.includes("Licence not active"),
    "inactive licence is a critical concern");
 eq(critical({ license_active: false }).state, "needs_attention", "  and forces Needs Attention");
-ok(critical({ driver_age: 19 }).disqualifiers.includes("Driver under 21"),
-   "under 21 is a critical concern");
+ok(critical({ driver_age: 19 }).disqualifiers.includes("Driver under 23"),
+   "under 23 is a critical concern (minimum renter age, Dolmar Nov 21 2026)");
+ok(critical({ driver_age: 22 }).disqualifiers.includes("Driver under 23"),
+   "  22 (allowed before Nov 21 2026) is now a critical concern");
+eq(critical({ driver_age: 23 }).disqualifiers.length, 0, "  23 is old enough: no age concern");
 ok(critical({ gig_account_status: "deactivated" }).disqualifiers.length > 0,
    "a deactivated gig account is a critical concern");
 ok(critical({ card_in_own_name: false }).disqualifiers.length > 0,

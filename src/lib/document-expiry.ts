@@ -157,8 +157,21 @@ function cell(kind: ExpiryKind, label: string, date: string | null, todayEt: str
   return { kind, label, status, daysLeft, date };
 }
 
+/**
+ * A section can hold several active files (an old card and the renewal). The
+ * file that counts for a category is the one that lasts longest, so an older
+ * expired card kept on file never flags a renter whose newer one is good.
+ * Files with no date only count when the category has no dated file at all.
+ */
 function datesFor(docs: RenterExpiryInput["documents"], categories: readonly string[]): Array<string | null> {
-  return docs.filter((d) => categories.includes(d.category)).map((d) => d.expiresAt);
+  const out: Array<string | null> = [];
+  for (const category of categories) {
+    const rows = docs.filter((d) => d.category === category);
+    if (!rows.length) continue;
+    const dated = rows.map((d) => calendarDate(d.expiresAt)).filter((d): d is string => !!d).sort();
+    out.push(dated.length ? dated[dated.length - 1] : null);
+  }
+  return out;
 }
 
 /**

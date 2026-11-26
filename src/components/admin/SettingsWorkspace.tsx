@@ -17,6 +17,8 @@ import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { AgreementTemplatesPanel } from "@/components/admin/AgreementTemplatesPanel";
 import { RentalActivationSettingsPanel } from "@/components/admin/RentalActivationSettingsPanel";
 import { PickupScheduleSettingsPanel } from "@/components/admin/PickupScheduleSettingsPanel";
+import { ForfeitedFeeCreditSettings } from "@/components/admin/ForfeitedFeeCreditSettings";
+import { tierAllows } from "@/lib/roles";
 import { PendingSignatures } from "@/components/admin/PendingSignatures";
 import { AGREEMENT_PENDING_SIGNATURE_ENABLED } from "@/lib/agreement-pending-signatures-flag";
 import { resolveSettingsSection, visibleSettingsSections } from "@/components/admin/nav-config";
@@ -56,7 +58,6 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
     () => new Set(groups.slice(1)),
   );
   if (!current) return <p className="text-[13px] text-[#55555E]">No settings are available for your role.</p>;
-  const wide = ["automations", "team", "website", "activity", "media"].includes(current.id);
   const toggleGroup = (g: string) =>
     setClosedGroups((prev) => {
       const next = new Set(prev);
@@ -107,7 +108,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           })}
         </div>
       </nav>
-      <section className={`flex-1 min-w-0 ${wide ? "" : "max-w-3xl"}`}>
+      <section className="flex-1 min-w-0">
         <div className="mb-4">
           <h2 className="text-[17px] font-semibold text-[#111114]">{current.label}</h2>
           <p className="text-[13px] text-[#55555E] mt-0.5">{DESCRIPTIONS[current.id]}</p>
@@ -140,6 +141,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
             <SettingsPanel only={SECTION_KEY[current.id]} />
             {current.id === "rental_terms" ? <RentalActivationSettingsPanel /> : null}
             {current.id === "rental_terms" ? <PickupScheduleSettingsPanel /> : null}
+            {current.id === "rental_terms" ? <ForfeitedFeeCreditSettings canEdit={tierAllows(tier, "manager")} /> : null}
           </div>
         )}
       </section>

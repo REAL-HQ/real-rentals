@@ -4,6 +4,8 @@ import { FileUploader } from "@/components/FileUploader";
 import { uploadApplicantFile, type UploadKind } from "@/lib/applicant-upload";
 import { UPLOAD_PRECHECK_ENABLED } from "@/lib/upload-precheck";
 import { createUploadThenSave } from "@/lib/wizard-save";
+import { addApplicantDocument } from "@/lib/applications.functions";
+import { useServerFn } from "@tanstack/react-start";
 
 type PrecheckView = { warnings: { code: string; message: string }[]; tips: string[] };
 
@@ -25,6 +27,7 @@ export function DocumentCapture({
   onFile,
   onChange,
   optional,
+  allowMore = false,
 }: {
   title: string;
   /** One line under the title saying what to photograph. */
@@ -48,7 +51,15 @@ export function DocumentCapture({
    */
   onChange: (path: string | null) => void | Promise<void>;
   optional?: boolean;
+  /**
+   * Offer "Add Another File" once one is on file. The main uploader above
+   * replaces the application's main file; this adds files beside it and
+   * keeps every one of them.
+   */
+  allowMore?: boolean;
 }) {
+  const addDocument = useServerFn(addApplicantDocument);
+  const [addedCount, setAddedCount] = useState(0);
   const [justUploaded, setJustUploaded] = useState(false);
   // Upload, then save the path; only a saved path counts. If the save fails
   // the file shows as failed with the uploader's Retry, and because Retry
@@ -144,6 +155,31 @@ export function DocumentCapture({
           }}
           onAllDone={() => setJustUploaded(true)}
         />
+        {allowMore && done ? (
+          <div className="mt-3 border-t border-[#EDEDF0] pt-3">
+            <p className="text-[12px] text-[#55555E] mb-2">
+              Have more than one? Add each file here. Nothing you already sent is replaced.
+              {addedCount > 0 ? ` ${addedCount} Added.` : ""}
+            </p>
+            <FileUploader
+              variant="inline"
+              accept="image/*,application/pdf"
+              maxBytes={60 * 1024 * 1024}
+              multiple
+              camera
+              label="Add Another File"
+              context={`${title} (Additional)`}
+              upload={async (file, { onProgress }) => {
+                onProgress(20);
+                const { path } = await uploadApplicantFile({ token, kind, file });
+                onProgress(70);
+                await addDocument({ data: { token, kind, path } });
+                setAddedCount((n) => n + 1);
+                onProgress(100);
+              }}
+            />
+          </div>
+        ) : null}
         {UPLOAD_PRECHECK_ENABLED && PrecheckNotice && precheck ? (
           <PrecheckNotice
             warnings={precheck.warnings}

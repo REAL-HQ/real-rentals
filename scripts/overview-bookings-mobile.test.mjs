@@ -183,7 +183,6 @@ const pairs = [
     "w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm lg:w-auto lg:min-w-[200px] lg:flex-1",
     "bookings search at lg",
   ],
-  ["inline-flex items-center gap-2", "inline-flex max-lg:shrink-0 items-center gap-2", "phase chips at lg"],
   ["h-9 w-[150px] bg-white text-foreground text-sm", "h-9 w-[150px] max-lg:shrink-0 bg-white text-foreground text-sm", "bookings sort at lg"],
   [
     "text-sm text-muted-foreground hover:text-foreground px-2",
@@ -196,8 +195,8 @@ const pairs = [
     "bookings pager at lg",
   ],
   [
-    "bg-[#FAFAFB] w-full max-w-5xl rounded-none sm:rounded-2xl min-h-full sm:min-h-0 sm:my-2 overflow-hidden shadow-2xl",
-    "min-w-0 w-full max-w-5xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]",
+    "bg-[#FAFAFB] w-full max-w-6xl rounded-none sm:rounded-2xl min-h-full sm:min-h-0 sm:my-2 overflow-hidden shadow-2xl",
+    "min-w-0 w-full max-w-6xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]",
     "booking drawer at lg",
   ],
   [
@@ -231,13 +230,21 @@ for (const cls of contents) {
 check(overview.includes('className="max-lg:min-w-0 space-y-6"'), "the overview root can shrink inside the admin column");
 check(overview.includes("grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)]"), "the fleet chart stacks under the donut on a phone");
 check(overview.includes("getOverviewApplicants"), "overview still reads applicants through the server function");
+const summaryGrid = "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4";
+check(overview.includes(summaryGrid), "the summary cards stay a 1/2/4 column grid");
+const summaryBlock = overview.slice(overview.indexOf(summaryGrid), overview.indexOf("<LeadPriorities"));
+const cardOrder = ["<RevenueCard", 'eyebrow="Collections"', 'eyebrow="Service"', 'eyebrow="Active Renters"'].map((marker) => summaryBlock.indexOf(marker));
+check(overview.indexOf("<OverviewToday") < overview.indexOf(summaryGrid) && overview.indexOf(summaryGrid) < overview.indexOf("<LeadPriorities"), "the summary cards sit above Lead Priorities");
+check(cardOrder.every((index) => index >= 0) && cardOrder.join() === [...cardOrder].sort((a, b) => a - b).join(), "the summary cards are Revenue, Collections, Service, then Active Renters");
+
 // The Hot Prospects card moved off Overview in the Overview cleanup (094e0f67); its row classes are gone with it.
 check(!/>\s*Hot Prospects\s*</.test(overview), "overview no longer renders the Hot Prospects card");
 check(!overview.includes("text-transform"), "overview does not add a text-transform");
 check(bookings.includes('aria-label="Search rentals"'), "the bookings search stays");
 check(bookings.includes("max-lg:w-full") && !bookings.includes("flex w-full max-lg:min-w-0"), "the bookings filter group is full width only below lg");
 check(bookings.includes("lg:flex-row lg:items-center lg:gap-3"), "the bookings toolbar stacks only below lg");
-check(bookings.includes('data-testid="booking-phases"'), "the phase chips stay");
+check(!bookings.includes('data-testid="booking-phases"'), "the phase chips are gone; the tabs replace them");
+check(bookings.includes('data-testid="booking-count"'), "completed and cancelled rows keep a count");
 check(bookings.includes("hidden md:block") && bookings.includes("md:hidden grid grid-cols-1"), "the table and the phone cards both remain");
 const cards = bookings.slice(bookings.indexOf("md:hidden grid grid-cols-1"), bookings.indexOf("data-booking-card") + 400);
 check(cards.includes('className="shrink-0"') || bookings.includes('StatusPill className="shrink-0"'), "a phone card keeps the status from shrinking");
@@ -246,6 +253,6 @@ check(bookings.includes("listBookings"), "bookings still loads through the list 
 
 const payments = details.slice(details.indexOf('title="Payments"'), details.indexOf("</table>") + 8);
 check(payments.includes("overflow-x-auto") && payments.includes("min-w-[36rem]") && payments.includes('data-testid="booking-payments"'), "the payments table scrolls inside the booking");
-check(details.includes("min-w-0 w-full max-w-5xl"), "the booking drawer cannot grow past the screen");
+check(details.includes("min-w-0 w-full max-w-6xl"), "the booking drawer cannot grow past the screen");
 
 console.log(`${checks} overview and bookings mobile checks passed`);

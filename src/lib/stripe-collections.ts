@@ -227,8 +227,12 @@ export function verifyCollectedCharges(input: {
   for (const payment of input.invoicePayments) {
     const invoice = payment.invoiceId ? invoiceIndex.get(payment.invoiceId) : undefined;
     const subscription = invoice?.subscriptionId ? subscriptionIndex.get(invoice.subscriptionId) : undefined;
-    const customer = subscription?.customerId || null;
-    if (!invoice || !subscription || !customer || invoice.customerId !== customer) {
+    // A standalone invoice (no subscription, e.g. a one-off $350 invoice sent
+    // from the Dashboard) is owned by its own customer. A subscription invoice
+    // still needs its subscription's customer to agree.
+    const standalone = !!invoice && !invoice.subscriptionId && !!invoice.customerId;
+    const customer = standalone ? invoice!.customerId : subscription?.customerId || null;
+    if (!invoice || (!standalone && !subscription) || !customer || invoice.customerId !== customer) {
       incomplete("InvoicePayment", payment.id, "Invoice, subscription or matching customer unavailable");
       if (payment.intentId) unresolvedIntents.add(payment.intentId);
       if (payment.chargeId) unresolvedCharges.add(payment.chargeId);
@@ -327,4 +331,21 @@ export function consolidatedRevenue(input: {
   // charge drops the Stripe net, and the manual receipt stays.
   const deducted = Math.min(overlap, Math.max(stripeNet, 0));
   return { amount: Math.round((stripeNet + input.internalNonStripe - deducted) * 100) / 100, coverage: "Partial" };
+}
+
+/**
+ * What the Overview Revenue card shows. The recorded-payments total (from the
+ * payments table) is the floor: if the live Stripe consolidation is loading or
+ * cannot be verified, the card shows the recorded total labelled "Partial"
+ * instead of a dash. Only when the payments query itself failed is there no
+ * number. Zero revenue is $0, never unavailable.
+ */
+export function displayRevenue(input: {
+  consolidated: { amount: number | null; coverage: "Partial" | "Unavailable" } | null;
+  recorded: number | null;
+}): { amount: number | null; coverage: "Partial" | "Unavailable"; fellBack: boolean } {
+  const c = input.consolidated;
+  if (c && c.amount !== null && Number.isFinite(c.amount)) return { amount: c.amount, coverage: c.coverage, fellBack: false };
+  if (input.recorded !== null && Number.isFinite(input.recorded)) return { amount: input.recorded, coverage: "Partial", fellBack: !!c };
+  return { amount: null, coverage: "Unavailable", fellBack: false };
 }

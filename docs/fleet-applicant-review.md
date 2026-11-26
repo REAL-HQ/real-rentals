@@ -1,7 +1,8 @@
 # FLEET: Review And Approve Applicants
 
-FLEET reviews submitted applicants, approves the clean ones, and sends the rest
-to staff. FLEET can never decline. Every call uses the same key and contract as
+FLEET reviews submitted applicants, approves the clean ones, declines when
+the file should not go forward, and sends the rest to staff. Every call uses
+the same key and contract as
 the payment-text pause:
 
 - `POST`, `Content-Type: application/json`
@@ -51,7 +52,8 @@ Reply `{ ok, packet }` with:
 | `contacts` | every phone and email on the profile (`phones[]` / `emails[]`, with `is_primary`, `receives_messages`, and `sms_ok` per number). `answers.phone` / `answers.email` stay the primary |
 | `addresses` | every address on the profile (`is_primary`, `label`, `source`). `answers.address` / `city` / `state` / `zip` stay the primary. A license address that differs from the application is saved as a second row labeled "License address" and does not overwrite the primary |
 | `answers` | the application answers (license number masked to the last 4; payment ids, consent text and card ids left out) |
-| `documents[]` | every current vault document: category, file name, type, size, `review_status`, review note, upload time, expiry. `url` is null unless `include_urls: true`, then a signed link valid for 15 minutes (the back office's own signer) |
+| `documents[]` | every active vault document, newest first (a section can hold several files, for example a Social Security letter and a later Uber earnings screenshot; review each one, not only the newest): category, file name, type, size, `review_status`, review note, upload time, expiry, `uploaded_by_role`. `url` is null unless `include_urls: true`, then a signed link valid for 15 minutes (the back office's own signer), one per file |
+| `documents_by_category` | per section. The count fields are unchanged: `active`, `verified`, `rejected`, `unreviewed`. A section counts as received when any active file in it is not rejected, and as verified when any one is verified. Added, compatibly: `files` (every active file in that section, newest first, each with the same fields as `documents[]` including its own signed `url` when `include_urls` is true) and `latest` (`files[0]`, the newest file, or null). Review `files`. `latest` is only there so a reader that still opens one file keeps working |
 | `gig_evidence` | platforms, gig status, trips, rating, screenshot counts, gig-profile and trip-history document counts |
 | `screening` | the staff screening record as recorded, or null |
 | `checks` | `background_check_status`, `mvr_status`, `incident_count` as recorded |
@@ -70,15 +72,32 @@ Reply `{ ok, packet }` with:
   "escalation_codes": [], "idempotency_key": "review-<lead_id>-1" }
 ```
 
-- `decision` is `approve` or `needs_staff`. `decline` is refused (`400`): send
-  `needs_staff` with the reason and staff decide.
-- `reason` is required (5 to 1,000 characters). `escalation_codes` is optional
-  (the checklist codes FLEET relied on).
+```json
+{ "lead_id": "…", "decision": "decline", "reason": "License expired and no replacement on file",
+  "skip_notify": false, "note": "Told them we can look again after a new license.",
+  "idempotency_key": "decline-<lead_id>-1" }
+```
+
+- `decision` is `approve`, `decline`, or `needs_staff`. `declined` is accepted
+  as an alias of `decline`. Anything else, including `reject`, is `400`.
+- `reason` is required (5 to 1,000 characters). It is internal: it is stored
+  on the decision and, for a decline, appended to the profile Notes. It is
+  never copied into the email or the text.
+- `escalation_codes` is optional (the checklist codes FLEET relied on).
+- `note` is optional (1 to 2,000 characters) on any decision. It is appended
+  to the profile Notes, attributed to FLEET (automated), and does not by
+  itself change status.
 - `idempotency_key` is optional. A repeat returns the first result with
-  `duplicate: true`. Approving an already-approved applicant is also a no-op.
-- `approval_text_sent: true` (optional, SOP D30): FLEET has sent its own
-  approval text (P12), so the Approval Confirmation email is skipped
+  `duplicate: true` and does not send the decline notice again. Approving an
+  already-approved applicant, or declining an already-declined applicant, is
+  also a no-op and does not send.
+- `approval_text_sent: true` (optional, SOP D30, approve only): FLEET has sent
+  its own approval text (P12), so the Approval Confirmation email is skipped
   (`approval_email: "bot_text"`). Without it the email goes as before.
+- `skip_notify` (decline only): omit it, or send `false`, and the site sends
+  the decline email and the decline text. `true` skips both because FLEET is
+  sending its own apology. A non-boolean is `400`. There is no mode that
+  always skips unless this flag is true.
 
 **approve** runs the exact code path staff use when they press Approve:
 the same status change, the `application.approved` audit entry (labelled
@@ -92,13 +111,56 @@ If the approval security package is ever installed on the database (it is not
 today), approval needs a staff sign-in and FLEET's approve answers `409`; send
 `needs_staff` instead.
 
+**decline** sets `applications.status` to `declined`. That is the same status
+write staff use from the profile, so the same eligibility follows: the
+applicant leaves the review list, follow-ups stop on declined, and an active
+rental still blocks the change (`409`, end the rental first). It does not
+void an agreement, refund a payment, cancel Stripe, or add a blacklist row.
+The audit row is `application.fleet_declined` with `decided_by` "FLEET
+(automated)" and no staff user. The reason is appended to Internal Notes as
+`Declined by FLEET (automated) on <date>: <reason>`.
+
+The decline email and text go out unless `skip_notify` is true. The notice
+says we cannot approve the application and gives the company phone. It does
+not include the reason. Email uses the address on the application. The text
+uses `sendSms` (consent, STOP, and the blacklist suppression). Reply
+`decline_notice` is `{ email, sms }` with `sent`, `skipped`, `no_email`,
+`no_phone`, `no_consent`, `opted_out`, `blacklisted`, `failed`, `off`, or
+`held`. A failed notice does not undo the decline.
+
+Declining someone who is already declined returns `200` with `duplicate: true`
+and `already_declined: true` and does not send. Hard blockers do not block a
+decline. An open Needs Staff flag is not cleared (the same as the staff status
+menu; the profile shows Declined, and a Manager still marks the flag handled).
+Age rules are unchanged: they still only gate approve.
+
 **needs_staff** opens a flag that shows on the applicant as a red Needs Staff
 badge and banner, and under Drivers → filter menu → Needs Staff. One open flag
 per applicant (a repeat returns it). While it is open FLEET cannot approve that
 applicant; a Manager clears it with Mark Handled after deciding.
 
 Reply `201`: `{ ok, decision, lead_id, decision_id, admin_url }` (approve also
-returns `approval_email`).
+returns `approval_email`; decline also returns `skip_notify`, `previous_status`,
+and `decline_notice`). A `note` that was saved adds `note_saved: true`.
+
+## 4. Log a note without a decision
+
+`POST https://drivereal.com/api/public/fleet/profile-note`
+
+```json
+{ "lead_id": "…", "note": "Called and left a voicemail about the license.",
+  "idempotency_key": "note-<lead_id>-1" }
+```
+
+Appends one line to `applications.notes` (Drivers → the profile → Notes →
+Internal Notes): `FLEET (automated) on <date>: <note>`. The same line on the
+same Eastern calendar day is stored once (`200`, `duplicate: true`). An
+`idempotency_key` replays the first call and is `409` if it was used for a
+different applicant. The audit row is `application.fleet_note` with
+`decided_by` "FLEET (automated)". This does not change status, send a message,
+or write insurance, screening, or verification fields.
+
+Reply `201`: `{ ok, lead_id, note_saved: true, admin_url }`.
 
 ## Hard blockers (approve refused)
 
@@ -106,10 +168,11 @@ Not submitted (Partial), a stage other than New/Reviewing/Complete, already
 approved, deleted, legal hold, a duplicate, no email, a missing required
 document (license front, plus the gig-profile screenshot for gig drivers or
 proof of income for applicants not driving yet), a document staff rejected and nobody
-replaced, any readiness disqualifier (under 21, license not active, DUI, gig
+replaced, any readiness disqualifier (under 23, license not active, DUI, gig
 account deactivated, card not in the driver's name, insurance name mismatch,
 license reported invalid), screening marked disqualified, a background or MVR
-result recorded as failed/flagged/consider, under 21 by date of birth, expired
+result recorded as failed/flagged/consider, under 23 by date of birth
+(`under_min_age`; minimum renter age 23, Dolmar Nov 21 2026, was 21), expired
 license, and an open Needs Staff flag. With the RentID switch on
 (`docs/fleet-rentid.md`), both checks must also be recorded as passed.
 
@@ -122,7 +185,7 @@ license, and an open Needs Staff flag. With the RentID switch on
 - proof of income is a required document (hard blocker `missing_income`);
 - approve is strict: the server refuses it (409, with the escalations) while
   ANY escalation exists. So FLEET can approve only when the date of birth is on
-  file and the driver is 25+, the license expiry is on file and more than 30
+  file and the driver is 23+ (was 25+ until Nov 21 2026), the license expiry is on file and more than 30
   days out, there are no analysis flags, no earlier declined/closed
   application, readiness is not Needs Attention, and background/MVR are
   pending or passed;
@@ -136,7 +199,9 @@ Send `needs_staff` when any of these is true:
 
 1. Income proof missing (gig drivers: requested from the applicant, a note;
    not driving yet: a hard blocker).
-2. Driver under 25, or no date of birth.
+2. No date of birth. ("Driver under 25" was dropped Nov 21 2026: the
+   minimum renter age is 23, matching Uber's Florida minimum, and anyone
+   under 23 is a hard blocker, so there is no separate young-driver look.)
 3. License expires within 30 days, or no expiration date.
 4. Gig rating under 4.0, or fewer than 100 trips (Dolmar, Nov 16 2026; was 200).
    Unknown trips or rating: FLEET confirms 100+ and 4.0+ on the gig
@@ -179,7 +244,7 @@ shipped do not get an alert; use `list`.
 ## Storage
 
 `public.fleet_review_decisions` (`proposed/fleet-applicant-review-v1.sql`):
-`application_id, decision (approved | needs_staff), reason, escalation_codes,
+`application_id, decision (approved | declined | needs_staff), reason, escalation_codes,
 assessment, decided_by, idempotency_key, created_at, resolved_at, resolved_by,
 resolution_note`. Only the server writes; staff can read.
 

@@ -23,8 +23,13 @@ export const CLOSED_RESUME_STATUSES = [
  */
 export const BASE_CLOSED_APPLICATION_STATUSES = ["declined", "closed"] as const;
 
-/** Statuses that open the Driver Portal instead of the resume wizard. */
-export const PORTAL_HANDOFF_STATUSES = ["approved", "active"] as const;
+/**
+ * Statuses that open the Driver Portal instead of the resume wizard.
+ *
+ * Active only (t466u): the portal opens at pickup. An approved renter who has
+ * not picked up keeps the secure link, which opens a documents-only page.
+ */
+export const PORTAL_HANDOFF_STATUSES = ["active"] as const;
 
 /** Statuses the portal still opens so Review My Application keeps working. */
 const REVIEW_APPLICATION_STATUSES = ["complete"] as const;
@@ -46,8 +51,9 @@ function applicationStatus(status: unknown): string {
 /**
  * Whether the portal should refuse to open this application via a resume token.
  * Flag off: exact String(status) match of declined or closed, the live check.
- * Flag on: the full resume-closed list, except complete (Review My Application).
- * Approved and active are refused — those use /login → portal.
+ * Flag on: the full resume-closed list, except complete (Review My Application)
+ * and approved (documents-only page until pickup, t466u). Active is refused —
+ * a renter who picked up uses /login → portal.
  */
 export function portalOpenRefused(status: unknown, resumeEnabled: boolean): boolean {
   if (!resumeEnabled) {
@@ -55,5 +61,6 @@ export function portalOpenRefused(status: unknown, resumeEnabled: boolean): bool
   }
   const raw = applicationStatus(status);
   if ((REVIEW_APPLICATION_STATUSES as readonly string[]).includes(raw)) return false;
+  if (raw === "approved") return false;
   return (CLOSED_RESUME_STATUSES as readonly string[]).includes(raw);
 }

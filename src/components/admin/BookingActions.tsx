@@ -14,6 +14,7 @@ import {
   Wrench,
   ArrowUpRight,
   FileSignature,
+  Car,
 } from "lucide-react";
 import { UpdatedAgreementDialog } from "@/components/admin/UpdatedAgreementDialog";
 import { Modal } from "@/components/admin/BookingModal";
@@ -27,6 +28,7 @@ import { startInspection } from "@/lib/inspections.functions";
 import { InspectionRunner } from "@/components/admin/InspectionsPanel";
 import { DepositDialog } from "@/components/admin/DepositDialog";
 import { MicroLabel } from "./ui";
+import { SwitchReservationVehicleDialog } from "@/components/admin/SwitchReservationVehicleDialog";
 import type { BookingDetail } from "@/lib/bookings.functions";
 
 // The booking's actions — all of them somebody else's, on purpose.
@@ -77,6 +79,8 @@ export function BookingActions({
   const [depositOpen, setDepositOpen] = useState(false);
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [amendOpen, setAmendOpen] = useState(false);
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const reserved = d.booking.phase === "reserved";
   const active = d.booking.phase === "active";
   const applicationId = d.driver.applicationId;
   const vehicleId = d.vehicle?.id ?? null;
@@ -101,6 +105,15 @@ export function BookingActions({
             disabled={!applicationId}
             title={applicationId ? "Send an updated agreement (for example a new weekly rate). The new rate starts only after the renter signs." : "No driver record is linked to this rental."}
             onClick={() => setAmendOpen(true)}
+          />
+        )}
+        {d.canManage && reserved && (
+          <ActionButton
+            icon={<Car className="w-3.5 h-3.5" strokeWidth={1.75} />}
+            label="Switch Vehicle"
+            testId="action-switch-vehicle"
+            title="Move this reservation to a different available car (for example if the reserved car has an issue)."
+            onClick={() => setSwitchOpen(true)}
           />
         )}
         {d.canManage && (
@@ -202,6 +215,17 @@ export function BookingActions({
             setAmendOpen(false);
             onRefresh();
           }}
+        />
+      )}
+      {switchOpen && reserved && (
+        <SwitchReservationVehicleDialog
+          open={switchOpen}
+          onOpenChange={setSwitchOpen}
+          rentalId={d.booking.id}
+          driverName={d.driver.name}
+          currentVehicleLabel={[d.vehicle?.label, d.vehicle?.plate].filter(Boolean).join(" · ") || null}
+          currentRate={(d.booking as { weeklyRate?: number | null }).weeklyRate ?? null}
+          onSwitched={onRefresh}
         />
       )}
       {depositOpen && (

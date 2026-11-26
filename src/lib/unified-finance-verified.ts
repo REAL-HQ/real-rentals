@@ -10,7 +10,7 @@ import { decimalSourceCents } from "./unified-finance-live-mapping";
  * payments have no fee column and none is invented.
  */
 
-const REVENUE = new Set(["rent", "late_fee", "other", "toll", "damage", "fee"]);
+const REVENUE = new Set(["rent", "late_fee", "other", "toll", "damage", "fee", "reservation"]);
 const NON_STRIPE: Record<string, PaymentMethod> = {
   cash: "cash", cash_app: "cash_app", cashapp: "cash_app", venmo: "venmo", zelle: "zelle",
   bank_transfer: "bank_transfer", bank: "bank_transfer", check: "other", money_order: "other", other: "other",

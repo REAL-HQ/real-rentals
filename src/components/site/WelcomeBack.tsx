@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { requestApplicationLink } from "@/lib/applications.functions";
 import {
+  PHONE_MATCH_EMAIL_DIFFERS_HEADING,
   RETURNING_HEADING,
   isReturningPanel,
   maskEmail,
+  phoneMatchEmailDiffersBody,
   returningBody,
   returningStatusLine,
   secureLinkBody,
@@ -22,6 +24,10 @@ import {
  * never ask for that email again. The box is hidden, the address is shown
  * masked, and Resend reuses it. The link still only ever goes to the address
  * on the application, so this changes no security property.
+ *
+ * Phone matched but the email did not: the box stays empty. A masked hint of
+ * the address on file is shown when the server supplied one. The address they
+ * just typed is not put back in the box.
  */
 /** What really happened on the last request. "recent" = rate-limited, nothing new sent. */
 export type LinkStatus = "sent" | "recent" | "failed" | "review" | "requested";
@@ -34,6 +40,7 @@ export function WelcomeBack({
   initial,
   onBack,
   fresh = false,
+  maskedEmailOnFile,
 }: {
   email?: string;
   dark?: boolean;
@@ -47,9 +54,12 @@ export function WelcomeBack({
   onBack?: () => void;
   /** The match was closed/declined: the link starts a new application. */
   fresh?: boolean;
+  /** Server-masked address on file. Never a full email. Shown only for a phone match. */
+  maskedEmailOnFile?: string;
 }) {
   const requestLink = useServerFn(requestApplicationLink);
-  const [value, setValue] = useState(email ?? "");
+  // A phone match must not put the email they just typed back in the box.
+  const [value, setValue] = useState(() => (initial?.status === "review" ? "" : (email ?? "")));
   const [state, setState] = useState<"idle" | "sending" | LinkStatus>(initial?.status ?? "idle");
   const [wait, setWait] = useState(initial?.retryAfterSeconds ?? 0);
   const muted = dark ? "text-white/75" : "text-muted-foreground";
@@ -79,6 +89,7 @@ export function WelcomeBack({
   const kind = secureLinkKind(expired, missing);
   // Decided once from how we got here; a later resend never flips the layout.
   const [returning] = useState(() => !expired && !missing && isReturningPanel(email, initial?.status));
+  const [emailOnFileHint] = useState(() => !expired && !missing && initial?.status === "review");
   const masked = maskEmail(email);
 
   if (returning) {
@@ -116,9 +127,11 @@ export function WelcomeBack({
   }
 
   return (
-    <div role="status" aria-live="polite" className={`rounded-2xl p-6 ${dark ? "bg-black/60 text-white" : "bg-soft"}`} data-secure-link={kind}>
-      <h2 className="text-xl font-semibold">{secureLinkHeading(kind)}</h2>
-      <p className={`mt-2 text-sm leading-relaxed ${muted}`}>{secureLinkBody(kind)}</p>
+    <div role="status" aria-live="polite" className={`rounded-2xl p-6 ${dark ? "bg-black/60 text-white" : "bg-soft"}`} data-secure-link={emailOnFileHint ? "email-on-file" : kind}>
+      <h2 className="text-xl font-semibold">{emailOnFileHint ? PHONE_MATCH_EMAIL_DIFFERS_HEADING : secureLinkHeading(kind)}</h2>
+      <p className={`mt-2 text-sm leading-relaxed ${muted}`}>
+        {emailOnFileHint ? phoneMatchEmailDiffersBody(maskedEmailOnFile) : secureLinkBody(kind)}
+      </p>
       {state === "sent" && (
         <p className={`mt-3 text-sm leading-relaxed ${muted}`}>
           We've sent a secure link to the email on the application. It works once and expires in 30 minutes. It can
@@ -134,12 +147,6 @@ export function WelcomeBack({
         <p className={`mt-3 text-sm leading-relaxed ${muted}`}>
           Your request was received. If the email matches an application and a link can be sent, it will arrive in
           your inbox. Check Spam or Promotions too. If nothing arrives, retry when the button is ready or contact us.
-        </p>
-      )}
-      {state === "review" && (
-        <p className={`mt-3 text-sm leading-relaxed ${muted}`}>
-          Thanks — we've received your details. For your security, a team member will review them and follow up. You can
-          also request a secure link using the email you applied with.
         </p>
       )}
       {state === "failed" && (

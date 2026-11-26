@@ -1,7 +1,7 @@
 // Photo Studio — one car's generation run, with all I/O injected so the whole
 // decision path is unit-testable with the mock provider.
 import {
-  buildPrompt, costCentsFor, identityCheck, planShots, spendRefusal,
+  PHOTO_STUDIO_GENERATIONS_PER_SHOT, buildIsolationPrompt, buildPrompt, costCentsFor, identityCheck, planShots, spendRefusal,
   type Original, type PhotoStudioSettings, type ShotSlot,
 } from "@/lib/photo-studio";
 import type { StudioProvider } from "@/lib/photo-studio-provider.server";
@@ -22,18 +22,37 @@ export type SlotOutcome = { slot: ShotSlot; status: "saved" | "rejected" | "fail
 export async function runCar(car: Car, originals: Original[], onlySlots: ShotSlot[] | null, deps: RunDeps) {
   let plan = planShots(originals);
   if (onlySlots) plan = plan.filter((p) => onlySlots.includes(p.slot));
-  const refusal = spendRefusal(deps.settings, await deps.usage(), plan.length, deps.model);
+  // Each shot is two image calls: isolate on grey, then place that cutout in the scene.
+  const calls = PHOTO_STUDIO_GENERATIONS_PER_SHOT;
+  const refusal = spendRefusal(deps.settings, await deps.usage(), plan.length * calls, deps.model);
   if (refusal) return { ok: false as const, error: refusal, outcomes: [] as SlotOutcome[] };
 
   const outcomes: SlotOutcome[] = [];
   const unitCost = deps.provider.name === "mock" ? 0 : costCentsFor(deps.model);
+  const paidOutcome = deps.provider.name === "mock" ? "mock" : "ok";
   for (const p of plan) {
-    // Re-check before every image: a parallel run may have used the budget.
-    const again = spendRefusal(deps.settings, await deps.usage(), 1, deps.model);
+    // Re-check before every shot: a parallel run may have used the budget.
+    const again = spendRefusal(deps.settings, await deps.usage(), calls, deps.model);
     if (again) { outcomes.push({ slot: p.slot, status: "failed", reason: again }); break; }
     const imgs = (await Promise.all(p.sources.map(deps.loadOriginal))).filter(Boolean) as { bytes: Uint8Array; mime: string }[];
     if (imgs.length === 0) { outcomes.push({ slot: p.slot, status: "failed", reason: "source missing" }); continue; }
-    const g = await deps.provider.generate(deps.model, { prompt: buildPrompt(p.slot, car), images: imgs });
+    const isolated = await deps.provider.generate(deps.model, { prompt: buildIsolationPrompt(p.slot, car), images: imgs });
+    if (!isolated.ok) {
+      await deps.logSpend({ slot: p.slot, costCents: 0, outcome: "provider_error" });
+      outcomes.push({ slot: p.slot, status: "failed", reason: isolated.error });
+      if (isolated.status === 402 || isolated.status === 403 || isolated.status === 429) break;
+      continue;
+    }
+    await deps.logSpend({ slot: p.slot, costCents: unitCost, outcome: paidOutcome });
+    const sceneBudget = spendRefusal(deps.settings, await deps.usage(), 1, deps.model);
+    if (sceneBudget) {
+      outcomes.push({ slot: p.slot, status: "failed", reason: sceneBudget });
+      break;
+    }
+    const g = await deps.provider.generate(deps.model, {
+      prompt: buildPrompt(p.slot, car),
+      images: [{ bytes: isolated.bytes, mime: isolated.mime }],
+    });
     if (!g.ok) {
       await deps.logSpend({ slot: p.slot, costCents: 0, outcome: "provider_error" });
       outcomes.push({ slot: p.slot, status: "failed", reason: g.error });
@@ -48,7 +67,7 @@ export async function runCar(car: Car, originals: Original[], onlySlots: ShotSlo
       continue;
     }
     await deps.saveShot({ slot: p.slot, sources: p.sources, bytes: g.bytes, mime: g.mime, inferred: p.inferred, check: { inferred: p.inferred, read } });
-    await deps.logSpend({ slot: p.slot, costCents: unitCost, outcome: deps.provider.name === "mock" ? "mock" : "ok" });
+    await deps.logSpend({ slot: p.slot, costCents: unitCost, outcome: paidOutcome });
     outcomes.push({ slot: p.slot, status: "saved" });
   }
   return { ok: true as const, outcomes };

@@ -1,3 +1,4 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -48,7 +49,7 @@ export function FleetServiceCenter({ autoOpenAdd = false }: { autoOpenAdd?: bool
           <div className="divide-y divide-border">
             {rows.map((r, n) => (
               <Link key={n} to="/admin" search={{ tab: "vehicles", id: r.vehicle.id } as any} className="flex flex-wrap items-center gap-3 py-2.5 text-[13px] hover:bg-muted/40">
-                <span className="w-20 font-semibold">{r.vehicle.unit_number ?? "—"}</span>
+                <span className="w-56 shrink-0"><LinkedVehicleCell vehicleId={r.vehicle.id} size="sm" fallback={{ unitNumber: r.vehicle.unit_number }} /></span>
                 <span className="min-w-[140px] flex-1">{r.item}</span>
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE[r.due.state] ?? ""}`}>{LABEL[r.due.state] ?? r.due.state}</span>
                 <span className="text-muted-foreground">{r.due.reason}</span>

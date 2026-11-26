@@ -201,8 +201,20 @@ ok(["attempted", "voicemail", "contacted", "interested", "documents", "unrespons
 console.log("\nthe rules that stop a useless entry");
 ok(D.contactStatusBlockers({ status: "follow_up", note: "call back" }).some((b) => b.field === "followUpOn"),
   "Follow-Up with no date is blocked");
-ok(D.contactStatusBlockers({ status: "follow_up", followUpOn: "2026-10-14" }).length === 0,
+ok(D.contactStatusBlockers({ status: "follow_up", followUpOn: "2026-10-14" }, { today: "2026-10-01" }).length === 0,
   "  and allowed with one");
+ok(D.contactStatusBlockers({ status: "contacted", followUpOn: "2026-11-26" }, { today: "2026-11-26" }).some((b) => /after today/i.test(b.why)),
+  "a new follow-up of today is refused");
+ok(D.contactStatusBlockers({ status: "contacted", followUpOn: "2026-11-25" }, { today: "2026-11-26" }).some((b) => /after today/i.test(b.why)),
+  "a new follow-up in the past is refused");
+ok(D.contactStatusBlockers({ status: "contacted", followUpOn: "2026-11-25" }, { today: "2026-11-26", existingFollowUpOn: "2026-11-25" }).length === 0,
+  "the date already saved stays readable and can be kept");
+ok(D.nextBusinessDay("2026-11-26") === "2026-11-27", "Thursday's next follow-up is Friday");
+ok(D.nextBusinessDay("2026-11-27") === "2026-11-30", "Friday skips the weekend");
+ok(D.nextBusinessDay("2026-11-28") === "2026-11-30", "Saturday skips to Monday");
+ok(D.followUpForNewEntry("", "2026-11-27") === "2026-11-30", "a blank follow-up defaults to the next business day");
+ok(D.followUpForNewEntry("2026-11-26", "2026-11-26") === "2026-11-27", "logging contact today does not keep today");
+ok(D.followUpForNewEntry("2026-12-01", "2026-11-26") === "2026-12-01", "a future date is kept");
 ok(D.contactStatusBlockers({ status: "unqualified", note: "" }).some((b) => b.field === "note"),
   "Unqualified with no reason is blocked");
 ok(D.contactStatusBlockers({ status: "contacted", followUpOn: "next tuesday" }).some((b) => b.field === "followUpOn"),
@@ -273,6 +285,13 @@ ok(msg !== null, `an application status cannot be smuggled in as a contact statu
 reset();
 msg = await refused(() => set(COORD, { applicationId: APP, status: "contacted", followUpOn: "10-14-2026" }));
 ok(msg !== null, `a display-formatted date is refused (${msg})`);
+reset();
+msg = await refused(() => set(COORD, { applicationId: APP, status: "contacted", followUpOn: "2020-01-01" }));
+ok(/after today/i.test(msg ?? ""), `a past follow-up on a new entry is refused server-side (${msg})`);
+ok(app().contact_follow_up_on === null, "  and the stored date is not rewritten");
+reset({ contact_follow_up_on: "2020-01-01" });
+const kept = await set(COORD, { applicationId: APP, status: "contacted", note: "Still the saved day", followUpOn: "2020-01-01" });
+ok(kept.state.followUpOn === "2020-01-01", "an existing past follow-up stays readable and can be saved unchanged");
 reset();
 msg = await refused(() => set(COORD, { applicationId: GHOST, status: "contacted" }));
 ok(/no longer exists/i.test(msg ?? ""), `a forged application id is refused (${msg})`);
@@ -383,6 +402,8 @@ ok(/useServerFn\(setContactStatus\)/.test(CELL), "it calls the server function, 
 ok(/contactStatusBlockers/.test(CELL) && /contactStatusForm/.test(CELL),
   "and shows the same fields and rules the server enforces");
 ok(/Not Enabled/.test(CELL), "with an honest badge while the migration is pending");
+ok(CELL.includes("Next Follow-Up"), "the follow-up field is labeled Next Follow-Up");
+ok(CELL.includes("followUpForNewEntry"), "logging a contact without a future date defaults the next follow-up");
 ok(/w-\[min\(20rem,calc\(100vw-2rem\)\)\]/.test(CELL), "the popover fits a phone");
 
 rmSync(OUT, { recursive: true, force: true });

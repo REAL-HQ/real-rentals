@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
@@ -120,7 +121,7 @@ export function DocumentsExpiringList({
             </thead>
             <tbody>
               {rows.map((renter) => (
-                <tr key={renter.applicationId} className="border-t border-border">
+                <tr key={renter.applicationId} className={`border-t border-border ${ROW_OPEN_CLASS}`} {...rowOpenProps(() => onOpen(renter.applicationId))}>
                   <td className="px-3 py-2.5">
                     <button
                       type="button"

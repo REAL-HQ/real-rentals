@@ -1,10 +1,13 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getRenewalsDue } from "@/lib/renewals-due.functions";
 import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
 import { RENEWAL_CANDIDATES_ENABLED } from "@/lib/renewal-candidates-flag";
 import { formatRenewalDate, type RenewalsDueBoard } from "@/lib/renewals-due";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 export function RenewalsDue() {
   if (!RENEWALS_DUE_ENABLED) return null;
@@ -13,6 +16,7 @@ export function RenewalsDue() {
 }
 
 function RenewalsDueLive() {
+  const navigate = useNavigate();
   const load = useServerFn(getRenewalsDue);
   const [board, setBoard] = useState<RenewalsDueBoard | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +67,7 @@ function RenewalsDueLive() {
             </thead>
             <tbody>
               {board.rows.map((row) => (
-                <tr key={row.rentalId} className="border-b border-[#EDEDF0] last:border-b-0 align-top">
+                <tr key={row.rentalId} {...rowNav(navigate, row.driverSearch, "border-b border-[#EDEDF0] last:border-b-0 align-top")}>
                   <td className="px-3 py-2">
                     {row.driverSearch ? (
                       <Link to="/admin" search={row.driverSearch} className="font-medium text-[#111114] underline">
@@ -73,11 +77,11 @@ function RenewalsDueLive() {
                       <span className="text-[#55555E]">{row.driverName}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-[#111114]">{row.vehicleLabel}</td>
+                  <td className="px-3 py-2 text-[#111114]"><VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" /></td>
                   <td className="px-3 py-2 text-[#111114]">{formatWeeklyRate(row.weeklyRate)}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.nextPaymentDue ? formatRenewalDate(row.nextPaymentDue) : "None"}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.endDate ? formatRenewalDate(row.endDate) : "None"}</td>
-                  <td className="px-3 py-2 text-[#111114]">{row.lastPaymentStatus}</td>
+                  <td className="px-3 py-2 text-[#111114]">{formatStatusLabel(row.lastPaymentStatus)}</td>
                   <td className="px-3 py-2">
                     <Link to="/admin" search={row.paymentsSearch} className="text-[#111114] underline">
                       Payments
@@ -102,6 +106,7 @@ function RenewalsDueLive() {
 }
 
 function RenewalsDueHistory() {
+  const navigate = useNavigate();
   const load = useServerFn(getRenewalsDue);
   const [windowDays, setWindowDays] = useState<7 | 14>(7);
   const [goodHistoryOnly, setGoodHistoryOnly] = useState(false);
@@ -187,7 +192,7 @@ function RenewalsDueHistory() {
             </thead>
             <tbody>
               {board.rows.map((row) => (
-                <tr key={row.rentalId} className="border-b border-[#EDEDF0] last:border-b-0 align-top">
+                <tr key={row.rentalId} {...rowNav(navigate, row.driverSearch, "border-b border-[#EDEDF0] last:border-b-0 align-top")}>
                   <td className="px-3 py-2">
                     {row.driverSearch ? (
                       <Link to="/admin" search={row.driverSearch} className="font-medium text-[#111114] underline">
@@ -197,11 +202,11 @@ function RenewalsDueHistory() {
                       <span className="text-[#55555E]">{row.driverName}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-[#111114]">{row.vehicleLabel}</td>
+                  <td className="px-3 py-2 text-[#111114]"><VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" /></td>
                   <td className="px-3 py-2 text-[#111114]">{formatWeeklyRate(row.weeklyRate)}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.nextPaymentDue ? formatRenewalDate(row.nextPaymentDue) : "None"}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.endDate ? formatRenewalDate(row.endDate) : "None"}</td>
-                  <td className="px-3 py-2 text-[#111114]">{row.lastPaymentStatus}</td>
+                  <td className="px-3 py-2 text-[#111114]">{formatStatusLabel(row.lastPaymentStatus)}</td>
                   <td className="px-3 py-2 text-[#111114]">{row.paidCharges == null ? "Not Checked" : row.paidCharges}</td>
                   <td className="px-3 py-2">
                     <Link to="/admin" search={row.paymentsSearch} className="text-[#111114] underline">
@@ -227,6 +232,7 @@ function RenewalsDueHistory() {
 }
 
 function OverdueReturn({ rows }: { rows: RenewalsDueBoard["overdue"] }) {
+  const navigate = useNavigate();
   return (
     <section className="space-y-2" data-testid="overdue-return">
       <h2 className="text-[15px] font-semibold text-[#111114]">Overdue Return</h2>
@@ -245,7 +251,7 @@ function OverdueReturn({ rows }: { rows: RenewalsDueBoard["overdue"] }) {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.rentalId} className="border-b border-[#EDEDF0] last:border-b-0 align-top">
+                <tr key={row.rentalId} {...rowNav(navigate, row.driverSearch, "border-b border-[#EDEDF0] last:border-b-0 align-top")}>
                   <td className="px-3 py-2">
                     {row.driverSearch ? (
                       <Link to="/admin" search={row.driverSearch} className="font-medium text-[#111114] underline">
@@ -255,7 +261,7 @@ function OverdueReturn({ rows }: { rows: RenewalsDueBoard["overdue"] }) {
                       <span className="text-[#55555E]">{row.driverName}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-[#111114]">{row.vehicleLabel}</td>
+                  <td className="px-3 py-2 text-[#111114]"><VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" /></td>
                   <td className="px-3 py-2 text-[#55555E]">{formatRenewalDate(row.endDate)}</td>
                   <td className="px-3 py-2 text-[#111114]">{row.label}</td>
                 </tr>

@@ -8,6 +8,8 @@
 // so re-running the sweep (or running it twice in a day) never charges the
 // same day twice.
 
+import { activeDailyPlan, isRentRowCovered, type DailyRentPlan, type StandingPayment } from "@/lib/rent-standing";
+
 export type LateFeePolicy = {
   enabled: boolean;
   /** Days after the due date before anything is charged. */
@@ -78,6 +80,8 @@ export function computeLateFee(args: {
   appliedThrough: string | null;
   /** Late days that carry no fee (staff waivers, approved payment deals). */
   excludedDays?: number;
+  /** Dollars staff forgave on this payment's week (late_fee_forgiveness), taken off after the cap. */
+  forgivenAmount?: number;
 }): FeeComputation {
   const { policy, dueDate, today, alreadyCharged, appliedThrough } = args;
   const none = { addition: 0, appliedThrough: appliedThrough ?? dueDate, reason: "" };
@@ -105,6 +109,9 @@ export function computeLateFee(args: {
   let target = chargeableDays > 0 ? policy.flat_fee + policy.daily_fee * chargeableDays : 0;
 
   if (policy.max_fee > 0) target = Math.min(target, policy.max_fee);
+  // Forgiven fees stay forgiven: the target drops by what staff forgave, so
+  // the next run never adds a forgiven fee back.
+  target = Math.max(0, round2(target - Math.max(0, Number(args.forgivenAmount ?? 0) || 0)));
 
   const addition = Math.max(0, round2(target - alreadyCharged));
   if (addition === 0) {
@@ -230,6 +237,25 @@ export async function applyLateFees(today?: string, opts: { admin?: any; now?: D
         supabaseAdmin.from("rentals").select("id,status,end_date").in("id", rentalIds),
       ])
     : [{ data: [] }, new Map<string, DealWindow[]>(), { data: [] }, { data: [] }];
+  // Staff forgiveness (Manage Late Fees). Absent until its migration is applied: then nothing is subtracted.
+  const forgivenBy = new Map<string, number>();
+  if (rentalIds.length) {
+    const fr = await supabaseAdmin.from("late_fee_forgiveness").select("rental_id,due_date,amount,undone_at").in("rental_id", rentalIds);
+    for (const f of (fr?.error ? [] : fr?.data ?? []) as any[]) {
+      if (f.undone_at || !(Number(f.amount) > 0)) continue;
+      const k = `${f.rental_id}|${String(f.due_date).slice(0, 10)}`;
+      forgivenBy.set(k, round2((forgivenBy.get(k) ?? 0) + Number(f.amount)));
+    }
+  }
+  // Rent already paid toward a week on another row (a Payment Link, a cash payment) settles it,
+  // and a daily rent plan replaces the weekly rows due on or after its start: no fee on either.
+  let paidRentBy = new Map<string, StandingPayment[]>();
+  let dailyPlans = new Map<string, DailyRentPlan>();
+  if (rentalIds.length) {
+    const { loadDailyRentPlans, loadPaidRentByRental } = await import("@/lib/daily-rent-plans.server");
+    paidRentBy = await loadPaidRentByRental(supabaseAdmin, rentalIds);
+    dailyPlans = await loadDailyRentPlans(supabaseAdmin);
+  }
   const waiversBy = new Map<string, any[]>();
   for (const w of (waiverRes.error ? [] : waiverRes.data ?? []) as any[]) (waiversBy.get(w.rental_id) ?? waiversBy.set(w.rental_id, []).get(w.rental_id)!).push(w);
   // Late fees stop once the car is back at the shop (D33).
@@ -250,6 +276,20 @@ export async function applyLateFees(today?: string, opts: { admin?: any; now?: D
         run.skipped++;
         continue;
       }
+      if (p.rental_id) {
+        const asRow: StandingPayment = { type: p.type, status: p.status, amount: p.amount, dueDate: p.due_date, balanceDue: p.balance_due, lateFees: p.late_fees };
+        if (isRentRowCovered(asRow, paidRentBy.get(p.rental_id) ?? [])) {
+          run.skipped++;
+          run.details!.push({ payment_id: p.id, rental_id: p.rental_id, due_date: p.due_date, addition: 0, reason: "rent paid on another row" });
+          continue;
+        }
+        const plan = activeDailyPlan(dailyPlans.get(p.rental_id) ?? null, todayStr);
+        if (plan && String(p.due_date).slice(0, 10) >= plan.startsOn) {
+          run.skipped++;
+          run.details!.push({ payment_id: p.id, rental_id: p.rental_id, due_date: p.due_date, addition: 0, reason: "daily rent plan" });
+          continue;
+        }
+      }
       const rentalDeals = p.rental_id ? deals.get(p.rental_id) ?? [] : [];
       if (rentalDeals.some((w) => todayStr >= w.from && todayStr <= w.through)) {
         // In an approved deal right now: nothing accrues, nothing is written.
@@ -269,6 +309,7 @@ export async function applyLateFees(today?: string, opts: { admin?: any; now?: D
         alreadyCharged: Number(p.late_fees ?? 0),
         appliedThrough: (p.late_fee_applied_through as string | null) ?? null,
         excludedDays: excluded.days,
+        forgivenAmount: p.rental_id ? forgivenBy.get(`${p.rental_id}|${String(p.due_date).slice(0, 10)}`) ?? 0 : 0,
       });
       run.details!.push({ payment_id: p.id, rental_id: p.rental_id ?? null, due_date: p.due_date, addition: result.addition, reason: excluded.wholeWeekWaived ? "week waived" : asOf !== todayStr ? `${result.reason || "nothing due"} (car returned ${asOf})` : result.reason });
       if (opts.dryRun) {

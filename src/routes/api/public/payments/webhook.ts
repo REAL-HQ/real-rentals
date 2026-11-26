@@ -7,12 +7,15 @@ import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatc
 import { holdIfHeld, type HeldNoticeInput } from '@/lib/held-payment-notices.server';
 import { failedInvoiceLink } from '@/lib/failed-payment-link';
 import { easternDateOf } from '@/lib/rent-reminders';
+import { isRentLinkReason, rentPeriodOf } from '@/lib/one-off-payment';
+import { invoicePaymentMethod, stripeChargePaymentMethod } from '@/lib/stripe-payment-method';
 import { dueDateOf, extractPaymentReceiptFields, paidDateOf, shouldNotifyRenter } from '@/lib/renter-payments';
 import { resolveStripePaymentMatch } from '@/lib/renter-payments-match.server';
+import { safeReceiptUrl } from '@/lib/payment-received';
 import { linkOrFlagSubscription, renderWebhookReminder, sendFailedPaymentText, webhookReminderSlot, type SmsSender } from '@/lib/failed-payment-notice.server';
 
 /** Test seam for the outbound text and staff alert; the route never sets it. */
-export type WebhookDeps = { sendSms?: SmsSender; alert?: (a: any) => Promise<unknown>; now?: Date; stripe?: any };
+export type WebhookDeps = { sendSms?: SmsSender; alert?: (a: any) => Promise<unknown>; now?: Date; stripe?: any; welcome?: (admin: any, ref: { rentalId: string | null; applicationId: string | null; reason: string | null }) => Promise<unknown> };
 let webhookDeps: WebhookDeps = {};
 
 let _supabase: ReturnType<typeof createClient> | null = null;
@@ -48,6 +51,58 @@ async function driverForRental(rentalId: string | undefined) {
     expMonth: data.applications.card_exp_month as number | null,
     expYear: data.applications.card_exp_year as number | null,
   };
+}
+
+/**
+ * A $50 Reservation Fee is paid before any rental exists, so its intent carries
+ * applicationId and no rentalId. Without this the renter got no receipt and
+ * staff got no email when a lead paid.
+ */
+async function driverForApplication(applicationId: string | undefined) {
+  if (!applicationId || !/^[0-9a-f-]{36}$/i.test(applicationId)) return null;
+  const admin: any = getSupabase();
+  const { data } = await admin
+    .from('applications')
+    .select('email, full_name, phone, card_brand, card_last4, card_exp_month, card_exp_year')
+    .eq('id', applicationId)
+    .maybeSingle();
+  if (!data?.email) return null;
+  return {
+    email: data.email as string,
+    applicationId,
+    plate: null as string | null,
+    name: (data.full_name as string | null) ?? null,
+    phone: (data.phone as string | null) ?? null,
+    brand: data.card_brand as string | null,
+    last4: data.card_last4 as string | null,
+    expMonth: data.card_exp_month as number | null,
+    expYear: data.card_exp_year as number | null,
+  };
+}
+
+/** Staff email once per paid Reservation Fee (after the receipt claim, so a replay sends nothing). */
+async function alertTeamReservationFeePaid(
+  driver: { name: string | null; applicationId?: string | null } | null,
+  amount: number,
+  applicationId: string | undefined,
+) {
+  try {
+    const { getLeadAlertPrefs, sendEmail } = await import('@/lib/email.server');
+    const prefs = await getLeadAlertPrefs();
+    if (!prefs.recipients.length) return;
+    const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const who = driver?.name || 'A lead';
+    const appId = driver?.applicationId ?? applicationId ?? null;
+    const link = appId ? `https://drivereal.com/admin?tab=drivers&id=${encodeURIComponent(appId)}` : null;
+    await sendEmail({
+      to: prefs.recipients,
+      subject: `Reservation Fee Paid — $${amount.toFixed(2)} — ${who}`,
+      html: `<p><strong>${esc(who)}</strong> paid the $${amount.toFixed(2)} Reservation Fee.</p>${link ? `<p><a href="${link}">Open Their Profile</a></p>` : ''}`,
+      track: { workflow: 'reservation_fee_paid' },
+    });
+  } catch (err) {
+    console.error('[payments] reservation fee staff alert failed', err);
+  }
 }
 
 function cardExpiresSoon(m: number | null, y: number | null): boolean {
@@ -313,8 +368,10 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
         vehicle_id: r?.vehicle_id ?? null,
         amount,
         balance_due: status === 'paid' ? 0 : amount,
-        type: reason === 'rent' ? 'rent' : reason === 'late_fee' ? 'late_fee' : 'other',
+        type: isRentLinkReason(reason) ? 'rent' : reason === 'late_fee' ? 'late_fee' : 'other',
         reason,
+        // The day or first week the link names. Absent when the link doesn't say.
+        ...(isRentLinkReason(reason) && rentPeriodOf(pi) ? { due_date: rentPeriodOf(pi) } : {}),
         status,
         failure_reason: status === 'failed' ? failure : null,
         stripe_payment_intent_id: pi.id,
@@ -359,7 +416,11 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
     read: false,
   }).then(() => {}, () => {});
 
-  const driver = await driverForRental(rentalId);
+  const driver = (await driverForRental(rentalId))
+    ?? (reason === 'reservation_fee' ? await driverForApplication(pi.metadata?.applicationId as string | undefined) : null);
+  if (status === 'paid' && reason === 'reservation_fee') {
+    await alertTeamReservationFeePaid(driver, amount, pi.metadata?.applicationId as string | undefined);
+  }
   if (driver) {
     if (status === 'paid') {
       const sendReceipt = () => sendPaymentReceiptEmail({
@@ -427,6 +488,10 @@ function subscriptionIdOfInvoice(invoice: any): string | null {
 }
 
 async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed') {
+  const { ignoredZeroOrTrialInvoice } = await import('@/lib/zero-rent-invoice');
+  // A $0 trial or subscription anchor collected nothing. Log only: no rent row,
+  // no next_payment_due, no payment_status, no receipt, no staff notice.
+  if (status === 'paid' && ignoredZeroOrTrialInvoice(invoice)) return;
   const admin: any = getSupabase();
   const subscriptionId = subscriptionIdOfInvoice(invoice);
   const receipts = extractPaymentReceiptFields(invoice);
@@ -448,9 +513,15 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
         }
       : undefined,
   });
-  // An invoice we cannot tie to any rental or application is not written:
-  // staff get the unmatched warning (and the daily Stripe Link Check) instead.
+  // An invoice we cannot tie to any rental or application is not written as a
+  // payments row until a single active rental matches by customer, email,
+  // phone or billing name. Otherwise it is queued for staff and warned.
   if (!match.rentalId && !match.driverId) {
+    if (status === "paid") {
+      const { recordInvoiceWithoutRental } = await import("@/lib/one-off-payment.server");
+      const saved = await recordInvoiceWithoutRental(admin, invoice);
+      if (saved.recorded) return;
+    }
     await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
     return;
   }
@@ -481,7 +552,7 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     notified_status: notify ? null : status,
     failure_reason: !notify && status === 'failed' ? failure : null,
     paid_date: !notify && status === 'paid' ? paidDateOf(invoice, receipts) : null,
-    payment_method: 'card',
+    payment_method: invoicePaymentMethod(invoice),
     // The week this invoice bills starts when Stripe created it (ET), the same
     // date the rent reminders and late-fee waivers use. invoice.period_start is
     // the previous period for renewals, which made weeks look days later.
@@ -530,7 +601,9 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     .neq('status', 'paid').neq('status', 'refunded');
   // A failed retry never reopens a charge staff voided or waived, and never fails a row that
   // our own collection has claimed (pending with an attempt time): that attempt is still unsettled.
-  if (status !== 'paid') q = q.neq('status', 'void').neq('status', 'waived').or('status.neq.pending,last_attempt_at.is.null');
+  // A row moved to Collections stays there: a failed retry never makes it 'failed' again, so no
+  // payment-failed email, text or team alert goes out for a Collections debt. (Paid still applies.)
+  if (status !== 'paid') q = q.neq('status', 'void').neq('status', 'waived').neq('status', 'collections').or('status.neq.pending,last_attempt_at.is.null');
   const r = must(await q.select('id'));
   if (!(r.data?.length)) {
     // The row was already paid, usually because staff marked a failed invoice
@@ -716,6 +789,17 @@ async function handleChargeRefunded(charge: any) {
     _charge_id: charge.id ?? null,
     _pi: piId,
   }));
+  try {
+    const { data: fees } = await admin.from('payments').select('id,driver_id,reason,status,refunded_amount').in('id', ids);
+    const { releasePendingReservation } = await import('@/lib/pending-reservation.server');
+    for (const fee of (fees ?? []) as any[]) {
+      if (String(fee.reason ?? '') !== 'reservation_fee') continue;
+      if (fee.status !== 'refunded' && !(Number(fee.refunded_amount ?? 0) > 0)) continue;
+      if (fee.driver_id) await releasePendingReservation(admin, { applicationId: fee.driver_id, reason: 'fee_refunded' });
+    }
+  } catch (err) {
+    console.error('[webhook] pending reservation release failed', err);
+  }
 }
 
 /** customer.subscription.created: link a new subscription to its rental by metadata or customer. */
@@ -761,10 +845,77 @@ async function recordOneOff(
   }
 }
 
+/**
+ * Store the Stripe receipt link, and the charge's payment method when the
+ * row does not have one yet, on rows paid by a PaymentIntent (the Reservation
+ * Fee, collection-flow charges). Invoices already carry theirs
+ * (extractPaymentReceiptFields). charge.succeeded is not subscribed on the
+ * live endpoint, so the charge is read from the intent. Fills nulls only and
+ * never fails the event.
+ */
+async function fillIntentReceipt(pi: any, env: StripeEnv) {
+  try {
+    if (!pi?.id) return;
+    let charge: any = pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
+    const chargeId = typeof pi.latest_charge === 'string' ? pi.latest_charge : charge?.id ?? null;
+    if (!charge && chargeId) {
+      const stripe = webhookDeps.stripe ?? createStripeClient(env);
+      charge = await stripe.charges.retrieve(chargeId);
+    }
+    const receipt = safeReceiptUrl(charge?.receipt_url);
+    const method = stripeChargePaymentMethod(charge);
+    if (!receipt && !method) return;
+    const admin: any = getSupabase();
+    const chargeRef = charge?.id ?? chargeId;
+    const ids = String(pi.metadata?.paymentIds ?? '').split(',').map((x: string) => x.trim()).filter((x: string) => /^[0-9a-f-]{36}$/i.test(x));
+    // Receipt link only: never status, amount or paid_date, and never over a stored link.
+    if (receipt) {
+      await admin.from('payments').update({ stripe_receipt_url: receipt, stripe_charge_id: chargeRef }).eq('stripe_payment_intent_id', pi.id).is('stripe_receipt_url', null);
+      if (ids.length) await admin.from('payments').update({ stripe_receipt_url: receipt, stripe_charge_id: chargeRef }).in('id', ids).is('stripe_receipt_url', null);
+    }
+    // Method only where it is still blank, including when the charge has no receipt URL.
+    if (method) {
+      await admin.from('payments').update({ payment_method: method }).eq('stripe_payment_intent_id', pi.id).is('payment_method', null);
+      if (ids.length) await admin.from('payments').update({ payment_method: method }).in('id', ids).is('payment_method', null);
+    }
+  } catch (err) {
+    console.error('[webhook] receipt link fill failed', err);
+  }
+}
+
+/**
+ * The pickup payment just landed: the one Driver Portal welcome may now go
+ * (portal-welcome.server.ts decides: picked up, paid, pending, never sent).
+ * Never for the Reservation Fee. Never fails the event.
+ */
+async function welcomeAfterPaid(ref: { invoiceId?: string | null; paymentIntentId?: string | null; paymentIds?: string[]; rentalId?: string | null; reason?: string | null }) {
+  try {
+    if (String(ref.reason ?? '').toLowerCase() === 'reservation_fee') return;
+    const admin: any = getSupabase();
+    const pairs = new Map<string, { rentalId: string | null; applicationId: string | null }>();
+    const add = (row: any) => {
+      if (!row || String(row.reason ?? '').toLowerCase() === 'reservation_fee') return;
+      pairs.set(`${row.rental_id ?? ''}|${row.driver_id ?? ''}`, { rentalId: row.rental_id ?? null, applicationId: row.driver_id ?? null });
+    };
+    const cols = 'rental_id,driver_id,reason,status';
+    if (ref.invoiceId) ((await admin.from('payments').select(cols).eq('stripe_invoice_id', ref.invoiceId).eq('status', 'paid')).data ?? []).forEach(add);
+    if (ref.paymentIntentId) ((await admin.from('payments').select(cols).eq('stripe_payment_intent_id', ref.paymentIntentId).eq('status', 'paid')).data ?? []).forEach(add);
+    if (ref.paymentIds?.length) ((await admin.from('payments').select(cols).in('id', ref.paymentIds).eq('status', 'paid')).data ?? []).forEach(add);
+    if (!pairs.size && ref.rentalId) pairs.set(ref.rentalId, { rentalId: ref.rentalId, applicationId: null });
+    if (!pairs.size) return;
+    const welcome = webhookDeps.welcome ?? (await import('@/lib/portal-welcome.server')).maybeWelcomeAfterPayment;
+    for (const pair of pairs.values()) await welcome(admin, { ...pair, reason: ref.reason ?? null });
+  } catch (err) {
+    console.error('[webhook] portal welcome failed', err);
+  }
+}
+
 /** A paid intent with no app metadata that the intent path left without a row. */
 function unownedIntent(pi: any): boolean {
   const m = pi?.metadata ?? {};
-  return !m.paymentIds && !m.rentalId && !m.rental_id && !m.applicationId && !m.agreementId && m.reason !== 'reservation_fee';
+  // rental_id (snake_case, FLEET's Payment Links) is not read by the intent
+  // path, so the one-off recorder must still see it.
+  return !m.paymentIds && !m.rentalId && !m.applicationId && !m.agreementId && m.reason !== 'reservation_fee';
 }
 
 async function handleVerifiedPaymentEvent(event: { type: string; data: { object: any } }, env: StripeEnv) {
@@ -775,6 +926,13 @@ async function handleVerifiedPaymentEvent(event: { type: string; data: { object:
     case 'payment_intent.succeeded':
       await upsertPaymentFromPaymentIntent(event.data.object, 'paid');
       await holdReservationAfterFee(event.data.object);
+      await fillIntentReceipt(event.data.object, env);
+      await welcomeAfterPaid({
+        paymentIntentId: stripeId(event.data.object?.id),
+        paymentIds: String(event.data.object?.metadata?.paymentIds ?? '').split(',').map((x: string) => x.trim()).filter((x: string) => /^[0-9a-f-]{36}$/i.test(x)),
+        rentalId: (event.data.object?.metadata?.rentalId as string | undefined) ?? null,
+        reason: (event.data.object?.metadata?.reason as string | undefined) ?? null,
+      });
       if (unownedIntent(event.data.object)) {
         await recordOneOff({ paymentIntentId: stripeId(event.data.object?.id), paymentIntent: event.data.object }, env, { retryOnError: false });
       }
@@ -788,9 +946,16 @@ async function handleVerifiedPaymentEvent(event: { type: string; data: { object:
       await upsertPaymentFromPaymentIntent(event.data.object, 'failed');
       break;
     case 'invoice.paid':
-    case 'invoice.payment_succeeded':
+    case 'invoice.payment_succeeded': {
+      const { ignoredZeroOrTrialInvoice } = await import('@/lib/zero-rent-invoice');
+      if (ignoredZeroOrTrialInvoice(event.data.object)) {
+        console.info('[payments] ignored zero or trial invoice', event.data.object?.id ?? null);
+        break;
+      }
       await upsertPaymentFromInvoice(event.data.object, 'paid');
+      await welcomeAfterPaid({ invoiceId: stripeId(event.data.object?.id) });
       break;
+    }
     case 'invoice.payment_failed':
       await upsertPaymentFromInvoice(event.data.object, 'failed');
       break;

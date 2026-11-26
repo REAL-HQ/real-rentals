@@ -1,5 +1,7 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getStripeMatchReport } from "@/lib/stripe-match.functions";
 import type { StripeMatchReport, StripeMatchRow } from "@/lib/stripe-match";
@@ -51,6 +53,7 @@ export function StripeMatchPanel() {
 }
 
 function Section({ title, rows, empty }: { title: string; rows: StripeMatchRow[]; empty: string }) {
+  const navigate = useNavigate();
   return (
     <section className="space-y-2">
       <h2 className="text-lg font-semibold">{title}</h2>
@@ -71,7 +74,7 @@ function Section({ title, rows, empty }: { title: string; rows: StripeMatchRow[]
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.customerId} className="border-b align-top">
+                <tr key={row.customerId} {...rowNav(navigate, row.driverId ? { tab: "drivers", id: row.driverId } : null, "border-b align-top")}>
                   <td className="py-2 pr-3">
                     <div>{row.name ?? "—"}</div>
                     <div className="text-muted-foreground">{row.email ?? "—"}</div>
@@ -83,7 +86,7 @@ function Section({ title, rows, empty }: { title: string; rows: StripeMatchRow[]
                   <td className="py-2 pr-3">
                     {row.driverId ? <Link to="/admin" search={{ tab: "drivers", id: row.driverId }} className="underline">{row.driverName ?? "Driver"}</Link> : "—"}
                   </td>
-                  <td className="py-2 pr-3">{row.vehicleLabel ?? "—"}</td>
+                  <td className="py-2 pr-3"><VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" /></td>
                   <td className="py-2">{row.rentalExists ? "Yes" : "No"}</td>
                 </tr>
               ))}

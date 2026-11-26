@@ -10,7 +10,24 @@ type Admin = typeof import("@/integrations/supabase/client.server").supabaseAdmi
 const SETTINGS_KEY = "initial_payment_link";
 const SITE = () => publicAppOrigin();
 
-export function checkoutStripeEnv(): "sandbox" | "live" | null {
+/**
+ * The Stripe publishable key this build ships with (.env.production /
+ * .env.development). The Lovable Vite config inlines import.meta.env.VITE_*
+ * into the SERVER bundle as well as the client, but the Worker's process.env
+ * never has it at runtime. Reading only process.env made checkoutStripeEnv()
+ * return null in production, so signing skipped the Reservation Fee Checkout
+ * ("Card payments are not configured"; Jonathon Boykins, Nov 18 2026).
+ * Outside a Vite build (node/tsx tests) import.meta.env is undefined: "".
+ */
+export function buildPaymentsClientToken(): string {
+  try {
+    return String(import.meta.env.VITE_PAYMENTS_CLIENT_TOKEN ?? "");
+  } catch {
+    return "";
+  }
+}
+
+export function checkoutStripeEnv(buildToken: string = buildPaymentsClientToken()): "sandbox" | "live" | null {
   const named = process.env.STRIPE_CHECKOUT_ENV;
   if (named === "sandbox" || named === "live") {
     const secret =
@@ -18,7 +35,7 @@ export function checkoutStripeEnv(): "sandbox" | "live" | null {
     if (secret && process.env.LOVABLE_API_KEY) return named;
     return null;
   }
-  const pub = process.env.VITE_PAYMENTS_CLIENT_TOKEN || process.env.PAYMENTS_CLIENT_TOKEN || "";
+  const pub = process.env.VITE_PAYMENTS_CLIENT_TOKEN || process.env.PAYMENTS_CLIENT_TOKEN || buildToken || "";
   if (
     pub.startsWith("pk_test_") &&
     process.env.STRIPE_SANDBOX_API_KEY &&
@@ -192,8 +209,23 @@ export async function createInitialPaymentLink(
         const { ensureApplicationStripeCustomer } = await import("@/lib/stripe-link.server");
         customerId = await ensureApplicationStripeCustomer(admin, stripe, { ...(app as any), id: ag.application_id as string });
       }
+      const { buildChargeMetadata, easternDay, withCheckoutChargeMetadata } = await import("@/lib/stripe-charge-metadata");
+      const { preRentalChargeContext } = await import("@/lib/stripe-charge-metadata.server");
+      const ctx = await preRentalChargeContext(admin, ag.application_id as string, (ag.vehicle_id as string | null) ?? null);
+      const allowance = { kind: "pre_rental" as const, allowBlankPlate: !ctx.plate };
+      // Pre-rental initial payment: one Checkout can cover week-1 rent and a
+      // deposit. rental_id is set when a reservation already exists. paymentIds
+      // stays on the intent so the webhook settles the rows written above.
+      const meta = buildChargeMetadata({
+        rentalId: ctx.rentalId,
+        leadId: ag.application_id as string,
+        reason: offer.deposit > 0 ? "initial_payment" : "rent",
+        forDate: easternDay(),
+        renter: (app?.full_name as string | null) ?? null,
+        plate: ctx.plate,
+      }, allowance);
       const session = await stripe.checkout.sessions.create(
-        {
+        withCheckoutChargeMetadata({
           mode: "payment",
           customer: customerId ?? undefined,
           customer_email: customerId ? undefined : (ag.signer_email as string),
@@ -210,18 +242,19 @@ export async function createInitialPaymentLink(
               },
             },
           })),
-          metadata: { applicationId: ag.application_id as string, agreementId },
+          metadata: { applicationId: ag.application_id as string, agreementId, ...meta },
           payment_intent_data: {
             metadata: {
               paymentIds: ids.join(","),
               applicationId: ag.application_id as string,
               agreementId,
+              ...meta,
             },
           },
           success_url: `${SITE()}/login?paid=1`,
           cancel_url: `${SITE()}/login`,
           expires_at: Math.floor(Date.now() / 1000) + 23 * 3600,
-        },
+        }, meta, allowance),
         { idempotencyKey: `initial-checkout:${agreementId}:${ids.join(",")}` },
       );
       if (!session.url) throw new Error("Checkout session has no url");

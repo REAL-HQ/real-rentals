@@ -6,8 +6,10 @@ import { assertSignedArchiveBytes } from "@/lib/signed-archive-protection.server
 import { logAudit } from "@/lib/audit.server";
 import type { Actor } from "@/lib/roles.server";
 import { renderCompletedPdf, sha256Hex } from "@/lib/esign-pdf.server";
+import { signingClosesDocument } from "@/lib/additional-drivers";
+import { voidReleasesReservation } from "@/lib/standalone-doc";
 
-export type ClaimResult = "won" | "already_signed" | "in_progress" | "voided" | "expired" | "invalid";
+export type ClaimResult = "won" | "partial" | "already_signed" | "in_progress" | "voided" | "expired" | "invalid";
 
 export function randomToken(): string {
   const b = new Uint8Array(32);
@@ -19,35 +21,116 @@ export const hashToken = (t: string) => sha256Hex(t);
 const DOC_COLS =
   "id,application_id,vehicle_id,source,title,body,status,company_signer_name,company_signer_title,signer_email,signer_name,signed_at,sent_at,viewed_at,created_at,signer_ip,signer_user_agent,auth_method,merge_data,metadata,archive_attempts,document_id";
 
-/** Atomic claim + signature commit. Exactly one concurrent caller wins. */
+type SigningArgs = {
+  id: string;
+  tokenHash: string | null; // null = portal (ownership already verified) or the last additional driver after their own token was checked
+  signerName: string;
+  ip: string | null;
+  userAgent: string | null;
+  authMethod: "email_link" | "portal";
+  adoption?: import("@/lib/signature-adoption").SigningAdoption | null;
+  recipientId?: string | null;
+};
+
+type SignerRow = { id: string; status: string; email: string | null; name: string | null; signing_order: number; token_hash: string | null };
+
+async function signatureEvidence(args: SigningArgs, signedAt: string) {
+  if (!args.adoption) return null;
+  const evidence = JSON.stringify(args.adoption);
+  return { adoption: args.adoption, sha256: await sha256Hex(evidence), adopted_at: signedAt, name: args.signerName };
+}
+
+async function metadataWithSigner(admin: any, id: string, acting: SignerRow, evidence: Record<string, unknown> | null, writeSignature: boolean) {
+  const { data: cur } = await admin.from("agreements").select("metadata").eq("id", id).maybeSingle();
+  const prev = ((cur?.metadata as Record<string, unknown> | null) ?? {});
+  const prior = Array.isArray(prev.signers) ? prev.signers : [];
+  return {
+    ...prev,
+    signers: [...prior.filter((s) => (s as { recipient_id?: string })?.recipient_id !== acting.id), { recipient_id: acting.id, email: acting.email, ...(evidence ?? {}) }],
+    ...(writeSignature && evidence ? { signature: evidence } : {}),
+  };
+}
+
+async function stampRecipient(admin: any, args: SigningArgs, recipientId: string, signedAt: string) {
+  await admin.from("esign_recipients").update({
+    status: "signed", signed_at: signedAt, ip: args.ip, user_agent: args.userAgent, auth_method: args.authMethod, token_revoked_at: signedAt,
+  }).eq("id", recipientId);
+}
+
+async function stampAdditionalDriverSigned(admin: any, applicationId: string | null, email: string | null, signedAt: string) {
+  if (!applicationId || !email) return;
+  await admin.from("rental_additional_drivers").update({ signed_at: signedAt })
+    .eq("application_id", applicationId).eq("email", email.trim().toLowerCase()).is("signed_at", null);
+}
+
+/** Atomic claim + signature commit. Exactly one concurrent caller wins the final signature. */
 export async function completeSigning(
   admin: any,
-  args: {
-    id: string;
-    tokenHash: string | null; // null = portal (ownership already verified)
-    signerName: string;
-    ip: string | null;
-    userAgent: string | null;
-    authMethod: "email_link" | "portal";
-    /** Validated by the caller against the stored body (adoptionProblems). */
-    adoption?: import("@/lib/signature-adoption").Adoption | null;
-  },
+  args: SigningArgs,
 ): Promise<{ result: ClaimResult; archived?: boolean }> {
-  const { data: claim, error } = await admin.rpc("esign_claim", {
-    _id: args.id,
-    _token_hash: args.tokenHash,
-  });
+  const { data: signerRows } = await admin
+    .from("esign_recipients")
+    .select("id,status,email,name,signing_order,token_hash,role")
+    .eq("document_id", args.id)
+    .eq("role", "signer");
+  const signers = (signerRows ?? []) as SignerRow[];
+  const acting = args.recipientId
+    ? signers.find((s) => s.id === args.recipientId) ?? null
+    : args.tokenHash
+      ? signers.find((s) => s.token_hash === args.tokenHash) ?? null
+      : signers.find((s) => s.signing_order === 1) ?? signers[0] ?? null;
+  if (signers.length > 1 && !acting) throw new Error("This signing link is no longer valid");
+  if (acting && args.tokenHash && acting.token_hash !== args.tokenHash) throw new Error("This signing link is no longer valid");
+  const closes = signingClosesDocument(signers, acting?.id ?? null);
+  const { data: agToken } = await admin.from("agreements").select("token_hash,application_id").eq("id", args.id).maybeSingle();
+  const tokenIsAgreement = args.tokenHash != null && agToken?.token_hash === args.tokenHash;
+  // An additional driver's link is not agreements.token_hash. Recording it
+  // before they are the last signer must not claim the document.
+  if (!closes && acting && args.tokenHash && !tokenIsAgreement) {
+    const signedAt = new Date().toISOString();
+    const evidence = await signatureEvidence(args, signedAt);
+    const metadata = await metadataWithSigner(admin, args.id, acting, evidence, false);
+    await admin.from("agreements").update({ metadata }).eq("id", args.id);
+    await stampRecipient(admin, args, acting.id, signedAt);
+    await stampAdditionalDriverSigned(admin, agToken?.application_id ?? null, acting.email, signedAt);
+    await logAudit(null, { action: "document.signer_signed", summary: "Additional driver signed; other signatures are still open", entityType: "esign_document", entityId: args.id });
+    return { result: "partial" };
+  }
+
+  // The last additional driver has already matched their recipient token.
+  // esign_claim only knows the agreement token, so this verified recipient
+  // uses the same null token the portal uses after its ownership check.
+  const claimToken = !closes || tokenIsAgreement || args.tokenHash == null ? args.tokenHash : null;
+  const { data: claim, error } = await admin.rpc("esign_claim", { _id: args.id, _token_hash: claimToken });
   if (error) throw new Error("Could not record your signature. Please try again.");
   const result = claim as ClaimResult;
   if (result !== "won") return { result };
 
   const signedAt = new Date().toISOString();
-  let metadata: any = undefined;
-  if (args.adoption) {
+  const evidence = await signatureEvidence(args, signedAt);
+  const primary = signers.find((s) => s.signing_order === 1) ?? null;
+  const actingIsPrimary = !acting || acting.signing_order === 1 || signers.length <= 1;
+  let metadata: any = acting ? await metadataWithSigner(admin, args.id, acting, evidence, actingIsPrimary) : undefined;
+  if (!metadata && evidence) {
     const { data: cur } = await admin.from("agreements").select("metadata").eq("id", args.id).maybeSingle();
-    const evidence = JSON.stringify(args.adoption);
-    metadata = { ...((cur?.metadata as any) ?? {}), signature: { adoption: args.adoption, sha256: await sha256Hex(evidence), adopted_at: signedAt } };
+    metadata = { ...((cur?.metadata as Record<string, unknown> | null) ?? {}), signature: evidence };
   }
+  if (!closes && acting) {
+    const { error: upErr } = await admin.from("agreements").update({
+      ...(metadata ? { metadata } : {}),
+      status: "viewed",
+      token_hash: null,
+    }).eq("id", args.id).eq("status", "signing");
+    if (upErr) {
+      await admin.from("agreements").update({ status: "viewed" }).eq("id", args.id).eq("status", "signing");
+      throw new Error("Could not record your signature. Please try again.");
+    }
+    await stampRecipient(admin, args, acting.id, signedAt);
+    await stampAdditionalDriverSigned(admin, agToken?.application_id ?? null, acting.email, signedAt);
+    await logAudit(null, { action: "document.signer_signed", summary: "Primary signer signed; other signatures are still open", entityType: "esign_document", entityId: args.id });
+    return { result: "partial" };
+  }
+  const signerName = actingIsPrimary ? args.signerName : (primary?.name || args.signerName);
   const { data: ag, error: upErr } = await admin
     .from("agreements")
     .update({
@@ -55,7 +138,7 @@ export async function completeSigning(
       status: "signed",
       signed_at: signedAt,
       completed_at: signedAt,
-      signer_name: args.signerName,
+      signer_name: signerName,
       signer_ip: args.ip,
       signer_user_agent: args.userAgent,
       auth_method: args.authMethod,
@@ -72,11 +155,15 @@ export async function completeSigning(
     await admin.from("agreements").update({ status: "viewed" }).eq("id", args.id).eq("status", "signing");
     throw new Error("Could not record your signature. Please try again.");
   }
-  await admin
-    .from("esign_recipients")
-    .update({ status: "signed", signed_at: signedAt, ip: args.ip, user_agent: args.userAgent, auth_method: args.authMethod, token_revoked_at: signedAt })
-    .eq("document_id", args.id)
-    .eq("role", "signer");
+  if (acting) await stampRecipient(admin, args, acting.id, signedAt);
+  else {
+    await admin
+      .from("esign_recipients")
+      .update({ status: "signed", signed_at: signedAt, ip: args.ip, user_agent: args.userAgent, auth_method: args.authMethod, token_revoked_at: signedAt })
+      .eq("document_id", args.id)
+      .eq("role", "signer");
+  }
+  if (acting) await stampAdditionalDriverSigned(admin, ag.application_id ?? null, acting.email, signedAt);
 
   await logAudit(null, {
     action: "document.signed",
@@ -85,9 +172,9 @@ export async function completeSigning(
     entityId: args.id,
     ...(args.adoption ? { metadata: {
       signature: args.adoption.signature.method === "typed" ? `typed:${args.adoption.signature.style}` : "drawn",
-      initials: args.adoption.initials.method === "typed" ? `typed:${args.adoption.initials.style}` : "drawn",
+      initials: !args.adoption.initials ? "not_required" : args.adoption.initials.method === "typed" ? `typed:${args.adoption.initials.style}` : "drawn",
       acknowledgments: `${args.adoption.acks.filter(Boolean).length}/${args.adoption.acks.length}`,
-      evidence_sha256: metadata.signature.sha256,
+      evidence_sha256: evidence?.sha256 ?? (metadata as { signature?: { sha256?: string } } | undefined)?.signature?.sha256,
     } } : {}),
   });
 
@@ -96,6 +183,10 @@ export async function completeSigning(
   // first-signing event, and the reservation check below is skipped.
   const isAmendment = Boolean((ag as any)?.metadata?.amendment);
   const archived = await archiveDocument(admin, ag, null);
+  // A third-party PDF is not a rental agreement: no FLEET event, no reservation
+  // confirmation, and no reservation fee. The insurer email is sent by the
+  // signing handlers after this returns.
+  if (ag.source === "standalone") return { result: "won", archived };
   // FLEET: renter signed. Never blocks or fails the signature.
   try {
     const { notifyFleetAgreementSigned } = await import("@/lib/fleet-webhook.server");
@@ -104,6 +195,19 @@ export async function completeSigning(
     console.error("[esign] FLEET notify failed", e);
   }
   if (isAmendment) {
+    const kind = (ag as any)?.metadata?.amendment?.kind;
+    if (kind === "vehicle_swap") {
+      // A vehicle swap agreement: mark the swap signed so staff can complete
+      // the handover. The vehicle change itself is a separate staff step.
+      // Never fails the signature.
+      try {
+        const { onSwapSigned } = await import("@/lib/vehicle-swap.server");
+        await onSwapSigned(admin, args.id);
+      } catch (e) {
+        console.error("[esign] vehicle swap signed hook failed", e);
+      }
+      return { result: "won", archived };
+    }
     // Fix the date the new rate starts (never before this signature), apply
     // it when due, and tell FLEET. Never fails the signature.
     try {
@@ -190,7 +294,7 @@ async function archiveCompletedV1(admin: any, ag: any, actor: Actor | null): Pro
           driver_id: ag.application_id,
           kind: "rental_agreement",
           category: "agreement",
-          label: ag.source === "rental" ? "Signed rental agreement" : ag.title,
+          label: signedDocumentLabel(ag),
           storage_bucket: "rental-agreements",
           storage_path: path,
           visibility: ["driver", "admin"],
@@ -254,7 +358,22 @@ async function archiveCompletedV1(admin: any, ag: any, actor: Actor | null): Pro
   }
 }
 
+/**
+ * Label of the archived signed PDF. A vehicle swap agreement is filed the way
+ * Agreement Filing files a paper swap: "Rental Agreement — Swap (follows …)"
+ * (metadata.amendment.document_label, set at send by vehicle-swap.server.ts).
+ */
+function signedDocumentLabel(ag: any): string {
+  const swapLabel = (ag?.metadata as any)?.amendment?.kind === "vehicle_swap" ? (ag.metadata as any).amendment.document_label : null;
+  if (typeof swapLabel === "string" && /^Rental Agreement — Swap/.test(swapLabel)) return swapLabel;
+  return ag.source === "rental" ? "Signed rental agreement" : ag.title;
+}
+
 export async function archiveDocument(admin: any, ag: any, actor: Actor | null): Promise<boolean> {
+  if (ag?.source === "standalone") {
+    const { archiveStandaloneDocument } = await import("@/lib/standalone-doc.server");
+    return archiveStandaloneDocument(admin, ag, actor);
+  }
   // completed-v1 layout is off until Dolmar turns the flag on. Today's archives
   // stay at {applicationId}/agreement-{id}.pdf on the existing bucket.
   if (SIGNED_ARCHIVE_V1_ENABLED) return archiveCompletedV1(admin, ag, actor);
@@ -301,7 +420,7 @@ export async function archiveDocument(admin: any, ag: any, actor: Actor | null):
           driver_id: ag.application_id,
           kind: "rental_agreement",
           category: "agreement",
-          label: ag.source === "rental" ? "Signed rental agreement" : ag.title,
+          label: signedDocumentLabel(ag),
           storage_bucket: "rental-agreements",
           storage_path: path,
           visibility: ["driver", "admin"],
@@ -405,15 +524,28 @@ export async function deliverSigningLink(
     vehicle: string | null;
     applicationId: string | null;
     actor: Actor | null;
+    /** False sends no text at all, including extra numbers on the application. */
+    allowSms?: boolean;
   },
 ): Promise<{ email: ChannelStatus; sms: ChannelStatus; delivered: boolean }> {
+  const allowSms = args.allowSms !== false;
   const at = new Date().toISOString();
+  let documentLink = false;
+  try {
+    const { data: kind } = await admin.from("agreements").select("source").eq("id", args.id).maybeSingle();
+    documentLink = kind?.source === "standalone";
+  } catch {
+    documentLink = false;
+  }
+  const smsBody = documentLink
+    ? `REAL RENTALS: Your document is ready to sign: ${args.url} Reply STOP to opt out.`
+    : `REAL RENTALS: Your rental agreement is ready to sign: ${args.url} Reply STOP to opt out.`;
   let email: ChannelStatus = "not_attempted";
   let emailError: string | null = "No email on file";
   if (args.email) {
     try {
       const { sendAgreementEmail } = await import("@/lib/email.server");
-      const r = await sendAgreementEmail({ to: args.email, firstName: args.name, url: args.url, vehicle: args.vehicle });
+      const r = await sendAgreementEmail({ to: args.email, firstName: args.name, url: args.url, vehicle: args.vehicle, document: documentLink });
       email = r.ok ? "sent" : "failed";
       emailError = r.ok ? null : (r.error ?? "Email send failed").slice(0, 300);
     } catch (e) {
@@ -428,14 +560,16 @@ export async function deliverSigningLink(
     try {
       const { renterEmailTargets, renterSmsTargets } = await import("@/lib/driver-contacts.server");
       const emails = await renterEmailTargets(admin, args.applicationId, { email: args.email });
-      const phones = await renterSmsTargets(admin, args.applicationId);
       const primaryEmail = (args.email ?? "").trim().toLowerCase();
       for (const e of emails) if (e !== primaryEmail) extraEmails.push(e);
-      const primaryPhone = args.phone;
-      for (const p of phones) {
-        if (!p.canText) continue;
-        const same = primaryPhone && String(p.e164).replace(/\D/g, "").slice(-10) === String(primaryPhone).replace(/\D/g, "").slice(-10);
-        if (!same) extraPhones.push(p.e164);
+      if (allowSms) {
+        const phones = await renterSmsTargets(admin, args.applicationId);
+        const primaryPhone = args.phone;
+        for (const p of phones) {
+          if (!p.canText) continue;
+          const same = primaryPhone && String(p.e164).replace(/\D/g, "").slice(-10) === String(primaryPhone).replace(/\D/g, "").slice(-10);
+          if (!same) extraPhones.push(p.e164);
+        }
       }
     } catch {
       // Table missing or unreadable: send only to the primary, as before.
@@ -443,13 +577,13 @@ export async function deliverSigningLink(
   }
 
   let sms: ChannelStatus = "not_attempted";
-  let smsError: string | null = "No phone on file";
-  if (args.phone) {
+  let smsError: string | null = allowSms ? "No phone on file" : null;
+  if (allowSms && args.phone) {
     try {
       const { sendSms } = await import("@/lib/sms.server");
       const r: any = await sendSms({
         to: args.phone,
-        body: `REAL RENTALS: Your rental agreement is ready to sign: ${args.url} Reply STOP to opt out.`,
+        body: smsBody,
         kind: "agreement_sent",
         applicationId: args.applicationId ?? undefined,
       });
@@ -466,7 +600,7 @@ export async function deliverSigningLink(
     try {
       const { sendAgreementEmail } = await import("@/lib/email.server");
       for (const to of extraEmails) {
-        const r = await sendAgreementEmail({ to, firstName: args.name, url: args.url, vehicle: args.vehicle });
+        const r = await sendAgreementEmail({ to, firstName: args.name, url: args.url, vehicle: args.vehicle, document: documentLink });
         if (r.ok && email !== "sent") { email = "sent"; emailError = null; }
       }
     } catch (e) {
@@ -476,10 +610,10 @@ export async function deliverSigningLink(
       }
     }
   }
-  if (extraPhones.length) {
+  if (allowSms && extraPhones.length) {
     try {
       const { sendSms } = await import("@/lib/sms.server");
-      const body = `REAL RENTALS: Your rental agreement is ready to sign: ${args.url} Reply STOP to opt out.`;
+      const body = smsBody;
       for (const to of extraPhones) {
         const r: any = await sendSms({ to, body, kind: "agreement_sent", applicationId: args.applicationId ?? undefined });
         if (r.ok && sms !== "sent") { sms = "sent"; smsError = null; }
@@ -515,6 +649,15 @@ export async function voidDocument(admin: any, id: string, actor: Actor | null):
   if (error) throw new Error(error.message);
   if (data === "voided") {
     await logAudit(actor, { action: "document.voided", summary: "eSign document voided", entityType: "esign_document", entityId: id });
+    try {
+      const { data: ag } = await admin.from("agreements").select("application_id,source").eq("id", id).maybeSingle();
+      if (ag?.application_id && voidReleasesReservation(ag.source)) {
+        const { releasePendingReservation } = await import("@/lib/pending-reservation.server");
+        await releasePendingReservation(admin, { applicationId: ag.application_id, reason: "agreement_voided" });
+      }
+    } catch (err) {
+      console.error("[esign] pending reservation release failed", err);
+    }
   }
   return data as string;
 }

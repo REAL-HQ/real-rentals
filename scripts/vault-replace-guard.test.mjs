@@ -264,9 +264,9 @@ try {
       data: { applicationId, category, fileName: "new.pdf", mimeType: "application/pdf" },
       context: ctx(userId),
     });
-  const confirm = (userId, category, n = 77) =>
+  const confirm = (userId, category, n = 77, extra = {}) =>
     docs.confirmDocumentUpload({
-      data: { applicationId: APP, category, path: `${APP}/${category}-${id(n)}.pdf`, fileName: "new.pdf" },
+      data: { applicationId: APP, category, path: `${APP}/${category}-${id(n)}.pdf`, fileName: "new.pdf", ...extra },
       context: ctx(userId),
     });
   const review = (userId, documentId, status, note = null) =>
@@ -373,7 +373,7 @@ try {
 
   // -------------------------------------------------------- ordinary documents
 
-  await test("ordinary Replace still works: new current row, old licence superseded (staff)", async () => {
+  await test("a second licence upload ADDS: both files stay current (staff)", async () => {
     const old = doc(20);
     reset([old, signed(21)]);
     const up = await startUpload(OWNER, "license_front");
@@ -381,19 +381,32 @@ try {
     assert.ok(up.path.startsWith(`${APP}/license_front-`));
     const res = await confirm(OWNER, "license_front");
     assert.equal(res.ok, true);
-    assert.equal(row(old.id).is_current, false);
-    assert.equal(row(old.id).superseded_by, res.id);
+    assert.equal(row(old.id).is_current, true, "the first file is not superseded");
     assert.equal(row(res.id).is_current, true);
     assert.equal(row(id(21)).is_current, true, "the signed agreement is untouched");
   });
 
-  await test("ordinary Replace still works for the driver on their own application", async () => {
+  await test("explicit Replace (replacesDocumentId) supersedes only the named licence (staff)", async () => {
+    const old = doc(20);
+    const other = doc(24);
+    reset([old, other, signed(21)]);
+    const res = await confirm(OWNER, "license_front", 77, { replacesDocumentId: old.id });
+    assert.equal(row(old.id).is_current, false);
+    assert.equal(row(old.id).superseded_by, res.id);
+    assert.equal(row(other.id).is_current, true, "other files in the section are untouched");
+    assert.equal(row(res.id).is_current, true);
+    assert.equal(row(id(21)).is_current, true, "the signed agreement is untouched");
+  });
+
+  await test("a renter can add a second insurance card, and cannot use the replace shortcut", async () => {
     const old = doc(22, { category: "insurance", kind: "insurance" });
     reset([old]);
     const up = await startUpload(DRIVER_USER, "insurance", undefined);
     assert.equal(up.applicationId, APP);
     const res = await confirm(DRIVER_USER, "insurance");
-    assert.equal(row(old.id).superseded_by, res.id);
+    assert.equal(row(old.id).is_current, true);
+    assert.equal(row(res.id).is_current, true);
+    await assert.rejects(confirm(DRIVER_USER, "insurance", 78, { replacesDocumentId: old.id }), /Only team members can replace/);
   });
 
   await test("staff can still file a first agreement into an empty Signed agreement slot", async () => {
@@ -451,17 +464,17 @@ try {
       assert.ok(hit, `card ${title} rendered`);
       return hit;
     };
-    const agreement = card("Signed agreement");
+    const agreement = card("Rental Agreement");
     assert.doesNotMatch(agreement, />Replace</, "no Replace on the signed agreement");
     assert.doesNotMatch(agreement, /Needs New/, "no Needs New on the signed agreement");
     assert.doesNotMatch(agreement, /title="Delete"/, "no Delete on the signed agreement");
     assert.doesNotMatch(agreement, /aria-label="Add /, "signed evidence never offers an upload modal");
     assert.match(agreement, /Permanent Record/);
-    const licence = card("Driver&#x27;s license (front)");
+    const licence = card("Driver&#x27;s License (Front)");
     assert.match(licence, /aria-label="Add Driver&#x27;s License \(Front\)"/, "ordinary documents can open the upload modal");
     assert.match(licence, /Needs New/, "ordinary documents keep Needs New");
     // Empty fields offer the same Add modal, never an inline drop area.
-    assert.match(card("Insurance card"), /aria-label="Add Insurance Card"/);
+    assert.match(card("Insurance Card"), /aria-label="Add Insurance Card"/);
   });
 
   await test("DocumentVault gates Replace on the same rule", async () => {
@@ -494,7 +507,7 @@ try {
     assert.match(html, /Driver&#x27;s License \(Front\)/);
     assert.match(html, /Gig Profile Screenshot/);
     assert.match(html, /Insurance Card/);
-    assert.match(html, /Latest/);
+    assert.match(html, /1 File/, "a multi-file section says how many active files it holds");
     assert.match(html, /Previous Uploads/);
     assert.ok(html.indexOf("new-license.jpg") < html.indexOf("old-license.jpg"), "newest file is first");
     assert.match(html, /Uploaded Nov 9, 2026, \d{1,2}:\d{2} [AP]M/);

@@ -4,7 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { notReadyMessage } from "@/lib/vehicle-readiness";
-import { publicAppOrigin } from "@/lib/public-app-url";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import {
   decideActivation,
   OWNER_APPROVED_RENTAL_REASON,
@@ -32,8 +32,6 @@ import {
 // activateRental closes that gap in one action and enforces the two rules that
 // matter with a small fleet and paid traffic: a vehicle cannot go out twice,
 // and a vehicle cannot go out un-inspected.
-
-const SITE_URL = () => publicAppOrigin();
 
 // Delegates to the shared tier check rather than repeating the role list.
 // Everything in this file is money, so the bar is Manager — a Coordinator is
@@ -193,6 +191,12 @@ export async function evaluateReadiness(
     if (!v) {
       blockers.push({ code: "no_vehicle", message: "That vehicle no longer exists." });
     } else {
+      if (isForSaleVehicleStatus(v.status)) {
+        blockers.push({
+          code: "vehicle_for_sale",
+          message: "This vehicle is For Sale and cannot be rented.",
+        });
+      }
       // Double-booking guard. Checked against live rentals rather than
       // vehicles.status, because status is edited by hand and drifts.
       const { data: busy } = await admin
@@ -261,12 +265,10 @@ export async function evaluateReadiness(
     requirements: activationRequirements(facts),
     insurance,
     vehicleId: vehicleId ?? null,
-    suggestedWeeklyRate:
-      app.weekly_rent != null
-        ? Number(app.weekly_rent)
-        : vehicle?.weekly_rate != null
-          ? Number(vehicle.weekly_rate)
-          : null,
+    suggestedWeeklyRate: await (async () => {
+      const { weeklyRateForApplication } = await import("@/lib/agreement-weekly.server");
+      return weeklyRateForApplication(admin, applicationId, vehicle?.weekly_rate);
+    })(),
     suggestedDeposit: vehicle?.deposit != null ? Number(vehicle.deposit) : null,
     inspectionMileage,
     currentMileage,
@@ -294,7 +296,8 @@ export type ActivateResult = {
   rentalId?: string;
   blockers?: ActivationBlocker[];
   accountCreated?: boolean;
-  inviteUrl?: string | null;
+  /** The Driver Portal welcome: "sent" now, or "pending" until the pickup payment (or another outcome). */
+  portalWelcome?: string;
   /** Only on the non-atomic fallback (wrapper not installed): the required audit write failed. */
   auditError?: string;
 };
@@ -369,6 +372,18 @@ export async function activateRentalCore(
       actorIsOwner: actor.tier === "owner",
     });
     if (!decision.ok) return { ok: false, blockers: decision.blockers };
+    // Blacklisted (or an uncleared blacklist match): never overridable.
+    // rentals_blacklist_guard refuses the activation in the database as well.
+    {
+      const { checkBlacklist } = await import("@/lib/blacklist.server");
+      let refusal: string | null = null;
+      try {
+        refusal = (await checkBlacklist(supabaseAdmin, data.applicationId)).message;
+      } catch (e) {
+        refusal = e instanceof Error ? e.message : "Could Not Check The Blacklist. Try Again.";
+      }
+      if (refusal) return { ok: false, blockers: [{ code: "blacklisted", message: refusal } as any] };
+    }
     if (data.suppressWelcome === true && actor.tier !== "owner") {
       return { ok: false, blockers: [{ code: "override_reason_required", message: "Only an Owner can activate without the welcome email and text." } as any] };
     }
@@ -390,7 +405,6 @@ export async function activateRentalCore(
     const {
       userId,
       created,
-      inviteUrl: freshInviteUrl,
       conflict,
     } = await provisionDriverAccount(supabaseAdmin, {
       applicationId: data.applicationId,
@@ -555,52 +569,25 @@ export async function activateRentalCore(
     if (txErr) {
       const msg = String(txErr.message);
       if (/actor_not_manager/.test(msg)) throw new Error("Forbidden");
+      const blacklisted = (await import("@/lib/blacklist.server")).blacklistRefusalFromDbError(msg);
+      if (blacklisted) return { ok: false, blockers: [{ code: "blacklisted", message: blacklisted } as any] };
       const blocker = checkedTxBlocker(msg) ?? activationTxBlocker(msg);
       if (blocker) return { ok: false, blockers: [blocker] };
       throw new Error(msg);
     }
     if (!rentalId) throw new Error("The rental could not be confirmed. Check Bookings before retrying.");
     const rental = { id: rentalId };
+    // Agreement signed (and fee paid) before this rental existed: tie them to it.
+    await import("@/lib/booking-links.server").then((m) => m.linkOrphansToRental(supabaseAdmin, rentalId as string)).catch(() => {});
     if (process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true") await import("@/lib/renter-lifecycle-notices.server").then((m) => m.enrollRenterLifecycleNotice({ event: "rental_started", applicationId: data.applicationId, rentalId: rental.id })).catch((e) => console.error("[renter-lifecycle] rental_started", e));
 
-    // 7. Welcome the driver. A brand-new account gets the set-password link
-    //    minted during provisioning; an existing one — which is now the normal
-    //    case, because Reserved already made the account — just gets the
-    //    portal URL, since they already have a password.
-    const inviteUrl = freshInviteUrl;
-
+    // 7. Tell the driver the rental is active. No login details here
+    //    (t463u / t466u): the one Driver Portal login email is the pickup
+    //    welcome (step 9), sent only once the pickup payment is paid.
     const firstName =
       String(app.full_name ?? "there")
         .trim()
         .split(/\s+/)[0] || "there";
-    const portalUrl = `${SITE_URL()}/portal`;
-
-    if (sendWelcome) try {
-      const { sendEmail } = await import("@/lib/email.server");
-      const { sendRenterEmail } = await import("@/lib/driver-contacts.server");
-      const { supabaseAdmin: welcomeAdmin } = await import("@/integrations/supabase/client.server");
-      const welcomeHtml = `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
-          <h1 style="font-size:20px">You're all set, ${escapeHtml(firstName)}</h1>
-          <p style="font-size:15px;line-height:1.6">Your rental is active: <strong>${escapeHtml(vehicleLabel)}</strong>${
-            vehicle?.license_plate ? ` (${escapeHtml(vehicle.license_plate)})` : ""
-          } at $${data.weeklyRate.toFixed(2)}/week.</p>
-          <p style="font-size:15px;line-height:1.6">Use the driver portal to see payments, upload pickup photos, report an issue and keep your documents current.</p>
-          <a href="${created && inviteUrl ? inviteUrl : portalUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">
-            ${created ? "Set Your Password" : "Open Driver Portal"}
-          </a>
-          <p style="color:#888;font-size:12px;margin-top:20px">Take photos of the car at pickup in the portal — it protects you if there's ever a question about damage.</p>
-        </div>`;
-      await sendRenterEmail({
-        admin: welcomeAdmin,
-        applicationId: data.applicationId,
-        subject: `Your ${vehicleLabel} Rental Is Active`,
-        html: welcomeHtml,
-        sendEmail,
-        app,
-      });
-    } catch (e) {
-      console.error("[activate] welcome email failed", e);
-    }
 
     if (sendWelcome) try {
       const { sendSms } = await import("@/lib/sms.server");
@@ -609,7 +596,7 @@ export async function activateRentalCore(
       await sendRenterSms({
         admin: welcomeSmsAdmin,
         applicationId: data.applicationId,
-        body: `REAL RENTALS: Hi ${firstName}, your ${vehicleLabel} rental is now active. Check your email to set up your driver portal and see your payment schedule. Reply STOP to opt out.`,
+        body: `REAL RENTALS: Hi ${firstName}, your ${vehicleLabel} rental is now active. Your driver portal login comes by email once your rental is paid. Reply STOP to opt out.`,
         kind: "rental_activated",
         rentalId: rental.id as string,
         vehicleId: data.vehicleId,
@@ -651,9 +638,23 @@ export async function activateRentalCore(
       .then((m) => m.sendPartnerRentalNotice(supabaseAdmin, rental.id as string))
       .catch((e) => console.error("[activate] partner rental notice failed", e));
 
+    // 9. The one Driver Portal welcome (portal-welcome.server.ts). Runs after
+    //    the Stripe link above, which records rent paid before activation.
+    //    Paid now: sent now. Not paid yet: the payments webhook sends it when
+    //    the pickup payment lands. Never for the Reservation Fee alone. An
+    //    Owner's "Don't Send Welcome" (a rental recorded after the fact) skips
+    //    it entirely, as it always skipped the activation welcome.
+    let portalWelcome: string = "suppressed";
+    if (sendWelcome) try {
+      const { welcomeOrDeferAtActivation } = await import("@/lib/portal-welcome.server");
+      portalWelcome = await welcomeOrDeferAtActivation(supabaseAdmin, { applicationId: data.applicationId, rentalId: rental.id as string });
+    } catch (e) {
+      console.error("[activate] portal welcome failed", e);
+    }
+
     // rental.activated was written inside activate_rental_checked_tx (or, without
     // the wrapper, immediately after activate_rental_tx with any failure returned).
-    return { ok: true, rentalId: rental.id as string, accountCreated: created, inviteUrl, ...(auditError ? { auditError } : {}) };
+    return { ok: true, rentalId: rental.id as string, accountCreated: created, portalWelcome, ...(auditError ? { auditError } : {}) };
 }
 
 export const endRental = createServerFn({ method: "POST" })
@@ -833,11 +834,3 @@ export function activationTxBlocker(msg: string): ActivationBlocker | null {
   return null;
 }
 
-function escapeHtml(v: unknown): string {
-  return String(v ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}

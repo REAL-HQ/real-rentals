@@ -1,5 +1,7 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getBillingHealth } from "@/lib/billing-health.functions";
 import { billingHealthToCsv, type BillingHealthReport, type BillingMismatch } from "@/lib/billing-health";
@@ -81,8 +83,9 @@ function Report({ report }: { report: BillingHealthReport }) {
 }
 
 function Mismatch({ row }: { row: BillingMismatch }) {
+  const navigate = useNavigate();
   return (
-    <tr className="border-b align-top">
+    <tr {...rowNav(navigate, row.applicationId ? { tab: "drivers", id: row.applicationId } : row.rentalId ? { tab: "bookings", view: "past", id: row.rentalId } : null, "border-b align-top")}>
       <td className="py-2 pr-3">
         {row.applicationId ? (
           <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }} className="underline">{row.driverName}</Link>
@@ -90,8 +93,8 @@ function Mismatch({ row }: { row: BillingMismatch }) {
       </td>
       <td className="py-2 pr-3">
         {row.rentalId ? (
-          <Link to="/admin" search={{ tab: "bookings", view: "past", id: row.rentalId }} className="underline">{row.vehicleLabel}</Link>
-        ) : row.vehicleLabel}
+          <Link to="/admin" search={{ tab: "bookings", view: "past", id: row.rentalId }} className="underline"><VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" /></Link>
+        ) : <VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" />}
       </td>
       <td className="py-2 pr-3">{row.reason}</td>
       <td className="py-2 pr-3">{row.subscriptionId ?? "No Subscription"}</td>

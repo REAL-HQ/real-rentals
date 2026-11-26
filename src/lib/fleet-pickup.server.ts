@@ -6,7 +6,7 @@
  *   { "action": "book", "lead_id", "start_at", "vehicle_id"?, "pickup_location"?, "note"?, "idempotency_key"? }
  *     -> reserves the car through the same code path as staff Reserved
  *        (createReservationCore): Approved/Active only, one booking per slot,
- *        Booking Login Email per its automation switch.
+ *        Pickup Booked Email (no login details) per its automation switch.
  *
  * FLEET may only book a slot on the schedule; staff can still book any time.
  */

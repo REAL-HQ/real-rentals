@@ -6,16 +6,38 @@ import { APPROVAL_SOURCE_STATUSES, APPROVAL_STATUS_NOT_APPROVABLE } from "@/lib/
 import {
   APPLICANT_EDITABLE_STATUSES,
   APPLICATION_LOCKED_MESSAGE,
+  canUploadBeforePickupStatus,
   isApplicantEditableStatus,
+  isDocumentsOnlyStatus,
 } from "@/lib/application-edit-status";
 import { DOCUMENT_CONTENT_SHA256_ENABLED } from "@/lib/document-content-sha";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
+import { maskEmailOnFile } from "@/lib/email-on-file-mask";
 import { z } from "zod";
 import { SAVE_BUSY_CODE, SAVE_BUSY_MESSAGE } from "@/lib/wizard-save";
 import type { ApprovalEmailStatus } from "@/lib/approval-email";
 
+/** Longest the applicant's submit waits on the alert when the runtime has no waitUntil. */
+const LEAD_ALERT_WAIT_MS = 6000;
+
 const nullableString = z.string().trim().max(255).nullable().optional();
+
+/**
+ * Ad attribution (utm_*, gclid, landing page, referrer). Collected for
+ * reporting only, so an over-long value is cut to 255 characters instead of
+ * failing the whole application. The landing page is the first URL's path and
+ * query: a Google Ads click on iOS already arrives at ~194 characters
+ * (gad_source, gad_campaignid, gbraid, gclid), and a longer path or one more
+ * parameter would push it over 255 and reject Step 1 with no record left
+ * behind. The waitlist form already accepts 500.
+ */
+const attributionString = z
+  .string()
+  .max(4000)
+  .transform((v) => v.trim().slice(0, 255))
+  .nullable()
+  .optional();
 
 /** Exact case-insensitive match. Escapes ILIKE wildcards so a typed % is not a pattern. */
 function literalIlike(value: string): string {
@@ -202,7 +224,7 @@ async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: strin
   try {
     const { data: onFile } = await supabaseAdmin
       .from("applications")
-      .select("email, full_name, status, user_id")
+      .select("id, email, full_name, status, user_id")
       .eq("id", applicationId)
       .maybeSingle();
     if (!onFile?.email) return false;
@@ -215,6 +237,13 @@ async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: strin
         email: onFile.email,
       });
       if (!r.ok) console.error("[portal-handoff] provider refused", applicationId, r.error);
+      return r.ok;
+    }
+    // Approved, not picked up yet: the documents-only secure link (t466u).
+    if (isDocumentsOnlyStatus(onFile.status)) {
+      const { sendDocumentsLinkEmail } = await import("@/lib/email.server");
+      const r = await sendDocumentsLinkEmail({ to: onFile.email, firstName: onFile.full_name ?? null, submittedName, applicationId });
+      if (!r.ok) console.error("[documents-link] provider refused", applicationId, r.error);
       return r.ok;
     }
     const { sendApplicationResumeEmail } = await import("@/lib/email.server");
@@ -361,14 +390,14 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         // an applicant cannot know it at this point. Part 1 asks for an
         // expected duration instead. The column keeps its history.
         source: z.enum(["homepage", "city_lp"]),
-        utm_source: nullableString,
-        utm_medium: nullableString,
-        utm_campaign: nullableString,
-        utm_term: nullableString,
-        utm_content: nullableString,
-        gclid: nullableString,
-        landing_page: nullableString,
-        referrer: nullableString,
+        utm_source: attributionString,
+        utm_medium: attributionString,
+        utm_campaign: attributionString,
+        utm_term: attributionString,
+        utm_content: attributionString,
+        gclid: attributionString,
+        landing_page: attributionString,
+        referrer: attributionString,
       })
       .parse(data),
   )
@@ -501,9 +530,27 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           resubmission_count: (existing.resubmission_count ?? 0) + 1,
           updated_at: new Date().toISOString(),
         } as any).eq("id", primaryId);
+        // The address on file is masked here and nowhere else in this response.
+        const maskedEmailOnFile = maskEmailOnFile(existing.email);
+        try {
+          const { sendPhoneMatchEmailDiffersAlert } = await import("@/lib/phone-match-alert.server");
+          const { keepAlive } = await import("@/lib/after-response.server");
+          await keepAlive(
+            sendPhoneMatchEmailDiffersAlert(supabaseAdmin, {
+              leadId: primaryId,
+              applicantName: data.full_name,
+              newEmail: emailLower,
+              phoneLast4: String(data.phone ?? "").replace(/\D/g, "").slice(-4),
+            }),
+            { maxWaitMs: LEAD_ALERT_WAIT_MS },
+          );
+        } catch (e) {
+          console.error("[phone-match] team alert failed", e);
+        }
         return {
           id: null as string | null, token: null as string | null, existing: true as const,
           linkStatus: "review" as const, linkOk: true, retryAfterSeconds: 0,
+          maskedEmailOnFile,
         };
       }
       // Same email. Resume it only if there is something to resume: a closed,
@@ -673,21 +720,27 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           .maybeSingle();
         marketName = m?.name ?? null;
       }
-      void sendLeadAlertEmail({
-        event: "new",
-        applicationId: row.id,
-        full_name: data.full_name,
-        phone: data.phone,
-        email: data.email,
-        city: data.city ?? null,
-        state: data.state ?? null,
-        market: marketName,
-        pickup_date: data.pickup_date ?? null,
-        return_date: null,
-        platforms: null,
-        sms_consent: data.sms_consent,
-        source: data.source,
-      }).catch((e) => console.error("[lead-email] new failed", e));
+      const { keepAlive } = await import("@/lib/after-response.server");
+      // Awaited (bounded), never fire-and-forget: a bare `void` was cut off when
+      // the response went out, so alerts stuck at "sending" or never sent.
+      await keepAlive(
+        sendLeadAlertEmail({
+          event: "new",
+          applicationId: row.id,
+          full_name: data.full_name,
+          phone: data.phone,
+          email: data.email,
+          city: data.city ?? null,
+          state: data.state ?? null,
+          market: marketName,
+          pickup_date: data.pickup_date ?? null,
+          return_date: null,
+          platforms: null,
+          sms_consent: data.sms_consent,
+          source: data.source,
+        }).catch((e) => console.error("[lead-email] new failed", e)),
+        { maxWaitMs: LEAD_ALERT_WAIT_MS },
+      );
     } catch (e) {
       console.error("[lead-email] new setup failed", e);
     }
@@ -965,21 +1018,27 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
             .maybeSingle();
           marketName = m?.name ?? null;
         }
-        void sendLeadAlertEmail({
-          event: "complete",
-          applicationId: row.id,
-          full_name: row.full_name ?? null,
-          phone: row.phone ?? null,
-          email: row.email ?? null,
-          city: row.city ?? null,
-          state: row.state ?? null,
-          market: marketName,
-          pickup_date: row.pickup_date ?? null,
-          return_date: null,
-          platforms: Array.isArray(row.platforms) ? row.platforms : null,
-          sms_consent: row.sms_consent ?? null,
-          source: row.source ?? null,
-        }).catch((e) => console.error("[lead-email] complete failed", e));
+        const { keepAlive } = await import("@/lib/after-response.server");
+        // Awaited (bounded), never fire-and-forget: a bare `void` was cut off when
+        // the response went out, so alerts stuck at "sending" or never sent.
+        await keepAlive(
+          sendLeadAlertEmail({
+            event: "complete",
+            applicationId: row.id,
+            full_name: row.full_name ?? null,
+            phone: row.phone ?? null,
+            email: row.email ?? null,
+            city: row.city ?? null,
+            state: row.state ?? null,
+            market: marketName,
+            pickup_date: row.pickup_date ?? null,
+            return_date: null,
+            platforms: Array.isArray(row.platforms) ? row.platforms : null,
+            sms_consent: row.sms_consent ?? null,
+            source: row.source ?? null,
+          }).catch((e) => console.error("[lead-email] complete failed", e)),
+          { maxWaitMs: LEAD_ALERT_WAIT_MS },
+        );
       } catch (e) {
         console.error("[lead-email] complete setup failed", e);
       }
@@ -1156,6 +1215,9 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
       // declined somebody is not the link's to tell. updateApplicationStep
       // enforces the same rule; this only lets the wizard say so up front.
       editable: isApplicantEditableStatus(r.status),
+      // Approved, not picked up yet: the link opens a documents-only page
+      // (t466u). replaceApplicantDocument enforces the same rule.
+      documentsOnly: isDocumentsOnlyStatus(r.status),
 
       // Masked.
       insurance_policy_on_file: Boolean(r.insurance_policy_number),
@@ -1218,20 +1280,21 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
     // bug: it blocked "rejected", which is not a status this system has, and
     // missed "declined", which is — so a declined applicant kept a working
     // upload credential for the full life of their token.
-    const decided = [
-      "declined",
-      "closed",
-      "duplicate",
-      "approved",
-      "active",
-      "suspended",
-      "complete",
-      "completed",
-    ];
-    if (decided.includes(String(app?.status ?? "").toLowerCase())) {
+    // Before pickup (t466u) approved renters may still send documents
+    // through their secure link; every decided or started application is
+    // refused. "complete" never took uploads and still does not.
+    const status = String(app?.status ?? "").toLowerCase();
+    if (!canUploadBeforePickupStatus(status)) {
       throw new Error(
         "This application has already been decided. Email team@drivereal.com and we'll add the document for you.",
       );
+    }
+    if (isDocumentsOnlyStatus(status)) {
+      const { applicationPickedUp } = await import("@/lib/portal-pickup-gate.server");
+      if (await applicationPickedUp(supabaseAdmin, id, status)) {
+        const { DOC_REPLACE_LOCKED_MESSAGE } = await import("@/lib/applicant-document-replace.server");
+        throw new Error(DOC_REPLACE_LOCKED_MESSAGE);
+      }
     }
 
     // One signed URL is one opportunity to write an object, so issuance is
@@ -1277,6 +1340,50 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
   });
 
 /**
+ * Upload or replace one document through the secure link, before pickup.
+ * Documents only: no other field changes (applicant-document-replace.server.ts).
+ */
+export const replaceApplicantDocument = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        token: z.string().min(20).max(200),
+        kind: z.enum(["license", "insurance", "gig_profile", "trip_history", "income"]),
+        path: z.string().min(40).max(200),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
+    const id = await resolveResumeToken(supabaseAdmin, data.token);
+    const { replaceApplicantDocumentCore } = await import("@/lib/applicant-document-replace.server");
+    return replaceApplicantDocumentCore(supabaseAdmin as any, id, { kind: data.kind, path: data.path });
+  });
+
+/**
+ * Add another file to a section through the secure link. Keeps every file
+ * already there; Replace (above) is the explicit swap.
+ */
+export const addApplicantDocument = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        token: z.string().min(20).max(200),
+        kind: z.enum(["license", "insurance", "gig_profile", "trip_history", "income"]),
+        path: z.string().min(40).max(200),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
+    const id = await resolveResumeToken(supabaseAdmin, data.token);
+    const { addApplicantDocumentCore } = await import("@/lib/applicant-document-replace.server");
+    return addApplicantDocumentCore(supabaseAdmin as any, id, { kind: data.kind, path: data.path });
+  });
+
+/**
  * Staff: revoke every live resume link for an application and mint a fresh one.
  *
  * This is the reissue path. It exists because the tokens are stored hashed —
@@ -1300,7 +1407,7 @@ export const reissueApplicantLink = createServerFn({ method: "POST" })
 
     const { data: app } = await supabaseAdmin
       .from("applications")
-      .select("status,email,user_id")
+      .select("id,status,email,user_id")
       .eq("id", data.id)
       .maybeSingle();
     const { shouldHandoffToPortal, portalLoginUrl } = await import("@/lib/portal-handoff");
@@ -1500,6 +1607,20 @@ export async function approveApplicationCore(args: {
       error: "Application not found",
     };
 
+  // Blacklisted, or matching a blacklisted renter without an Owner's
+  // clearance: never approved, and no agreement goes out. The database
+  // trigger (applications_blacklist_guard) refuses the write regardless.
+  {
+    const { checkBlacklist } = await import("@/lib/blacklist.server");
+    let refusal: string | null = null;
+    try {
+      refusal = (await checkBlacklist(supabaseAdmin, data.id)).message;
+    } catch (e) {
+      refusal = e instanceof Error ? e.message : "Could Not Check The Blacklist. Try Again.";
+    }
+    if (refusal) return { ok: false, agreementSent: false, portalAccount: "deferred", error: refusal };
+  }
+
   // Already approved: do not write status, application.approved, or the
   // one-time Approval Confirmation again. A repeat call manages only the agreement.
   const newlyApproved = app.status !== "approved";
@@ -1553,7 +1674,8 @@ export async function approveApplicationCore(args: {
       },
     });
     if (!approved.ok) {
-      return { ok: false, agreementSent: false, portalAccount: "deferred", error: approved.error };
+      const { blacklistRefusalFromDbError } = await import("@/lib/blacklist.server");
+      return { ok: false, agreementSent: false, portalAccount: "deferred", error: blacklistRefusalFromDbError(approved.error) ?? approved.error };
     }
     // One Stripe customer per renter from approval on, so every later
     // checkout, invoice and subscription uses it. Never blocks approval.
@@ -1583,7 +1705,7 @@ export async function approveApplicationCore(args: {
           applicationId: data.id,
           agreementComing: data.sendAgreement === true,
         });
-        approvalEmail = result.ok ? "sent" : result.blocked ?? "failed";
+        approvalEmail = result.ok ? "sent" : result.blocked === "blacklisted" ? "not_sent" : result.blocked === "bounced" ? "bad_email" : result.blocked ?? "failed";
       } catch {
         // Approval is already durable; never undo it because a notice failed.
         approvalEmail = "failed";
@@ -1686,25 +1808,29 @@ export const openResumeLink = createServerFn({ method: "POST" })
     const { shouldHandoffToPortal } = await import("@/lib/portal-handoff");
     // Peek first: approved/active (or a linked driver) go to /login, and we
     // never exchange a recovery link into a wizard session for them.
+    let documentsOnly = false;
     try {
       const peek = await inspectResumeToken(supabaseAdmin, data.token);
       if (peek) {
         const { data: app } = await supabaseAdmin
           .from("applications")
-          .select("status,email,user_id")
+          .select("id,status,email,user_id")
           .eq("id", peek.applicationId)
           .maybeSingle();
         if (await shouldHandoffToPortal(supabaseAdmin, app as any)) {
           return {
             token: null as string | null,
             portal: { email: String((app as any)?.email ?? "").trim() },
+            documentsOnly: false,
           };
         }
+        // Approved, not picked up: documents only (t466u).
+        documentsOnly = isDocumentsOnlyStatus((app as any)?.status);
       }
       // exchangeResumeToken is the gate: hash lookup, expiry, revocation, and
       // single-use consume of a recovery credential before a session is issued.
-      return { token: await exchangeResumeToken(supabaseAdmin, data.token), portal: null as null };
+      return { token: await exchangeResumeToken(supabaseAdmin, data.token), portal: null as null, documentsOnly };
     } catch {
-      return { token: null as string | null, portal: null as null };
+      return { token: null as string | null, portal: null as null, documentsOnly: false };
     }
   });

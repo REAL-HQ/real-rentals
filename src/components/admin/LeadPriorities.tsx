@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Link } from "@tanstack/react-router";
-import { Phone, MessageSquare, ArrowUpRight, Flame, RefreshCw } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { ArrowUpRight, Flame, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getLeadPriorities } from "@/lib/lead-priorities.functions";
@@ -18,6 +19,8 @@ import { LeadResponseReport } from "./LeadResponseReport";
 import { ReadinessStatePill } from "./ui";
 import type { ReadinessByApplicant } from "@/lib/admin-overview";
 import { displayPersonName } from "@/lib/display-normalize";
+import { leadAvatarQuality } from "@/lib/lead-card";
+import { LeadCardContactActions } from "./LeadCardActions";
 import { LeadCardBody } from "./LeadCardBody";
 import { LeadCardMenu } from "./LeadCardMenu";
 import type { StaffTier } from "@/lib/roles";
@@ -36,6 +39,7 @@ export default function LeadPriorities({
   /** Signed-in staff tier; decides which ⋮ menu options show (Delete is Owner-only). */
   tier?: StaffTier | null;
 }) {
+  const navigate = useNavigate();
   const load = useServerFn(getLeadPriorities);
   const [result, setResult] = useState<LeadPrioritiesResult | null>(null);
   const [offset, setOffset] = useState(0);
@@ -57,7 +61,9 @@ export default function LeadPriorities({
           !Array.isArray(r.rows) ||
           !Number.isSafeInteger(r.total) ||
           !r.counts ||
-          ![r.counts.new, r.counts.overdue, r.counts.hot].every(Number.isSafeInteger)
+          ![r.counts.new, r.counts.overdue, r.counts.hot, r.counts.incomplete].every(
+            Number.isSafeInteger,
+          )
         ) {
           throw new Error("Lead priorities response unavailable");
         }
@@ -132,19 +138,49 @@ export default function LeadPriorities({
       ) : error ? (
         <p role="alert" className="py-6 text-sm text-destructive">
           Lead priorities could not be loaded.{" "}
-          <Button variant="link" size="sm" className="h-auto p-0 text-destructive" onClick={refresh}>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-destructive"
+            onClick={refresh}
+          >
             Retry
           </Button>
         </p>
       ) : (
         result && (
           <>
-            <div className="my-4 grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="my-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
               {(
                 [
-                  ["New Leads", result.counts.new, "new" as LeadFilter, "border-border bg-card hover:bg-secondary", "text-card-foreground"],
-                  ["Hot Leads", result.counts.hot, "interested" as LeadFilter, "border-border bg-card hover:bg-secondary", "text-card-foreground"],
-                  ["Overdue", result.counts.overdue, "follow_up_due" as LeadFilter, "border-destructive/20 bg-destructive/10 hover:bg-destructive/15", "text-destructive"],
+                  [
+                    "New Leads",
+                    result.counts.new,
+                    "new" as LeadFilter,
+                    "border-border bg-card hover:bg-secondary",
+                    "text-card-foreground",
+                  ],
+                  [
+                    "Incomplete",
+                    result.counts.incomplete,
+                    "incomplete" as LeadFilter,
+                    "border-border bg-card hover:bg-secondary",
+                    "text-card-foreground",
+                  ],
+                  [
+                    "Hot Leads",
+                    result.counts.hot,
+                    "interested" as LeadFilter,
+                    "border-border bg-card hover:bg-secondary",
+                    "text-card-foreground",
+                  ],
+                  [
+                    "Overdue",
+                    result.counts.overdue,
+                    "follow_up_due" as LeadFilter,
+                    "border-destructive/20 bg-destructive/10 hover:bg-destructive/15",
+                    "text-destructive",
+                  ],
                 ] as const
               ).map(([label, value, next, cardTone, textTone]) => (
                 <Button
@@ -158,7 +194,9 @@ export default function LeadPriorities({
                   }`}
                 >
                   <span className={`text-xs font-normal ${textTone}`}>{label}</span>
-                  <span className={`text-xl font-semibold leading-none tabular-nums ${textTone}`}>{value}</span>
+                  <span className={`text-xl font-semibold leading-none tabular-nums ${textTone}`}>
+                    {value}
+                  </span>
                 </Button>
               ))}
             </div>
@@ -192,61 +230,65 @@ export default function LeadPriorities({
               <ul className="mt-1 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {result.rows.map((lead) => {
                   const readinessResult = canSeeReadiness ? readiness[lead.id] : undefined;
+                  const displayName = lead.full_name
+                    ? displayPersonName(lead.full_name)
+                    : "Unnamed Applicant";
                   return (
-                    <li key={lead.id} data-lead-priority={lead.bucket} className="min-w-0">
+                    <li
+                      key={lead.id}
+                      data-lead-priority={lead.bucket}
+                      {...rowNav(navigate, { tab: "drivers", id: lead.id }, "min-w-0 rounded-2xl")}
+                    >
                       <LeadCardBody
                         lead={lead}
                         today={result.today}
-                        menu={<LeadCardMenu lead={lead} today={result.today} tier={tier} onChanged={refresh} />}
-                        name={
-                          <Link
-                            to="/admin"
-                            search={{ tab: "drivers", id: lead.id }}
-                            className="text-card-foreground hover:underline"
-                          >
-                            {lead.full_name ? displayPersonName(lead.full_name) : "Unnamed Applicant"}
-                          </Link>
+                        displayName={displayName}
+                        quality={leadAvatarQuality(readinessResult)}
+                        emailBad={lead.email_bad === true}
+                        menu={
+                          <div className="flex items-start">
+                            <Link
+                              to="/admin"
+                              search={{ tab: "drivers", id: lead.id }}
+                              aria-label={`View Applicant ${displayName}`}
+                              title="View Applicant"
+                              className="-mt-1.5 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+                            </Link>
+                            <LeadCardMenu
+                              lead={lead}
+                              today={result.today}
+                              tier={tier}
+                              onChanged={refresh}
+                            />
+                          </div>
                         }
+                        name={displayName}
                         status={
                           <>
-                            <ContactStatusCell applicationId={lead.id} row={lead} onSaved={refresh} appearance="neutral" />
-                            {readinessResult ? <ReadinessStatePill state={readinessResult.state} short /> : null}
+                            <ContactStatusCell
+                              applicationId={lead.id}
+                              row={lead}
+                              onSaved={refresh}
+                              appearance="neutral"
+                            />
+                            {readinessResult ? (
+                              <ReadinessStatePill state={readinessResult.state} short soft />
+                            ) : null}
                           </>
                         }
                         draft={<LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />}
                         actions={
-                        <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 text-xs font-medium">
-                          {lead.phone && (
-                            <Button asChild variant="link" size="sm" className="h-7 gap-1 p-0 text-xs text-muted-foreground">
-                              <a href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`}>
-                                <Phone aria-hidden="true" />
-                                Call
-                              </a>
-                            </Button>
-                          )}
-                          <Button
-                            variant="link"
-                            size="sm"
-                            title="Open Messages, then choose Text. Sending permissions and consent are checked there."
-                            onClick={() =>
-                              window.dispatchEvent(
-                                new CustomEvent("open-messages", {
-                                  detail: { applicationId: lead.id },
-                                }),
-                              )
-                            }
-                            className="h-7 gap-1 p-0 text-xs text-muted-foreground"
-                          >
-                            <MessageSquare aria-hidden="true" />
-                            Text
-                          </Button>
-                          <Button asChild variant="link" size="sm" className="ml-auto h-7 gap-1 p-0 text-xs text-card-foreground">
-                            <Link to="/admin" search={{ tab: "drivers", id: lead.id }}>
-                              View Applicant
-                              <ArrowUpRight aria-hidden="true" />
-                            </Link>
-                          </Button>
-                        </div>
+                          <LeadCardContactActions applicationId={lead.id} phone={lead.phone} />
+                        }
+                        view={
+                          <Link
+                            to="/admin"
+                            search={{ tab: "drivers", id: lead.id }}
+                            aria-label={`View Applicant ${displayName}`}
+                            className="absolute inset-0 z-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          />
                         }
                       />
                     </li>

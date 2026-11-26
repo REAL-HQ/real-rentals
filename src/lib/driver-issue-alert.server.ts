@@ -60,9 +60,9 @@ export async function alertOvernightRoadside(args: DriverIssueAlert, now = new D
   return sendTeamAlert(admin, {
     kind: "roadside_overnight",
     dedupeKey: args.issueId ?? `${args.rentalId ?? "no-rental"}:${now.toISOString().slice(0, 13)}`,
-    title: `After-Hours Roadside: ${args.title}`,
+    title: `AFTER-HOURS ROADSIDE: ${args.title} - Call Now`,
+    status: `Type: ${args.kind} · Urgency: ${args.severity}`,
     lines: [
-      `Type: ${args.kind} · Urgency: ${args.severity}`,
       "Filed between 6 PM and 6 AM ET. There is no tow partner overnight yet: call the renter back from the portal record and arrange help.",
     ],
     link: `${base.replace(/\/$/, "")}/admin?tab=issues&filter=driver`,

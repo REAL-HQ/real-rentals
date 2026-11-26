@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { useBusinessPhone } from "@/lib/company.functions";
+import { MIN_RENTER_AGE } from "@/lib/renter-age";
 
 export const Route = createFileRoute("/terms")({
   head: () => ({
@@ -24,14 +25,14 @@ function TermsPage() {
       <section className="container-real py-14 md:py-20 max-w-3xl">
         <div className="text-[11px] font-semibold tracking-[0.25em] text-real-red">Legal</div>
         <h1 className="mt-3 text-4xl md:text-5xl font-semibold">Terms Of Service</h1>
-        <p className="mt-3 text-sm text-muted-foreground">Last updated: October 2026</p>
+        <p className="mt-3 text-sm text-muted-foreground">Last updated: November 2026</p>
 
         <div className="mt-10 space-y-8 text-foreground/85 leading-relaxed">
           <p>By accessing this website or submitting an application, you agree to these Terms of Service.</p>
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Eligibility</h2>
-            <p className="mt-3">You must be at least 21 years old and hold a valid U.S. driver's license to apply for a rental. Approval is subject to verification and partner availability.</p>
+            <p className="mt-3">You must be at least {MIN_RENTER_AGE} years old and hold a valid U.S. driver's license to apply for a rental. Approval is subject to verification and partner availability.</p>
           </div>
 
           <div>

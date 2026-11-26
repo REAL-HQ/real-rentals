@@ -17,11 +17,11 @@ import {
   resolveExpectedMethod,
 } from "../src/lib/collections-plan";
 import { runProjectedRevenueSummary } from "../src/lib/projected-revenue.server";
-import type { ForecastRental } from "../src/lib/revenue-forecast";
+import type { PeriodRental } from "../src/lib/projected-revenue";
 
 const TODAY = "2026-11-05"; // Thursday
 
-function rental(over: Partial<ForecastRental> = {}): ForecastRental {
+function rental(over: Partial<PeriodRental> = {}): PeriodRental {
   return {
     id: "r1",
     vehicleId: "v1",
@@ -75,6 +75,95 @@ describe("projected revenue windows", () => {
     expect(summary?.week.projectedCents).toBe(50000);
     expect(summary?.week.collectedCents).toBe(30000);
     expect(summary?.month.label).toBe("This Month");
+    expect(summary?.month.projectedCents).toBe(200000);
+    expect(summary?.month.collectedCents).toBe(30000);
+  });
+
+  // Monday 23 Nov 2026: the week just started, and next_payment_due has already
+  // moved past weeks that were paid earlier in November.
+  const NOV23 = "2026-11-23";
+
+  it("counts the whole week and the whole month, including weeks already paid", () => {
+    expect(weekRange(NOV23)).toEqual({ from: "2026-11-23", through: "2026-11-29" });
+    expect(monthRange(NOV23)).toEqual({ from: "2026-11-01", through: "2026-11-30" });
+
+    // Cadence anchored on 30 Nov: 2, 9, 16, 23, 30 Nov. Paying through 23 Nov
+    // advanced next_payment_due to 30 Nov. The old forward-only walk saw only
+    // 30 Nov in the month ($100) and nothing in this week.
+    const rentals = [
+      rental({
+        weeklyRate: 100,
+        startDate: "2026-10-01",
+        nextPaymentDue: "2026-11-30",
+      }),
+    ];
+    const collected = [
+      { paidDate: "2026-11-02", netCollected: 100, type: "rent" },
+      { paidDate: "2026-11-09", netCollected: 100, type: "rent" },
+      { paidDate: "2026-11-16", netCollected: 100, type: "rent" },
+      { paidDate: "2026-11-23", netCollected: 100, type: "rent" },
+      { paidDate: "2026-11-23", netCollected: 50, type: "fee" },
+      { paidDate: "2026-11-23", netCollected: 50, type: "reservation" },
+      { paidDate: "2026-11-23", netCollected: 25, type: "late_fee" },
+      { paidDate: "2026-11-23", netCollected: 500, type: "deposit" },
+    ];
+    const summary = buildProjectedRevenueSummary({ today: NOV23, rentals, collected });
+
+    // This week is one charge ($100 projected) and the rent paid on Monday ($100).
+    expect(summary?.week.projectedCents).toBe(10000);
+    expect(summary?.week.collectedCents).toBe(10000);
+    // This month is all five charge dates ($500), not the single date still ahead.
+    expect(summary?.month.projectedCents).toBe(50000);
+    expect(summary?.month.collectedCents).toBe(40000);
+    // Same field order on both rows: projected, then collected.
+    expect(summary?.week.projectedCents).toBeGreaterThan(0);
+    expect(Object.keys(summary!.week)).toEqual(Object.keys(summary!.month));
+  });
+
+  it("does not charge weeks before the rental started or after it ends", () => {
+    const week = weekRange(NOV23)!;
+    const month = monthRange(NOV23)!;
+    const startedLate = projectedRentCents(
+      [rental({ weeklyRate: 200, startDate: "2026-11-18", nextPaymentDue: "2026-11-25" })],
+      month.from,
+      month.through,
+    );
+    // 18 Nov and 25 Nov. 11 Nov is before the start.
+    expect(startedLate.cents).toBe(40000);
+    // A start the day after a cadence date does not pull that earlier week in.
+    expect(projectedRentCents(
+      [rental({ weeklyRate: 200, startDate: "2026-11-19", nextPaymentDue: "2026-11-25" })],
+      month.from,
+      month.through,
+    ).cents).toBe(20000);
+    expect(projectedRentCents(
+      [rental({ weeklyRate: 200, startDate: "2026-11-18", nextPaymentDue: "2026-11-25" })],
+      week.from,
+      week.through,
+    ).cents).toBe(20000);
+
+    const ended = projectedRentCents(
+      [rental({ weeklyRate: 200, startDate: "2026-10-01", nextPaymentDue: "2026-11-27", endDate: "2026-11-20" })],
+      month.from,
+      month.through,
+    );
+    // Cadence 6, 13, 20, 27 Nov. 27 Nov is after the end.
+    expect(ended.cents).toBe(60000);
+    expect(projectedRentCents(
+      [rental({ weeklyRate: 200, startDate: "2026-10-01", nextPaymentDue: "2026-11-27", endDate: "2026-11-20" })],
+      week.from,
+      week.through,
+    ).cents).toBe(0);
+  });
+
+  it("does not invent weeks before next_payment_due when the start date is missing", () => {
+    const month = monthRange(NOV23)!;
+    const projected = projectedRentCents(
+      [rental({ weeklyRate: 100, nextPaymentDue: "2026-11-30" })],
+      month.from,
+      month.through,
+    );
+    expect(projected.cents).toBe(10000);
   });
 
   it("refuses non-managers before load", async () => {
@@ -191,11 +280,20 @@ describe("wiring", () => {
     expect(email).toContain("Collections Plan — Due Today / Due Tomorrow");
   });
 
-  it("Overview Revenue card shows This Week / This Month projected vs collected", () => {
+  it("Overview Revenue card shows This Week / This Month projected then collected", () => {
+    const details = panel.slice(panel.indexOf('label="Revenue Details"'));
     expect(panel).toContain("getProjectedRevenueSummary");
-    expect(panel).toContain("This Week");
-    expect(panel).toContain("This Month");
-    expect(panel).toContain("Projected / Collected");
+    expect(details).toContain("This Week");
+    expect(details).toContain("This Month");
+    expect(details.indexOf("Projected")).toBeGreaterThan(-1);
+    expect(details.indexOf("Projected")).toBeLessThan(details.indexOf("Collected"));
+    expect(details.indexOf("row.projectedCents")).toBeLessThan(details.indexOf("row.collectedCents"));
+    expect(details).not.toContain("Revenue: Projected / Collected");
+  });
+
+  it("projected revenue loader reads the rental start date", () => {
+    const server = readFileSync("src/lib/projected-revenue.server.ts", "utf8");
+    expect(server).toContain("start_date");
   });
 
   it("admin bell accepts Collections Plan title", () => {

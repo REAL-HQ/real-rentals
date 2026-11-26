@@ -12,6 +12,7 @@ import {
   vehicleListThumbnailKey,
 } from "@/lib/vehicle-thumbnail";
 import { stripJpegMetadata } from "@/lib/jpeg-metadata";
+import { isPublicHiddenVehicleStatus } from "@/lib/fleet-summary";
 
 // One gallery original for a vehicle the public site already lists, and only
 // when that vehicle has no published listing photo. The path-based route
@@ -39,10 +40,10 @@ export const Route = createFileRoute("/api/public/vehicle-gallery/$id")({
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { data: listed, error: listedError } = await supabaseAdmin
           .from("vehicles_public")
-          .select("id,photos")
+          .select("id,photos,status")
           .eq("id", id)
           .maybeSingle();
-        if (listedError || !listed) return notFound();
+        if (listedError || !listed || isPublicHiddenVehicleStatus(listed.status)) return notFound();
         if (listingHasPublishedPhoto(listed.photos)) return notFound();
 
         const { data: rows, error: mediaError } = await supabaseAdmin

@@ -10,13 +10,15 @@ import {
 } from "@/lib/agreement-merge";
 import { contractTodayIso, defaultRentalEndIso, fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks, rentalEndBeforeMinimum } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
+import { homeAddressMissing, formatHomeAddress, HOME_ADDRESS_LABEL, HOME_ADDRESS_WHY } from "@/lib/agreement-home-address";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, DEFAULT_LIBRARY_KEY, OWNER_APPROVED_LIBRARY, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementDetails, type AgreementPrep } from "@/lib/agreement-prep";
 import { recordFillsFromDetails, type AppliedFill } from "@/lib/agreement-fills";
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
-import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
-import { SWAP_ENABLED } from "@/lib/record-numbers";
+import { SigningAdoptionSchema, adoptionProblems, type Adoption } from "@/lib/signature-adoption";
 import { publicAppOrigin } from "@/lib/public-app-url";
+import { SEND_DOCUMENT_FOR_SIGNATURE_ENABLED } from "@/lib/send-document-flag";
+import { StandaloneFieldSchema, refuseStandaloneLink, standaloneSignatureProblems, type SourcePdfClient } from "@/lib/standalone-doc";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -49,13 +51,15 @@ export type AgreementRow = {
   sms_error: string | null;
   company_signer_name: string | null;
   company_signer_title: string | null;
+  source?: string;
   timeline: { at: string; label: string }[];
+  signers: { id: string; name: string | null; email: string | null; role: string; status: string; signing_order: number; signed_at: string | null }[];
 };
 
 const TIMELINE_LABELS: Record<string, string> = {
   "document.created": "Created",
   "document.sent": "Sent",
-  "document.resent": "Link reissued",
+  "document.resent": "Link Resent",
   "document.delivery_failed": "Delivery failed",
   "document.viewed": "Viewed",
   "document.signed": "Signed",
@@ -88,6 +92,14 @@ async function hashToken(token: string): Promise<string> {
 
 /** What renderTemplate substitutes for a merge field it has no value for. */
 const BLANK = "__________";
+/**
+ * Printed in {{card_on_file}} when nothing is saved yet.
+ * A Reservation Fee collected after signing saves the card. Any other send
+ * (fee not required, or rent paid by Zelle, Cash App, Venmo, or another
+ * method) prints that no card is saved. Neither line is a send requirement.
+ */
+const CARD_SAVED_WITH_RESERVATION_FEE = "Saved when you pay the Reservation Fee right after signing";
+const CARD_NOT_SAVED_YET = "Not saved yet";
 const AGREEMENT_NUMBER_PLACEHOLDER = "Assigned When Sent";
 const NUMBERING_PENDING =
   "Agreement numbers (RRA-000001) are assigned when the agreement record is created, which needs the pending agreement-number database change. This v1.6 agreement can be prepared and reviewed but not sent until that change is approved and applied.";
@@ -106,6 +118,17 @@ function money(v: unknown): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+/** "$50" for a whole dollar amount, "$50.50" otherwise. */
+function feeDollars(amount: number): string {
+  const whole = Math.round(amount * 100) % 100 === 0;
+  return amount.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 /**
  * What an agreement cannot be signed without.
  *
@@ -121,12 +144,16 @@ export type AgreementBlocker = {
   fix?: { tab: "payments" | "rental" } | { vehicleId: string };
 };
 
+/** Staff-only. Never disables prepare or send, and never printed on the agreement. */
+export type AgreementNote = { field: string; label: string; why: string };
+
 async function buildMergeData(
   admin: any,
   applicationId: string,
   vehicleId?: string,
   prep?: AgreementPrep,
   amendmentRate?: number,
+  swap?: AgreementSwapRender,
 ): Promise<{
   data: MergeData;
   app: any;
@@ -218,6 +245,18 @@ async function buildMergeData(
    * date at all.
    */
   const blockers: AgreementBlocker[] = [];
+  // Never send an agreement to a blacklisted renter, or to an applicant who
+  // matches one until an Owner clears the match.
+  {
+    const { checkBlacklist } = await import("@/lib/blacklist.server");
+    let refusal: string | null = null;
+    try {
+      refusal = (await checkBlacklist(admin, applicationId)).message;
+    } catch (e) {
+      refusal = e instanceof Error ? e.message : "Could Not Check The Blacklist. Try Again.";
+    }
+    if (refusal) blockers.push({ field: "blacklisted", label: "Not Blacklisted", why: refusal });
+  }
   if (!startDate)
     blockers.push({
       field: "contract_start_date",
@@ -257,13 +296,10 @@ async function buildMergeData(
     blockers.push({ field: "driver_email", label: "Driver email", why: "The signing link is emailed and the agreement prints it.", fix: pay });
   if (!String(app.phone ?? "").trim())
     blockers.push({ field: "driver_phone", label: "Driver phone", why: "The agreement prints the renter's phone number.", fix: pay });
-  if (!app.address || !app.city || !app.state || !app.zip)
-    blockers.push({
-      field: "driver_address",
-      label: "Driver address (street, city, state, ZIP)",
-      why: "The agreement names the driver's full address. Confirm it with the driver — do not guess it.",
-      fix: pay,
-    });
+  // Home Address is required before any agreement can be sent (v1.15: it is
+  // the address for legal notices, including s. 812.155 demands).
+  if (homeAddressMissing(app))
+    blockers.push({ field: "driver_address", label: HOME_ADDRESS_LABEL, why: HOME_ADDRESS_WHY, fix: pay });
   // Licence: the contract prints number, issuing state and expiry, and limits
   // operation to the Renter — so all three identify the authorised driver, and
   // a licence that has expired by the start date cannot authorise anyone.
@@ -286,9 +322,13 @@ async function buildMergeData(
   let vehicle: any = null;
   // No override: the application vehicle, exactly as before. An override is
   // accepted only when the server finds it is the active rental's current
-  // vehicle, and that is the car the agreement names.
+  // vehicle, or, for a vehicle swap agreement, the replacement car that this
+  // active rental's swap names (swapVehicleForAgreement). That is the car the
+  // agreement names.
   const namedVehicleId = vehicleId
-    ? await rentalVehicleForAgreement(admin, applicationId, vehicleId)
+    ? swap
+      ? await swapVehicleForAgreement(admin, applicationId, vehicleId, swap)
+      : await rentalVehicleForAgreement(admin, applicationId, vehicleId)
     : ((app.vehicle_id as string | null) ?? null);
   if (namedVehicleId) {
     const { data: v } = await admin
@@ -320,6 +360,20 @@ async function buildMergeData(
       blockers.push({ field: "vehicle_color", label: "Vehicle colour", why: "The agreement prints the vehicle's colour.", fix: vfix });
   }
 
+  // weekly_rent may be the last agreement's charge total (rent + drivers +
+  // Damage Waiver). Start this prepare from the stored base instead, so those
+  // amounts are added once. A sent agreement is not rewritten.
+  const { prepareBaseRent, moneyNumber: asMoney } = await import("@/lib/agreement-prep");
+  const { previousPrepareBase } = await import("@/lib/agreement-weekly.server");
+  const previous = await previousPrepareBase(admin, applicationId);
+  const starting = prepareBaseRent({
+    entered: asMoney(app.weekly_rent),
+    vehicleWeekly: asMoney(vehicle?.weekly_rate),
+    vehicleChanged: !!(previous?.vehicleId && namedVehicleId && previous.vehicleId !== namedVehicleId),
+    previous,
+  });
+  if (starting != null && starting > 0) app.weekly_rent = starting;
+
   const weekly = app.weekly_rent ?? vehicle?.weekly_rate;
   if (!(Number(weekly) > 0))
     blockers.push({ field: "weekly_rate", label: "Weekly rate", why: "The agreement states the weekly rent.", fix: pay });
@@ -345,10 +399,7 @@ async function buildMergeData(
     driver_name: app.full_name ?? "",
     driver_email: app.email ?? "",
     driver_phone: app.phone ?? "",
-    driver_address:
-      app.address && app.zip
-        ? [app.address, app.city, app.state, app.zip].filter(Boolean).join(", ")
-        : "",
+    driver_address: formatHomeAddress(app),
     license_number: app.license_number ?? "",
     license_state: app.license_state ?? "",
     license_expiration: licenceExpiry,
@@ -429,6 +480,36 @@ async function rentalVehicleForAgreement(admin: any, applicationId: string, vehi
     throw new Error("The agreement vehicle must be the rental's current vehicle.");
   }
   return rental.vehicle_id as string;
+}
+
+/**
+ * The only vehicle a swap agreement may name: a car other than the active
+ * rental's current one that is Available and not archived. At send the swap
+ * row must already exist (pending_signature) for this rental and car.
+ */
+async function swapVehicleForAgreement(admin: any, applicationId: string, vehicleId: string, swap: AgreementSwapRender): Promise<string> {
+  const { data: rental, error } = await admin
+    .from("rentals")
+    .select("id,vehicle_id,status")
+    .eq("application_id", applicationId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!rental || rental.id !== swap.rentalId) throw new Error("A swap agreement needs this renter's active rental.");
+  if (rental.vehicle_id === vehicleId || rental.vehicle_id !== swap.fromVehicleId) throw new Error("The swap agreement must name a different car than the rental's current one.");
+  const { data: v, error: vErr } = await admin.from("vehicles").select("id,status,archived_at").eq("id", vehicleId).maybeSingle();
+  if (vErr) throw new Error(vErr.message);
+  if (!v || v.archived_at || v.status !== "available") throw new Error("The replacement car must be Available.");
+  if (swap.swapId) {
+    const { VEHICLE_SWAPS_TABLE } = await import("@/lib/vehicle-swap");
+    const { data: row, error: sErr } = await admin.from(VEHICLE_SWAPS_TABLE).select("id,rental_id,to_vehicle_id,from_vehicle_id,status").eq("id", swap.swapId).maybeSingle();
+    if (sErr) throw new Error(sErr.message);
+    if (!row || row.rental_id !== rental.id || row.to_vehicle_id !== vehicleId || row.from_vehicle_id !== rental.vehicle_id || row.status !== "pending_signature")
+      throw new Error("The swap agreement does not match an open swap for this rental.");
+  }
+  return vehicleId;
 }
 
 /** Title every rental agreement row carries (agreements.title column default). */
@@ -547,6 +628,9 @@ export function templateEvidence(meta: TemplateMeta, fingerprint: string, fromLi
 
 /** Once versioning is active, only an Owner-approved template can be sent. */
 function templateSendRefusal(meta: TemplateMeta): string | null {
+  // Retired families (v1.10, v1.10.2) stay previewable but are never sent.
+  const retired = meta.key ? libraryTemplate(meta.key)?.retired : undefined;
+  if (retired) return `${meta.label} is retired, so it cannot be sent. ${retired.reason}`;
   if (meta.key && meta.approvalStatus !== "approved")
     return `${meta.label} is not approved, so it cannot be sent. The Owner approves it in the Agreement Template Library after legal review.`;
   if (meta.versioningActive && meta.approvalStatus !== "approved")
@@ -555,9 +639,8 @@ function templateSendRefusal(meta: TemplateMeta): string | null {
 }
 
 /**
- * The agreement new sends use when no saved template is active: v1.14
- * (Insurance Included). Dolmar, Nov 16 2026 (t319u): "the v1.14 agreement is
- * the latest agreement we have. add those fees to that agreement." Signed
+ * The agreement new sends use when no saved template is active: v1.17
+ * (Insurance Included; agreement-library.ts DEFAULT_LIBRARY_KEY). Signed
  * agreements keep the text they were signed with.
  */
 export { DEFAULT_LIBRARY_KEY, OWNER_APPROVED_LIBRARY };
@@ -655,12 +738,17 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
   const need: Record<string, Omit<AgreementBlocker, "field">> = {
     driver_dob: { label: "Driver date of birth", why: "The v1.6 agreement prints the renter's date of birth.", fix: pay },
     license_plate: { label: "Vehicle license plate", why: "The v1.6 agreement identifies the vehicle by plate.", fix: vfix },
-    card_on_file: { label: "Payment card on file", why: "The v1.6 agreement authorizes weekly charges to a card on file, and no other payment wording is legally approved yet. Ask the driver to save a card in Payments; preparing or sending the agreement never charges it.", fix: pay },
+    // card_on_file is intentionally not here. A saved card is never required
+    // to prepare or send (84b133ae added that block; 8fddb5db only filled the
+    // row when a Reservation Fee was already required). Applicants sign first
+    // and pay the Reservation Fee, which saves the card. Other renters pay by
+    // another method and may have no card at all. The row is filled below so
+    // the autopay clause still prints, and staff only see a note.
     min_term_end: { label: "Minimum-term end date", why: "Needs the contract start date and the template's minimum term (weeks).", fix: pay },
     damage_waiver: { label: "Damage Waiver: Accepted or Declined", why: "This agreement prints the renter's Damage Waiver choice, and the renter initials it. Ask the renter and record the answer under Payment & Damage Waiver." },
     payment_method: { label: "Payment method", why: "This agreement prints how the renter will pay rent. Choose it under Payment & Damage Waiver." },
-    payment_amount: { label: "Payment schedule (Weekly or Every 4 Weeks)", why: "The amount due each payment is calculated from the weekly rate, the Damage Waiver choice and the payment schedule. Choose all three." },
-    balance_due: { label: "Balance due at pickup", why: "Calculated as the first payment less the Reservation Fee. It needs the weekly rate, the Damage Waiver choice and the payment schedule." },
+    payment_amount: { label: "Payment Schedule (Weekly or Every 4 Weeks)", why: "The amount due each payment is calculated from the weekly rate, each approved Additional Driver, the Damage Waiver choice and the payment schedule. Choose all three." },
+    balance_due: { label: "Balance Due At Pickup", why: "Calculated as the first payment less the Reservation Fee. The first payment includes each approved Additional Driver and the Damage Waiver when it is accepted." },
     vehicle_owner: { label: "Vehicle owner as shown on the registration", why: "This agreement names the registered owner of the vehicle. Enter the name exactly as printed on the registration." },
     additional_drivers: { label: "Approved additional drivers (or None)", why: "Staff must state the approved additional drivers. This entry arrives with Driver Agreement Preparation; nothing is assumed until then." },
   };
@@ -687,9 +775,14 @@ export type AgreementAmendmentRender = {
   notice: string;
   /** No-fee preparation (rental-amendment.ts amendmentPrep). Forced to no Reservation Fee / no deposit here too. */
   prep?: AgreementPrep;
-  /** Library template family; the amendment flow passes v1.14 (AMENDMENT_TEMPLATE_KEY). */
+  /** Library template family; the amendment flow passes the current default (AMENDMENT_TEMPLATE_KEY). */
   templateKey?: string;
+  /** A vehicle swap agreement (vehicle-swap.server.ts): names the replacement car, same rent. */
+  swap?: AgreementSwapRender;
 };
+
+/** What a swap agreement is checked against (swapVehicleForAgreement). swapId is null for a preview. */
+export type AgreementSwapRender = { rentalId: string; swapId: string | null; fromVehicleId: string };
 
 async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string, vehicleId?: string, amendment?: AgreementAmendmentRender) {
   // An amendment renders only with its own forced no-fee preparation and template.
@@ -698,7 +791,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     prep = amendment.prep ? forceNoFee(amendment.prep) : undefined;
     templateKey = amendment.templateKey ?? templateKey;
   }
-  // No template named: a saved, active template wins; otherwise v1.14 (t319u).
+  // No template named: a saved, active template wins; otherwise the default (v1.17).
   let key = templateKey;
   let saved: { body: string; meta: TemplateMeta } | null = null;
   if (!key) {
@@ -713,7 +806,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
   // additional drivers, the deposit on file, no Damage Waiver, weekly card autopay.
   // Never for an amendment: it carries its own no-fee preparation.
   if (!prep && !amendment && lib?.key === DEFAULT_LIBRARY_KEY) prep = await autoSendPrep(admin, applicationId);
-  const built = await buildMergeData(admin, applicationId, vehicleId, prep, amendment?.weeklyRate);
+  const built = await buildMergeData(admin, applicationId, vehicleId, prep, amendment?.weeklyRate, amendment?.swap);
   const tpl = lib ? await libraryWithDraft(admin, lib) : (saved as { body: string; meta: TemplateMeta });
   let tplBody = tpl.body;
   if (prep) {
@@ -730,12 +823,38 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     // A saved template that prints Balance Due (v1.14) uses the same style.
     const amountStyle = lib?.reservationStyle === "amount" || usesField(tpl.body, "balance_due");
     // v1.14 money rows: amount due each payment and the balance due at pickup.
+    let priceTerms: Record<string, string> = {};
     if (usesField(tpl.body, "balance_due") || usesField(tpl.body, "payment_amount")) {
-      const { paymentRows, parseUsd } = await import("@/lib/agreement-prep");
-      const rows = paymentRows(prep, { weeklyRate: parseUsd(built.data.weekly_rate), waiverFee: parseUsd(terms?.damage_waiver_fee) });
+      const { paymentRows, parseUsd, moneyNumber, BILLING_MERGE_KEY, DEFAULT_DRIVER_WEEKLY_FEE, DEFAULT_RESERVATION_FEE, driverFeeScheduleLine, usdText } = await import("@/lib/agreement-prep");
+      let reservationDefault = DEFAULT_RESERVATION_FEE;
+      try {
+        const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
+        const fee = await loadReservationFeeSettings(admin);
+        if (fee.enabled && fee.amount > 0) reservationDefault = fee.amount;
+      } catch { /* the $50 default */ }
+      const templateDriver = parseUsd(terms?.fee_additional_driver);
+      const rows = paymentRows(prep, {
+        weeklyRate: parseUsd(built.data.weekly_rate),
+        waiverFee: parseUsd(terms?.damage_waiver_fee),
+        additionalDriverWeeklyFee: templateDriver != null && templateDriver >= 0 ? templateDriver : DEFAULT_DRIVER_WEEKLY_FEE,
+        catalogWeeklyRate: moneyNumber(built.vehicle?.weekly_rate),
+        defaults: {
+          weekly: moneyNumber(built.vehicle?.weekly_rate),
+          driverFee: templateDriver != null && templateDriver >= 0 ? templateDriver : DEFAULT_DRIVER_WEEKLY_FEE,
+          waiver: parseUsd(terms?.damage_waiver_fee),
+          reservation: reservationDefault,
+        },
+      });
       built.data.payment_amount = rows.payment_amount;
       built.data.balance_due = rows.balance_due;
+      if (rows.billing) (built.data as Record<string, string>)[BILLING_MERGE_KEY] = JSON.stringify(rows.billing);
+      if (rows.driverFeeNote) (built.data as Record<string, string>)._driver_fee_note = rows.driverFeeNote;
       built.blockers.push(...rows.blockers);
+      if (rows.billing?.drivers?.length) {
+        const line = driverFeeScheduleLine(rows.billing.drivers);
+        if (line) priceTerms.fee_additional_driver = line;
+      }
+      if (prep.damageWaiver === "accepted" && rows.billing?.waiverWeekly != null) priceTerms.damage_waiver_fee = usdText(rows.billing.waiverWeekly);
     }
     const line = amountStyle
       ? (prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0
@@ -745,16 +864,16 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     // v1.14 values with no record behind them yet.
     if (usesField(tpl.body, "vehicle_owner") && !String(built.data.vehicle_owner ?? "").trim())
       built.data.vehicle_owner = await registeredOwnerFallback(admin, built.namedVehicleId ?? (built.app?.vehicle_id as string | null) ?? null, String(built.data.company_name ?? ""));
-    if (usesField(tpl.body, "card_on_file") && !String(built.data.card_on_file ?? "").trim() && prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0)
-      built.data.card_on_file = "Saved when you pay the Reservation Fee right after signing";
-    if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line });
+    if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line, ...priceTerms });
   }
   // An updated agreement for an already-active rental: no Reservation Fee, no
   // new deposit and nothing due now. The renter already paid week 1, and the
   // new rate applies only to rent weeks billed after they sign.
   if (amendment) {
     const { AMENDMENT_NO_FEE_LINE, AMENDMENT_NO_DEPOSIT_LINE, AMENDMENT_NOTHING_DUE_LINE } = await import("@/lib/rental-amendment");
-    built.data.deposit_amount = AMENDMENT_NO_DEPOSIT_LINE;
+    // A vehicle swap prints no "deposit" wording at all (Dolmar t548u, Nov 21 2026);
+    // a rate change keeps its line unchanged.
+    built.data.deposit_amount = amendment.swap ? (await import("@/lib/vehicle-swap")).SWAP_DEPOSIT_FIELD_LINE : AMENDMENT_NO_DEPOSIT_LINE;
     for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "deposit_amount") built.blockers.splice(i, 1);
     const terms = readTerms(tplBody);
     if (terms) tplBody = writeTerms(stripTerms(tplBody), { ...terms, reservation_line: AMENDMENT_NO_FEE_LINE });
@@ -766,6 +885,28 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
       const { AMENDMENT_CARD_NEXT_PAYMENT_LINE } = await import("@/lib/rental-amendment");
       built.data.card_on_file = AMENDMENT_CARD_NEXT_PAYMENT_LINE;
       for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "card_on_file") built.blockers.splice(i, 1);
+    }
+  }
+  // No saved card is normal. Fill the row so the autopay clause prints, and
+  // tell staff with a note. This never joins blockers, so preview and send
+  // both proceed (issueAgreement refuses only on blockers and blank fields).
+  const notes: AgreementNote[] = [];
+  if (!amendment && usesField(tplBody, "card_on_file") && !String(built.data.card_on_file ?? "").trim()) {
+    const feeAmount = prep?.reservation.mode === "required" ? (prep.reservation.amount ?? 0) : 0;
+    if (feeAmount > 0) {
+      built.data.card_on_file = CARD_SAVED_WITH_RESERVATION_FEE;
+      notes.push({
+        field: "card_on_file",
+        label: "Payment Card On File",
+        why: `Card will be saved when the renter pays the ${feeDollars(feeAmount)} Reservation Fee.`,
+      });
+    } else {
+      built.data.card_on_file = CARD_NOT_SAVED_YET;
+      notes.push({
+        field: "card_on_file",
+        label: "Payment Card On File",
+        why: "No card is saved yet. A card is not required to send this agreement.",
+      });
     }
   }
   templateFieldBlockers(
@@ -796,7 +937,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
   const { getCompanyIdentity } = await import("@/lib/company-identity.server");
   const ci = await getCompanyIdentity(admin);
   const companyFallback = Object.entries(ci.fromSettings).filter(([, v]) => !v).map(([k]) => ({ field: k, value: String((built.data as any)[k] ?? "") }));
-  return { ...built, tpl, body, fingerprint, companyMissing: ci.missing, companyFallback, numberingPending };
+  return { ...built, tpl, body, fingerprint, companyMissing: ci.missing, companyFallback, numberingPending, notes };
 }
 
 // ---------------------------------------------------------------- admin reads
@@ -824,7 +965,7 @@ export const listAgreements = createServerFn({ method: "GET" })
     const { data: rows } = await supabaseAdmin
       .from("agreements")
       .select(
-        "id,application_id,vehicle_id,title,body,status,sent_at,viewed_at,signed_at,voided_at,signer_name,signer_email,created_at,document_id,archive_status,archive_error,sha256,email_status,email_error,sms_status,sms_error,company_signer_name,company_signer_title",
+        "id,application_id,vehicle_id,title,body,status,source,sent_at,viewed_at,signed_at,voided_at,signer_name,signer_email,created_at,document_id,archive_status,archive_error,sha256,email_status,email_error,sms_status,sms_error,company_signer_name,company_signer_title",
       )
       .eq("application_id", data.applicationId)
       .order("created_at", { ascending: false });
@@ -846,7 +987,29 @@ export const listAgreements = createServerFn({ method: "GET" })
         byId.set(e.entity_id as string, arr);
       }
     }
-    return list.map((r) => ({ ...r, timeline: byId.get(r.id) ?? [] })) as AgreementRow[];
+    const signersById = new Map<string, AgreementRow["signers"]>();
+    if (ids.length) {
+      const { data: recipients } = await supabaseAdmin
+        .from("esign_recipients")
+        .select("id,document_id,name,email,role,status,signing_order,signed_at")
+        .in("document_id", ids)
+        .eq("role", "signer")
+        .order("signing_order", { ascending: true });
+      for (const recipient of recipients ?? []) {
+        const listForDoc = signersById.get(recipient.document_id as string) ?? [];
+        listForDoc.push({
+          id: recipient.id as string,
+          name: (recipient.name as string | null) ?? null,
+          email: (recipient.email as string | null) ?? null,
+          role: (recipient.role as string) ?? "signer",
+          status: (recipient.status as string) ?? "",
+          signing_order: Number(recipient.signing_order ?? 0),
+          signed_at: (recipient.signed_at as string | null) ?? null,
+        });
+        signersById.set(recipient.document_id as string, listForDoc);
+      }
+    }
+    return list.map((r) => ({ ...r, timeline: byId.get(r.id) ?? [], signers: signersById.get(r.id) ?? [] })) as AgreementRow[];
   });
 
 async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepareAgreement>>, namedVehicle: boolean) {
@@ -890,16 +1053,32 @@ async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepare
       templateFields: [...new Set([...tpl.body.matchAll(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi)].map((x) => x[1].toLowerCase()))],
       missing,
       blockers,
+      notes: prep.notes ?? [],
       vehicleId: namedVehicle ? prep.namedVehicleId : ((app.vehicle_id as string | null) ?? null),
       email: (app.email as string | null) ?? null,
       name: (app.full_name as string | null) ?? null,
       generatedAt: new Date().toISOString(),
-      // Lets the staff dialog start with the Reservation Fee the switch sets.
-      reservationFeeAuto: await (async () => {
+      // Lets the staff dialog start with the Reservation Fee the switch sets,
+      // and mark an amount Edited against these defaults.
+      ...await (async () => {
+        let reservationFeeAuto = { enabled: false, amount: 0 };
         try {
           const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
-          return await loadReservationFeeSettings(admin);
-        } catch { return { enabled: false, amount: 0 }; }
+          reservationFeeAuto = await loadReservationFeeSettings(admin);
+        } catch { /* switch unread: the dialog uses $50 */ }
+        const { parseUsd, moneyNumber, DEFAULT_DRIVER_WEEKLY_FEE, DEFAULT_RESERVATION_FEE } = await import("@/lib/agreement-prep");
+        const termsNow = readTerms(tpl.body);
+        const templateDriver = parseUsd(termsNow?.fee_additional_driver);
+        return {
+          reservationFeeAuto,
+          priceDefaults: {
+            weeklyRent: moneyNumber(prep.vehicle?.weekly_rate),
+            driverFee: templateDriver != null && templateDriver >= 0 ? templateDriver : DEFAULT_DRIVER_WEEKLY_FEE,
+            damageWaiver: parseUsd(termsNow?.damage_waiver_fee),
+            reservationFee: reservationFeeAuto.enabled && reservationFeeAuto.amount > 0 ? reservationFeeAuto.amount : DEFAULT_RESERVATION_FEE,
+          },
+          savedPrices: await (await import("@/lib/agreement-weekly.server")).previousPrepareBase(admin, prep.app?.id).then((row) => row?.saved ?? null).catch(() => null),
+        };
       })(),
     };
 }
@@ -915,10 +1094,17 @@ export const previewAgreement = createServerFn({ method: "POST" })
     return finishPreview(supabaseAdmin, prep, false);
   });
 
-/** Names the rental's current vehicle. Refuses before any read while swap is off. */
-export async function previewNamedAgreement(admin: any, applicationId: string, vehicleId: string) {
-  if (!SWAP_ENABLED) throw new Error("Vehicle swap is disabled pending installation and acceptance");
-  const prep = await prepareAgreement(admin, applicationId, undefined, undefined, vehicleId);
+/**
+ * Staff preview of a vehicle swap agreement (vehicle-swap.server.ts checks the
+ * swap switch, the rental and the replacement car first). Same generation
+ * step as the send, so the fingerprint it returns is what Send must carry.
+ */
+export async function previewSwapAgreement(
+  admin: any,
+  applicationId: string,
+  render: AgreementAmendmentRender & { vehicleId: string; swap: AgreementSwapRender },
+) {
+  const prep = await prepareAgreement(admin, applicationId, undefined, undefined, render.vehicleId, render);
   return finishPreview(admin, prep, true);
 }
 
@@ -941,21 +1127,20 @@ export async function issueAgreement(
     companyAck?: boolean;
     prep?: AgreementPrep;
     templateKey?: string;
-    vehicleId?: string;
     /** Updated agreement for an active rental (rental-amendment.server.ts). */
     amendment?: AgreementAmendmentRender & { vehicleId: string | null; rentalId: string; metadata: Record<string, unknown> };
   } = {},
 ): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
   // Same generation step as the preview — the stored text is re-rendered here
   // on the server, never taken from the browser. A vehicle override exists
-  // only while swap is on. With the flag off this is the application vehicle.
-  // An amendment names the active rental's own car (checked server-side by
-  // rentalVehicleForAgreement), whatever the swap flag says.
+  // only for an amendment: it names the active rental's own car (checked
+  // server-side by rentalVehicleForAgreement) or, for a vehicle swap, the
+  // replacement car of that rental's open swap (swapVehicleForAgreement).
   const amendment = opts.amendment;
   // An amendment never takes staff preparation from the caller (Reservation
   // Fee, deposit, edited details): it renders with its own no-fee preparation.
   if (amendment && opts.prep) throw new Error("An updated agreement for an active rental cannot carry a Reservation Fee, deposit or first payment.");
-  const vehicleOverride = amendment ? (amendment.vehicleId ?? undefined) : SWAP_ENABLED ? opts.vehicleId : undefined;
+  const vehicleOverride = amendment ? (amendment.vehicleId ?? undefined) : undefined;
   const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey, vehicleOverride, amendment);
   const { data: merge, app, blockers, tpl, body } = prep;
   const lib = tpl.meta.key ? libraryTemplate(tpl.meta.key) : null;
@@ -1015,7 +1200,7 @@ export async function issueAgreement(
       metadata: amendment
         ? { ...templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)), amendment: amendment.metadata }
         : templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)),
-      ...(amendment ? { title: "Rental Agreement (Amended)", rental_id: amendment.rentalId } : {}),
+      ...(amendment ? { title: amendment.swap ? "Vehicle Swap Addendum To Rental Agreement" : "Rental Agreement (Amended)", rental_id: amendment.rentalId } : {}),
       body: numbered,
       merge_data: numberedMerge,
       status: "sent",
@@ -1028,22 +1213,39 @@ export async function issueAgreement(
     .select("id")
     .single();
   if (error) throw new Error(error.message);
+  // The weekly amount billing charges (rent + Additional Driver fees + Damage
+  // Waiver) is written here, on a new send only. The agreement row itself is
+  // not updated again, and a resend does not come through here.
+  if (!amendment) {
+    const { recordAgreementWeeklyRate } = await import("@/lib/agreement-weekly.server");
+    await recordAgreementWeeklyRate(admin, applicationId, numberedMerge as Record<string, unknown>, { amendment: false });
+  }
+  // Agreements are prepared before the rental exists. Tie this one only to an
+  // active rental. A pending, reserved, or on-hold rental leaves rental_id null
+  // so activation can still count the signed agreement. The booking still shows
+  // an unlinked agreement for the same person (booking-links.ts).
+  if (!amendment) await (await import("@/lib/booking-links.server")).linkAgreementToLiveRental(admin, row.id as string);
 
-  await admin.from("esign_recipients").insert({
+  const { data: primaryRecipient, error: primaryRecipientError } = await admin.from("esign_recipients").insert({
     document_id: row.id,
     name: (app.full_name as string | null) ?? null,
     email: app.email,
     phone: (app.phone as string | null) ?? null,
     role: "signer",
+    signing_order: 1,
     status: "sent",
     sent_at: new Date().toISOString(),
     token_hash: tokenHash,
     token_expires_at: expires,
-  });
+  }).select("id").single();
+  if (primaryRecipientError) throw new Error(primaryRecipientError.message);
+  const { rememberSigningToken } = await import("@/lib/agreement-resend.server");
+  await rememberSigningToken(admin, primaryRecipient?.id as string | undefined, token);
+  if (!amendment) await attachAdditionalDriverSigners(admin, { agreementId: row.id as string, applicationId, primaryEmail: String(app.email), vehicle: merge.vehicle || null, expires });
   {
     const { logAudit } = await import("@/lib/audit.server");
     const actor = opts.createdBy ? await (await import("@/lib/roles.server")).getActor(opts.createdBy) : null;
-    const what = amendment ? "Updated rental agreement (amendment)" : "Rental agreement";
+    const what = amendment ? (amendment.swap ? "Vehicle swap rental agreement" : "Updated rental agreement (amendment)") : "Rental agreement";
     const meta = amendment ? { metadata: amendment.metadata } : {};
     await logAudit(actor, { action: "document.created", summary: `${what} created`, entityType: "esign_document", entityId: row.id as string, ...meta });
     await logAudit(actor, { action: "document.sent", summary: `${what} sent for signature`, entityType: "esign_document", entityId: row.id as string, ...meta });
@@ -1063,6 +1265,56 @@ export async function issueAgreement(
   });
 
   return { id: row.id as string, url, delivery };
+}
+
+/** Each approved additional driver gets their own signing link. The agreement stays open until all of them sign. */
+async function attachAdditionalDriverSigners(
+  admin: any,
+  args: { agreementId: string; applicationId: string; primaryEmail: string; vehicle: string | null; expires: string },
+) {
+  const { listAdditionalDrivers, additionalDriverDbMessage } = await import("@/lib/additional-drivers.server");
+  let drivers: Awaited<ReturnType<typeof listAdditionalDrivers>> = [];
+  try {
+    drivers = await listAdditionalDrivers(admin, { applicationId: args.applicationId });
+  } catch (e) {
+    const known = additionalDriverDbMessage(e instanceof Error ? e.message : e);
+    if (known) return;
+    throw e;
+  }
+  const primary = args.primaryEmail.trim().toLowerCase();
+  const extras = drivers.filter((d) => d.status === "approved" && !d.removedAt && d.email.trim() && d.email.trim().toLowerCase() !== primary);
+  let order = 2;
+  for (const driver of extras) {
+    const token = randomToken();
+    const tokenHash = await hashToken(token);
+    const { data: extraRecipient, error } = await admin.from("esign_recipients").insert({
+      document_id: args.agreementId,
+      name: driver.name,
+      email: driver.email.trim().toLowerCase(),
+      phone: driver.phone || null,
+      role: "signer",
+      signing_order: order,
+      status: "sent",
+      sent_at: new Date().toISOString(),
+      token_hash: tokenHash,
+      token_expires_at: args.expires,
+    }).select("id").single();
+    if (error) throw new Error(error.message);
+    const { rememberSigningToken } = await import("@/lib/agreement-resend.server");
+    await rememberSigningToken(admin, extraRecipient?.id as string | undefined, token);
+    order += 1;
+    const url = `${SITE_URL()}/sign/${token}`;
+    try {
+      const { sendAgreementEmail } = await import("@/lib/email.server");
+      await sendAgreementEmail({ to: driver.email.trim().toLowerCase(), firstName: driver.name, url, vehicle: args.vehicle });
+      if (driver.smsConsent && driver.phone) {
+        const { sendSms } = await import("@/lib/sms.server");
+        await sendSms({ to: driver.phone, body: `REAL RENTALS: Your rental agreement is ready to sign: ${url} Reply STOP to opt out.`, kind: "agreement_sent", applicationId: args.applicationId, requireConsent: false });
+      }
+    } catch (e) {
+      console.error("[agreement] additional driver signing link failed", e);
+    }
+  }
 }
 
 const APPLICATION_FILL_COLUMNS = new Set([
@@ -1146,12 +1398,22 @@ async function persistReviewedGaps(
 export async function agreementSendCheck(admin: any, applicationId: string): Promise<{
   blockers: { field: string; label: string; why: string }[];
   weeklyRate: number | null;
+  /** The Reservation Fee the agreement prints and signing charges (0 = none). */
+  reservationFee: number | null;
   deposit: number | null;
   startDate: string | null;
   vehicleId: string | null;
   vehicleLabel: string | null;
 }> {
   const prep = await prepareAgreement(admin, applicationId);
+  // Same source FLEET's send uses (fleet-agreement.server.ts termsPrep) and
+  // the auto-send preparation: the reservation_fee_auto switch and amount.
+  let reservationFee: number | null = null;
+  try {
+    const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
+    const fee = await loadReservationFeeSettings(admin);
+    reservationFee = fee.enabled ? fee.amount : 0;
+  } catch { reservationFee = null; }
   const blockers = prep.blockers.map((b) => ({ field: b.field, label: b.label, why: b.why }));
   const refusal = templateSendRefusal(prep.tpl.meta) ?? (prep.numberingPending ? NUMBERING_PENDING : null);
   if (refusal) blockers.push({ field: "template", label: "Approved agreement template", why: refusal });
@@ -1160,6 +1422,7 @@ export async function agreementSendCheck(admin: any, applicationId: string): Pro
   return {
     blockers,
     weeklyRate: num(prep.app?.weekly_rent ?? prep.vehicle?.weekly_rate),
+    reservationFee,
     deposit: num(prep.app?.deposit_amount ?? prep.vehicle?.deposit),
     startDate: prep.startIso,
     vehicleId: prep.namedVehicleId,
@@ -1243,78 +1506,40 @@ export const sendAgreement = createServerFn({ method: "POST" })
   });
 
 /**
- * Retry Delivery and Resend are the same operation, on purpose. Only a hash of
- * the signing token is stored, so the current link can't be re-sent; every
- * delivery retry rotates the token: the old link dies immediately, the new one
- * becomes canonical on the same agreement row (no duplicate document), and the
- * audit history is kept. The company signer snapshot is not touched.
+ * Retry Delivery and Resend are the same operation. Each signer keeps their
+ * own link. A still-valid token is reused; an expired or revoked one is
+ * reissued for that signer only. Signed signers are skipped. signerId limits
+ * the send to one person. channels "email" sends no text.
  */
 export const resendAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
+  .inputValidator((d: unknown) =>
+    z.object({
+      agreementId: z.string().uuid(),
+      signerId: z.string().uuid().optional(),
+      channels: z.enum(["email", "email_and_sms"]).optional(),
+    }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     const actor = await requireTierFor(context.userId, "manager");
-    void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: ag } = await supabaseAdmin
-      .from("agreements")
-      .select("id,status,signer_email,merge_data,application_id")
-      .eq("id", data.agreementId)
-      .maybeSingle();
-    if (!ag) throw new Error("Agreement not found");
-    if (ag.status === "signed" || ag.status === "voided")
-      throw new Error("This agreement can no longer be sent");
-    // A link reissue sends the SAME frozen document again, so it must meet the
-    // same readiness bar as a new send. Documents issued before the gate
-    // existed (blank VIN, licence, etc.) must be voided and re-prepared.
-    {
-      const md = (ag.merge_data ?? {}) as Record<string, string>;
-      const gaps = AGREEMENT_REQUIRED_KEYS.filter((k) => !String(md[k] ?? "").trim());
-      if (gaps.length)
-        throw new Error(
-          `This agreement was prepared without ${gaps.join(", ").replace(/_/g, " ")}. Void it and prepare a new one.`,
-        );
+    const { resendAgreementSigners, SignerResendError } = await import("@/lib/agreement-resend.server");
+    try {
+      const result = await resendAgreementSigners(supabaseAdmin, {
+        agreementId: data.agreementId,
+        signerId: data.signerId,
+        channels: data.channels,
+        actor,
+        source: "staff",
+        siteUrl: SITE_URL(),
+        setStatusSent: true,
+        statuses: ["draft", "sent", "viewed"],
+      });
+      return { ok: true as const, url: result.url, delivery: result.delivery, signers: result.signers };
+    } catch (e) {
+      if (e instanceof SignerResendError) throw new Error(e.message);
+      throw e;
     }
-
-    const token = randomToken();
-    const tokenHash = await hashToken(token);
-    const exp = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
-    // Conditional: never resurrect a signing/signed/voided document. The new
-    // hash replaces the old one, so the prior link stops working.
-    const { data: upd } = await supabaseAdmin
-      .from("agreements")
-      .update({ token_hash: tokenHash, token_expires_at: exp, sent_at: new Date().toISOString(), status: "sent" })
-      .eq("id", ag.id)
-      .in("status", ["draft", "sent", "viewed"])
-      .select("id");
-    if (!upd?.length) throw new Error("This agreement can no longer be sent");
-    await supabaseAdmin
-      .from("esign_recipients")
-      .update({ token_hash: tokenHash, token_expires_at: exp, sent_at: new Date().toISOString(), status: "sent" })
-      .eq("document_id", ag.id)
-      .eq("role", "signer");
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit(actor, { action: "document.resent", summary: "Signing link reissued", entityType: "esign_document", entityId: ag.id as string });
-
-    const url = `${SITE_URL()}/sign/${token}`;
-    const merge = (ag.merge_data ?? {}) as MergeData;
-    let phone: string | null = null;
-    if (ag.application_id) {
-      const { data: app } = await supabaseAdmin.from("applications").select("phone").eq("id", ag.application_id).maybeSingle();
-      phone = (app?.phone as string | null) ?? null;
-    }
-    const { deliverSigningLink } = await import("@/lib/esign.server");
-    const delivery = await deliverSigningLink(supabaseAdmin, {
-      id: ag.id as string,
-      url,
-      email: (ag.signer_email as string | null) ?? null,
-      phone,
-      name: merge.driver_name ?? null,
-      vehicle: merge.vehicle || null,
-      applicationId: (ag.application_id as string | null) ?? null,
-      actor,
-    });
-    return { ok: true, url, delivery };
   });
 
 export const voidAgreement = createServerFn({ method: "POST" })
@@ -1384,6 +1609,32 @@ export const getAgreementPdf = createServerFn({ method: "POST" })
     };
   });
 
+/**
+ * Staff sends an uploaded PDF for the renter to sign. The same Manager
+ * check as sendAgreement. The flag is still read first so turning the
+ * constant off stops the upload before any read.
+ */
+export const sendStandaloneDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({
+      applicationId: z.string().uuid(),
+      title: z.string().trim().min(1).max(160),
+      pdfBase64: z.string().min(20).max(28_000_000),
+      fields: z.array(StandaloneFieldSchema).max(30),
+      insurerEmail: z.string().trim().min(3).max(254),
+      cc: z.array(z.string().trim().max(254)).max(8).optional(),
+      copyRenter: z.boolean().optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    if (!SEND_DOCUMENT_FOR_SIGNATURE_ENABLED) throw new Error("Send Document For Signature is turned off.");
+    const actor = await requireTierFor(context.userId, "manager");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { createStandaloneDocument } = await import("@/lib/standalone-doc.server");
+    return createStandaloneDocument(supabaseAdmin, { ...data, actor });
+  });
+
 // ------------------------------------------------------------- public signing
 
 export type SigningView = {
@@ -1395,7 +1646,11 @@ export type SigningView = {
   signed_at: string | null;
   driver_name: string | null;
   company_signer_name: string;
+  /** False when this signer already has text consent. The page renders no checkbox then. */
+  sms_consent_needed: boolean;
   expired?: boolean;
+  source?: string;
+  source_pdf?: SourcePdfClient | null;
 } | null;
 
 export const getAgreementByToken = createServerFn({ method: "POST" })
@@ -1403,13 +1658,39 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<SigningView> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const hash = await hashToken(data.token);
-    const { data: ag } = await supabaseAdmin
+    let recipientName: string | null = null;
+    let signerRecipientId: string | null = null;
+    const { data: direct } = await supabaseAdmin
       .from("agreements")
       .select(
-        "id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at",
+        "id,application_id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at,source,metadata",
       )
       .eq("token_hash", hash)
       .maybeSingle();
+    let ag = direct;
+    if (!ag) {
+      const { data: recipient } = await supabaseAdmin
+        .from("esign_recipients")
+        .select("id,document_id,name,status,token_revoked_at,token_expires_at,signing_order")
+        .eq("token_hash", hash)
+        .eq("role", "signer")
+        .maybeSingle();
+      if (!recipient || recipient.token_revoked_at || recipient.status === "signed") return null;
+      if (recipient.token_expires_at && new Date(recipient.token_expires_at as string).getTime() < Date.now()) {
+        const { data: expiredDoc } = await supabaseAdmin.from("agreements").select("id,title,status,signer_name,signed_at,merge_data,company_signer_name").eq("id", recipient.document_id).maybeSingle();
+        if (!expiredDoc) return null;
+        const merge = (expiredDoc.merge_data ?? {}) as MergeData;
+        return { id: expiredDoc.id as string, title: expiredDoc.title as string, body: "", status: expiredDoc.status as string, signer_name: expiredDoc.signer_name as string | null, signed_at: expiredDoc.signed_at as string | null, driver_name: recipient.name ?? merge.driver_name ?? null, company_signer_name: expiredDoc.company_signer_name as string, sms_consent_needed: false, expired: true };
+      }
+      const { data: doc } = await supabaseAdmin
+        .from("agreements")
+        .select("id,application_id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at,source,metadata")
+        .eq("id", recipient.document_id)
+        .maybeSingle();
+      ag = doc;
+      recipientName = (recipient.name as string | null) ?? null;
+      signerRecipientId = recipient.id as string;
+    }
     if (!ag) return null;
     const merge = (ag.merge_data ?? {}) as MergeData;
     const base = {
@@ -1419,12 +1700,12 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
       status: ag.status as string,
       signer_name: ag.signer_name as string | null,
       signed_at: ag.signed_at as string | null,
-      driver_name: merge.driver_name ?? null,
+      driver_name: recipientName ?? merge.driver_name ?? null,
       company_signer_name: ag.company_signer_name as string,
     };
     if (ag.status === "voided") return null;
     if (ag.token_expires_at && new Date(ag.token_expires_at as string).getTime() < Date.now()) {
-      return { ...base, expired: true };
+      return { ...base, sms_consent_needed: false, expired: true };
     }
     if (ag.status === "sent" && !ag.viewed_at) {
       const now = new Date().toISOString();
@@ -1435,15 +1716,42 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
         .eq("status", "sent")
         .select("id");
       if (upd?.length) {
-        await supabaseAdmin.from("esign_recipients").update({ status: "viewed", viewed_at: now }).eq("document_id", ag.id).eq("role", "signer");
+        await supabaseAdmin.from("esign_recipients").update({ status: "viewed", viewed_at: now }).eq("document_id", ag.id).eq("token_hash", hash).eq("role", "signer");
         const { logAudit } = await import("@/lib/audit.server");
         await logAudit(null, { action: "document.viewed", summary: "Signer opened the document", entityType: "esign_document", entityId: ag.id as string });
       }
     }
+    {
+      const { noteSignerViewed } = await import("@/lib/agreement-resend.server");
+      await noteSignerViewed(supabaseAdmin, ag.id as string, hash, new Date().toISOString());
+    }
+    const standaloneDoc = (ag as { source?: string }).source === "standalone";
+    let sms_consent_needed = false;
+    let source_pdf: SourcePdfClient | null = null;
+    if (standaloneDoc) {
+      const { sourcePdfForClient } = await import("@/lib/standalone-doc.server");
+      source_pdf = await sourcePdfForClient(supabaseAdmin, ag);
+    } else {
+      sms_consent_needed = true;
+      try {
+        const { resolveSignerConsent } = await import("@/lib/sms-consent-signing.server");
+        const subject = await resolveSignerConsent(supabaseAdmin, {
+          agreementId: ag.id as string,
+          applicationId: (ag.application_id as string | null) ?? null,
+          recipientId: signerRecipientId,
+        });
+        sms_consent_needed = !subject.consented;
+      } catch (e) {
+        console.error("[sms-consent] lookup failed", e);
+      }
+    }
     return {
       ...base,
+      sms_consent_needed,
       body: ag.body as string,
       status: ag.status === "sent" ? "viewed" : (ag.status as string),
+      source: (ag as { source?: string }).source,
+      source_pdf,
     };
   });
 
@@ -1454,28 +1762,50 @@ async function agreementPortalAccess(admin: any, applicationId: string | null): 
   return !!data?.user_id;
 }
 
-async function sendSignedEmails(admin: any, id: string, signerName: string): Promise<boolean> {
+/**
+ * `out.reservationFee` receives the signing page's next step: the SAME $50
+ * Checkout the email links to (reservationFeeSigningStep), so the applicant is
+ * sent straight to it. No second session is ever created for the page.
+ */
+async function sendSignedEmails(
+  admin: any,
+  id: string,
+  signerName: string,
+  out?: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null },
+): Promise<boolean> {
   const { data: ag } = await admin
     .from("agreements")
-    .select("application_id,signer_email,merge_data,metadata")
+    .select("application_id,signer_email,merge_data,metadata,source")
     .eq("id", id)
     .maybeSingle();
   if (!ag) return false;
+  if ((ag as { source?: string }).source === "standalone") return false;
   const merge = (ag.merge_data ?? {}) as MergeData;
   // An updated agreement for an active rental (rental-amendment.server.ts):
   // no Reservation Fee and no first-week payment link. The renter's email
   // says when the new rate starts.
-  const amendment = ((ag.metadata ?? {}) as any).amendment as { new_weekly_rate?: number; effective_date?: string } | undefined;
+  const amendment = ((ag.metadata ?? {}) as any).amendment as { new_weekly_rate?: number; effective_date?: string; kind?: string } | undefined;
+  // The signed PDF rides on both emails (t445u). Archived synchronously in
+  // completeSigning before this runs; null (still archiving, missing, too big)
+  // sends the emails without it.
+  const { loadSignedAgreementAttachment } = await import("@/lib/signed-agreement-pdf.server");
+  const attachment = await loadSignedAgreementAttachment(admin, id);
   if (amendment) {
     const portal = await agreementPortalAccess(admin, ag.application_id as string | null);
     try {
       const { sendAgreementSignedEmail, sendAgreementSignedOpsEmail } = await import("@/lib/email.server");
-      const { data: am } = await admin.from("rental_rate_amendments").select("apply_on,new_weekly_rate").eq("agreement_id", id).maybeSingle();
-      const rate = Number(am?.new_weekly_rate ?? amendment.new_weekly_rate);
-      const on = String(am?.apply_on ?? amendment.effective_date ?? "");
-      const line = rate > 0 && on ? `Your new weekly rate of $${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} starts ${fmtContractDate(on)}. Rent before then stays the same.` : null;
-      if (ag.signer_email) await sendAgreementSignedEmail({ to: ag.signer_email as string, firstName: merge.driver_name ?? signerName, vehicle: merge.vehicle || null, portalAccess: portal, amendmentLine: line });
-      await sendAgreementSignedOpsEmail({ driverName: signerName, applicationId: ag.application_id as string, vehicle: merge.vehicle || null, amendment: true });
+      let line: string | null;
+      if (amendment.kind === "vehicle_swap") {
+        // A vehicle swap keeps the rent; the email only confirms the swap.
+        line = (await import("@/lib/vehicle-swap")).SWAP_SIGNED_EMAIL_LINE;
+      } else {
+        const { data: am } = await admin.from("rental_rate_amendments").select("apply_on,new_weekly_rate").eq("agreement_id", id).maybeSingle();
+        const rate = Number(am?.new_weekly_rate ?? amendment.new_weekly_rate);
+        const on = String(am?.apply_on ?? amendment.effective_date ?? "");
+        line = rate > 0 && on ? `Your new weekly rate of $${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} starts ${fmtContractDate(on)}. Rent before then stays the same.` : null;
+      }
+      if (ag.signer_email) await sendAgreementSignedEmail({ to: ag.signer_email as string, firstName: merge.driver_name ?? signerName, vehicle: merge.vehicle || null, portalAccess: portal, amendmentLine: line, attachment });
+      await sendAgreementSignedOpsEmail({ driverName: signerName, applicationId: ag.application_id as string, vehicle: merge.vehicle || null, amendment: true, attachment });
     } catch (e) {
       console.error("[agreement] amendment signed emails failed", e);
     }
@@ -1495,15 +1825,38 @@ async function sendSignedEmails(admin: any, id: string, signerName: string): Pro
   let reservationFeeLine: string | null = null;
   let reservationFeePay: { url: string; amount: number } | null = null;
   let feeHandled = false;
+  // The agreement prints a Reservation Fee but no payment link exists (Stripe
+  // unreachable or unconfigured, row write failed). Before Nov 18 2026 this
+  // was silent: the renter saw "You're All Set" and nobody was told
+  // (Jonathon Boykins). Now the renter is told the link follows and staff get
+  // an ACTION NEEDED email.
+  let feeProblem: { amount: number; reason: string } | null = null;
+  let reservationFeeAlreadyPaid = false;
   try {
     const { chargeReservationFeeAfterSigning } = await import("@/lib/reservation-fee.server");
-    const { reservationFeeEmailLine, reservationFeePayLink } = await import("@/lib/reservation-fee");
+    const { reservationFeeEmailLine, reservationFeePayLink, reservationFeeSigningStep, reservationFeeLinkProblem } = await import("@/lib/reservation-fee");
     const fee = await chargeReservationFeeAfterSigning(admin, id);
     reservationFeeLine = reservationFeeEmailLine(fee);
     reservationFeePay = reservationFeePayLink(fee);
+    if (out) out.reservationFee = reservationFeeSigningStep(fee);
     feeHandled = reservationFeeLine !== null;
+    feeProblem = reservationFeeLinkProblem(fee);
+    if (fee.status === "already_paid") reservationFeeAlreadyPaid = true;
+    if (feeProblem) {
+      // The usual pay-link fallback below still runs (docs/reservation-fee.md).
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(null, { action: "payment.reservation_fee_link_failed", summary: `Reservation Fee link was not created after signing (${feeProblem.reason}); staff alerted`, entityType: "esign_document", entityId: id, metadata: { application_id: ag.application_id, status: fee.status } }).catch(() => {});
+    }
   } catch (e) {
     console.error("[agreement] reservation fee failed", e);
+  }
+  if (reservationFeeAlreadyPaid && ag.application_id) {
+    try {
+      const { alertFeePaidNoPickup } = await import("@/lib/pickup-not-booked.server");
+      await alertFeePaidNoPickup(admin, String(ag.application_id));
+    } catch (e) {
+      console.error("[agreement] fee paid no pickup alert failed", e);
+    }
   }
   if (!feeHandled) try {
     const { createInitialPaymentLink } = await import("@/lib/initial-payment.server");
@@ -1522,17 +1875,36 @@ async function sendSignedEmails(admin: any, id: string, signerName: string): Pro
         payment,
         reservationFeeLine,
         reservationFeePay,
+        reservationFeeLinkPending: feeProblem && !payment ? { amount: feeProblem.amount } : null,
+        attachment,
       });
     }
     await sendAgreementSignedOpsEmail({
       driverName: signerName,
       applicationId: ag.application_id as string,
       vehicle: merge.vehicle || null,
+      reservationFeeProblem: feeProblem,
+      attachment,
     });
   } catch (e) {
     console.error("[agreement] signed emails failed", e);
   }
   return portalAccess;
+}
+
+async function signingSmsOffer(
+  admin: any,
+  args: {
+    agreementId: string;
+    applicationId: string | null;
+    recipientId: string | null;
+    consent: boolean | undefined;
+    ip: string | null;
+    userAgent: string | null;
+  },
+) {
+  const { finishSigningSmsConsent } = await import("@/lib/sms-consent-signing.server");
+  return finishSigningSmsConsent(admin, args);
 }
 
 function claimError(result: string): never {
@@ -1549,7 +1921,8 @@ export const signAgreement = createServerFn({ method: "POST" })
         token: z.string().min(20).max(200),
         signerName: z.string().trim().min(2).max(120),
         agree: z.literal(true),
-        adoption: AdoptionSchema.optional(),
+        adoption: SigningAdoptionSchema.optional(),
+        smsConsent: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -1557,13 +1930,39 @@ export const signAgreement = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { completeSigning, requestMeta } = await import("@/lib/esign.server");
     const hash = await hashToken(data.token);
-    const { data: ag } = await supabaseAdmin
+    const { data: byAgreement } = await supabaseAdmin
       .from("agreements")
-      .select("id,application_id,body")
+      .select("id,application_id,body,source,status,token_expires_at")
       .eq("token_hash", hash)
       .maybeSingle();
+    let ag = byAgreement;
+    let recipientId: string | null = null;
+    if (!ag) {
+      const { data: recipient } = await supabaseAdmin
+        .from("esign_recipients")
+        .select("id,document_id,status,token_revoked_at,token_expires_at")
+        .eq("token_hash", hash)
+        .eq("role", "signer")
+        .maybeSingle();
+      if (!recipient || recipient.token_revoked_at || recipient.status === "signed") throw new Error("This signing link is no longer valid");
+      if (recipient.token_expires_at && new Date(recipient.token_expires_at as string).getTime() < Date.now()) throw new Error("This signing link has expired — please ask us to resend it");
+      const { data: doc } = await supabaseAdmin.from("agreements").select("id,application_id,body,status,source,token_expires_at").eq("id", recipient.document_id).maybeSingle();
+      if (!doc || doc.status === "voided" || doc.status === "signed") throw new Error("This signing link is no longer valid");
+      ag = doc;
+      recipientId = recipient.id as string;
+    } else {
+      const { data: recipient } = await supabaseAdmin.from("esign_recipients").select("id").eq("document_id", ag.id).eq("token_hash", hash).eq("role", "signer").maybeSingle();
+      recipientId = (recipient?.id as string | undefined) ?? null;
+    }
     if (!ag) throw new Error("This signing link is no longer valid");
-    const problems = adoptionProblems(ag.body as string, data.adoption, data.signerName);
+    const standalone = (ag as { source?: string }).source === "standalone";
+    if (standalone) refuseStandaloneLink(ag as { status?: string | null; token_expires_at?: string | null });
+    if (!standalone && data.adoption && !data.adoption.initials) {
+      throw new Error("Adopt a signature and initials, and initial each acknowledgment.");
+    }
+    const problems = standalone
+      ? standaloneSignatureProblems(data.adoption, data.signerName)
+      : adoptionProblems(ag.body as string, data.adoption as Adoption | undefined, data.signerName);
     if (problems.length) throw new Error(problems[0]);
     const meta = requestMeta(getRequest());
     const { result } = await completeSigning(supabaseAdmin, {
@@ -1574,13 +1973,45 @@ export const signAgreement = createServerFn({ method: "POST" })
       userAgent: meta.userAgent,
       authMethod: "email_link",
       adoption: data.adoption ?? null,
+      recipientId,
     });
+    if (result !== "partial" && result !== "already_signed" && result !== "won") claimError(result);
+    const sms = standalone
+      ? { smsConsentNeeded: false, smsConsentTicket: null }
+      : await signingSmsOffer(supabaseAdmin, {
+          agreementId: ag.id as string,
+          applicationId: (ag.application_id as string | null) ?? null,
+          recipientId,
+          consent: data.smsConsent,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+        });
+    if (result === "partial") {
+      return { ok: true, alreadySigned: false, awaitingOthers: true, portalAccess: false, reservationFee: null, ...sms };
+    }
     if (result === "already_signed") {
-      return { ok: true, alreadySigned: true, portalAccess: await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null) };
+      if ((ag as { source?: string }).source === "standalone") {
+        return { ok: true, alreadySigned: true, portalAccess: false, reservationFee: null };
+      }
+      // Read-only: the open Checkout from the first signing, never a new one.
+      const { existingReservationFeeStep } = await import("@/lib/reservation-fee.server");
+      return {
+        ok: true,
+        alreadySigned: true,
+        portalAccess: await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null),
+        reservationFee: await existingReservationFeeStep(supabaseAdmin, ag.id as string),
+        ...sms,
+      };
     }
     if (result !== "won") claimError(result);
-    const portalAccess = await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName);
-    return { ok: true, alreadySigned: false, portalAccess };
+    if ((ag as { source?: string }).source === "standalone") {
+      const { deliverSignedStandalone } = await import("@/lib/standalone-doc.server");
+      await deliverSignedStandalone(supabaseAdmin, ag.id as string);
+      return { ok: true, alreadySigned: false, portalAccess: false, reservationFee: null };
+    }
+    const out: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null } = {};
+    const portalAccess = await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName, out);
+    return { ok: true, alreadySigned: false, portalAccess, reservationFee: out.reservationFee ?? null, ...sms };
   });
 
 // ------------------------------------------------------------- driver portal
@@ -1598,19 +2029,36 @@ export const getMyAgreements = createServerFn({ method: "GET" })
       sent_at: string | null;
       body: string;
       document_id: string | null;
+      smsConsentNeeded: boolean;
+      source?: string;
+      source_pdf?: SourcePdfClient | null;
     };
     const { data: apps } = await context.supabase
       .from("applications")
-      .select("id")
+      .select("id,sms_consent")
       .eq("user_id", context.userId);
+    const needed = new Map((apps ?? []).map((a: any) => [a.id as string, a.sms_consent !== true]));
     const ids = (apps ?? []).map((a: any) => a.id);
     if (!ids.length) return [] as Mine[];
     const { data } = await context.supabase
       .from("agreements")
-      .select("id,title,status,signed_at,sent_at,body,document_id")
+      .select("id,title,status,signed_at,sent_at,body,document_id,application_id,source,metadata,token_expires_at")
       .in("application_id", ids)
       .order("created_at", { ascending: false });
-    return (data ?? []) as Mine[];
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { sourcePdfForClient } = await import("@/lib/standalone-doc.server");
+    const out: Mine[] = [];
+    for (const row of (data ?? []) as any[]) {
+      const standalone = row.source === "standalone";
+      const source_pdf = standalone ? await sourcePdfForClient(supabaseAdmin, row) : null;
+      const { metadata: _metadata, token_expires_at: _exp, application_id, ...rest } = row;
+      out.push({
+        ...rest,
+        source_pdf,
+        smsConsentNeeded: !standalone && needed.get(application_id) === true,
+      });
+    }
+    return out;
   });
 
 export const signMyAgreement = createServerFn({ method: "POST" })
@@ -1621,7 +2069,8 @@ export const signMyAgreement = createServerFn({ method: "POST" })
         agreementId: z.string().uuid(),
         signerName: z.string().trim().min(2).max(120),
         agree: z.literal(true),
-        adoption: AdoptionSchema.optional(),
+        adoption: SigningAdoptionSchema.optional(),
+        smsConsent: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -1631,11 +2080,18 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     // to someone else simply isn't found. The emailed link is left intact.
     const { data: own } = await context.supabase
       .from("agreements")
-      .select("id,status,application_id,body")
+      .select("id,status,application_id,body,source,token_expires_at")
       .eq("id", data.agreementId)
       .maybeSingle();
     if (!own) throw new Error("Agreement not found");
-    const problems = adoptionProblems(own.body as string, data.adoption, data.signerName);
+    const standalone = (own as { source?: string }).source === "standalone";
+    if (standalone) refuseStandaloneLink(own as { status?: string | null; token_expires_at?: string | null });
+    if (!standalone && data.adoption && !data.adoption.initials) {
+      throw new Error("Adopt a signature and initials, and initial each acknowledgment.");
+    }
+    const problems = standalone
+      ? standaloneSignatureProblems(data.adoption, data.signerName)
+      : adoptionProblems(own.body as string, data.adoption as Adoption | undefined, data.signerName);
     if (problems.length) throw new Error(problems[0]);
     const { data: mine } = await context.supabase
       .from("applications")
@@ -1647,6 +2103,13 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { completeSigning, requestMeta } = await import("@/lib/esign.server");
     const meta = requestMeta(getRequest());
+    const { data: primaryRecipient } = await supabaseAdmin
+      .from("esign_recipients")
+      .select("id")
+      .eq("document_id", data.agreementId)
+      .eq("role", "signer")
+      .eq("signing_order", 1)
+      .maybeSingle();
     const { result } = await completeSigning(supabaseAdmin, {
       id: data.agreementId,
       tokenHash: null,
@@ -1655,11 +2118,67 @@ export const signMyAgreement = createServerFn({ method: "POST" })
       userAgent: meta.userAgent,
       authMethod: "portal",
       adoption: data.adoption ?? null,
+      recipientId: (primaryRecipient?.id as string | undefined) ?? null,
     });
-    if (result === "already_signed") return { ok: true, alreadySigned: true };
+    if (result !== "partial" && result !== "already_signed" && result !== "won") claimError(result);
+    const sms = standalone
+      ? { smsConsentNeeded: false, smsConsentTicket: null }
+      : await signingSmsOffer(supabaseAdmin, {
+          agreementId: data.agreementId,
+          applicationId: own.application_id as string,
+          recipientId: (primaryRecipient?.id as string | undefined) ?? null,
+          consent: data.smsConsent,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+        });
+    if (result === "partial") {
+      return { ok: true, alreadySigned: false, awaitingOthers: true, reservationFee: null, ...sms };
+    }
+    if (result === "already_signed") {
+      if ((own as { source?: string }).source === "standalone") return { ok: true, alreadySigned: true, reservationFee: null };
+      const { existingReservationFeeStep } = await import("@/lib/reservation-fee.server");
+      return { ok: true, alreadySigned: true, reservationFee: await existingReservationFeeStep(supabaseAdmin, data.agreementId), ...sms };
+    }
     if (result !== "won") claimError(result);
-    await sendSignedEmails(supabaseAdmin, data.agreementId, data.signerName);
-    return { ok: true, alreadySigned: false };
+    if ((own as { source?: string }).source === "standalone") {
+      const { deliverSignedStandalone } = await import("@/lib/standalone-doc.server");
+      await deliverSignedStandalone(supabaseAdmin, data.agreementId);
+      return { ok: true, alreadySigned: false, reservationFee: null };
+    }
+    const out: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null } = {};
+    await sendSignedEmails(supabaseAdmin, data.agreementId, data.signerName, out);
+    return { ok: true, alreadySigned: false, reservationFee: out.reservationFee ?? null, ...sms };
+  });
+
+/**
+ * Staff (Manager+): the renter's $50 Reservation Fee Checkout link for their
+ * latest signed agreement, to copy and send by hand (Nov 18 2026, after
+ * Jonathon Boykins signed while card checkout was down). Reuses the open
+ * Checkout (under 23 hours) or creates one on the same unpaid fee row; a paid
+ * fee is never charged again (chargeReservationFeeAfterSigning). Sends
+ * nothing to anyone. Writes what signing would have written: the fee row if
+ * missing, the Stripe customer, the Checkout session, and an audit entry.
+ */
+export const staffReservationFeeLink = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
+  .handler(async ({ context, data }): Promise<{ url: string; amount: number }> => {
+    const { requireManager } = await import("@/lib/roles.server");
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { reservationFeeLinkForApplication } = await import("@/lib/reservation-fee.server");
+    const link = await reservationFeeLinkForApplication(supabaseAdmin, data.applicationId);
+    const res = link.ok ? { ok: true as const, url: link.url, amount: link.amount } : { ok: false as const, message: link.message };
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor as any, {
+      action: "payment.reservation_fee_link_copied",
+      summary: res.ok ? "Staff copied the Reservation Fee payment link (nothing was sent)" : `Staff asked for the Reservation Fee link: ${res.message}`,
+      entityType: "esign_document",
+      entityId: link.agreementId,
+      metadata: { application_id: data.applicationId, status: link.status },
+    }).catch(() => {});
+    if (!res.ok) throw new Error(res.message);
+    return { url: res.url, amount: res.amount };
   });
 
 /** For scripts/v114-default-agreement.test.ts: the one generation step, read-only. */

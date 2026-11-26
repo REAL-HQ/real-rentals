@@ -25,6 +25,7 @@ The site sends FLEET one signed JSON POST per event. Nothing is sent until
 | `rental_activated` | a rental started * |
 | `rental_returned` | the return checklist was completed * |
 | `rental_ended` | a rental was ended * |
+| `reservation_refunded` | a paid Reservation Fee was refunded (staff, FLEET, or auto on insurance decline). Needs proposed/reservation-fee-refunds-v1.sql |
 
 \* Lifecycle events. **Off** until `app_settings.fleet_lifecycle_events` is
 `{"enabled": true}` (`proposed/fleet-lifecycle-events-on.sql`), and they need
@@ -73,6 +74,26 @@ Lifecycle payloads (ids, names and amounts, never phone numbers):
   `rental_ended`: `rental_id, lead_id, name, vehicle_id, rental_status,
   start_date, end_date, weekly_rate, at, by_role, summary, admin_url`
   (`rental_returned` adds `balance_due` in dollars).
+
+- `applicant_ready_for_agreement` (staff clicked Move Forward on the Terms
+  Confirmed row after their call; needs proposed/staff-terms-confirmations-v1.sql
+  and -v2-reservation-fee.sql):
+  `event_id, lead_id, application_id, clicked_by {id, name}, clicked_at,
+  terms {weekly_rate, reservation_fee, deposit, start_date, vehicle_id}`.
+  `reservation_fee` is the Reservation Fee the agreement prints and signing
+  charges (applied to week 1, never a deposit); `deposit` keeps its meaning
+  (security deposit, 0 if none). One event per lead and
+  term set; a double click never sends a second one. FLEET then calls
+  `POST /api/public/fleet/send-agreement` with
+  `terms_confirmation: { "channel": "staff", "staff_event_id": <event_id> }`
+  (docs/fleet-send-agreement.md).
+
+- `reservation_refunded` (a Reservation Fee was refunded; needs
+  proposed/reservation-fee-refunds-v1.sql):
+  `lead_id, application_id, amount, reason, stripe_refund_id`.
+  `reason` is one of `insurance_declined`, `no_vehicle`, `failed_inspection`,
+  `terms_changed`, `post_payment_denial`, `duplicate_or_mistaken_charge`.
+  One event per payment; a second refund attempt never sends another.
 
 Every body also has `event`, `delivery_id` and `sent_at`.
 

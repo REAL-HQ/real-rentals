@@ -18,6 +18,7 @@ import {
   startMyPayoutSetup,
   refreshMyPayoutSetup,
   type PartnerPortalData,
+  type PartnerFinancials,
 } from "@/lib/partner-portal.functions";
 import { startPartnerVehicle, finishPartnerIntake } from "@/lib/partner-intake.functions";
 import { PARTNER_STRIPE_CONNECT_ENABLED, intakeFileProblem, type PartnerPortalVehicle } from "@/lib/partner-portal";
@@ -32,7 +33,7 @@ import { newIdempotencyKey, uploadPlanned } from "@/components/partner/partner-u
 
 const TABS = ["vehicles", "add", "earnings", "payouts", "bank", "profile"] as const;
 type PortalTab = (typeof TABS)[number];
-type PortalSearch = { tab?: PortalTab; email?: string; signup?: string; setup?: string };
+type PortalSearch = { tab?: PortalTab; email?: string; signup?: string; setup?: string; fixture?: "1"; sample?: "prospect" };
 
 export const Route = createFileRoute("/partner")({
   head: () => ({ meta: [{ title: "Partner Portal — REAL RENTALS" }, { name: "robots", content: "noindex" }] }),
@@ -41,12 +42,22 @@ export const Route = createFileRoute("/partner")({
     email: typeof raw.email === "string" ? raw.email.slice(0, 160) : undefined,
     signup: raw.signup === "1" || raw.signup === 1 ? "1" : undefined,
     setup: typeof raw.setup === "string" ? raw.setup.slice(0, 10) : undefined,
+    fixture: import.meta.env.DEV && (raw.fixture === "1" || raw.fixture === 1) ? "1" : undefined,
+    sample: import.meta.env.DEV && raw.sample === "prospect" ? "prospect" : undefined,
   }),
   component: PartnerPage,
 });
 
 function PartnerPage() {
   const search = Route.useSearch();
+  // Local preview only. Vite strips this in a production build (import.meta.env.DEV is false).
+  if (import.meta.env.DEV && search.fixture === "1") {
+    return <DevFixture initialTab={search.tab ?? "vehicles"} sample={search.sample} />;
+  }
+  return <PartnerGate search={search} />;
+}
+
+function PartnerGate({ search }: { search: PortalSearch }) {
   const [session, setSession] = useState<any>(null);
   const [checking, setChecking] = useState(true);
   const [access, setAccess] = useState<"unknown" | "yes" | "no">("unknown");
@@ -94,9 +105,22 @@ const TAB_META: Record<PortalTab, { label: string; icon: any }> = {
   profile: { label: "Profile & Alerts", icon: UserRound },
 };
 
-function PartnerDashboard({ initialTab }: { initialTab: PortalTab }) {
+function DevFixture({ initialTab, sample }: { initialTab: PortalTab; sample?: "prospect" }) {
+  const [pack, setPack] = useState<{ portal: PartnerPortalData; financials: PartnerFinancials } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    import("@/lib/partner-portal-fixture").then((m) => {
+      if (!cancelled) setPack(sample === "prospect" ? m.prospectFixture() : m.activeFixture());
+    });
+    return () => { cancelled = true; };
+  }, [sample]);
+  if (!pack) return <Shell><p className="text-muted-foreground">Loading Preview…</p></Shell>;
+  return <PartnerDashboard initialTab={initialTab} preview={pack.portal} previewFinancials={pack.financials} />;
+}
+
+export function PartnerDashboard({ initialTab, preview, previewFinancials }: { initialTab: PortalTab; preview?: PartnerPortalData; previewFinancials?: PartnerFinancials }) {
   const fetchPortal = useServerFn(getMyPartnerPortal);
-  const portalQ = useQuery({ queryKey: ["partner", "portal"], queryFn: () => fetchPortal() });
+  const portalQ = useQuery({ queryKey: ["partner", "portal"], queryFn: () => fetchPortal(), enabled: !preview });
   const [tab, setTab] = useState<PortalTab>(initialTab);
 
   function go(t: PortalTab) {
@@ -107,9 +131,10 @@ function PartnerDashboard({ initialTab }: { initialTab: PortalTab }) {
     window.history.replaceState(null, "", url.toString());
   }
 
-  if (portalQ.isLoading) return <Shell><p className="text-muted-foreground">Loading…</p></Shell>;
-  if (portalQ.error || !portalQ.data) return <Shell><p className="text-real-red">{(portalQ.error as Error)?.message ?? "Could not load your portal."}</p></Shell>;
-  const data = portalQ.data;
+  if (!preview && portalQ.isLoading) return <Shell><p className="text-muted-foreground">Loading…</p></Shell>;
+  if (!preview && (portalQ.error || !portalQ.data)) return <Shell><p className="text-real-red">{(portalQ.error as Error)?.message ?? "Could not load your portal."}</p></Shell>;
+  const data = preview ?? portalQ.data;
+  if (!data) return <Shell><p className="text-real-red">Could not load your portal.</p></Shell>;
   const locked = (t: PortalTab) => (t === "earnings" && !data.sections.earnings) || (t === "payouts" && !data.sections.payouts) || (t === "bank" && !data.sections.bank);
 
   return (
@@ -117,7 +142,7 @@ function PartnerDashboard({ initialTab }: { initialTab: PortalTab }) {
       <header className="border-b border-border pb-6 mb-6">
         <h1 className="text-2xl font-semibold">Welcome, {data.partner.name.split(" ")[0]}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {data.partner.status === "active" ? "Active partner" : "Partner application under review"} · {data.vehicles.length} vehicle{data.vehicles.length === 1 ? "" : "s"} in the program
+          {data.partner.status === "active" ? "Active Partner" : "Application Under Review"} · {data.vehicles.length} vehicle{data.vehicles.length === 1 ? "" : "s"} in the program
           {data.submissions.filter((s) => s.status === "under_review").length ? ` · ${data.submissions.filter((s) => s.status === "under_review").length} under review` : ""}
         </p>
       </header>
@@ -134,8 +159,8 @@ function PartnerDashboard({ initialTab }: { initialTab: PortalTab }) {
       </nav>
       {tab === "vehicles" && <VehiclesTab data={data} onAdd={() => go("add")} />}
       {tab === "add" && <AddVehicleTab onDone={() => go("vehicles")} />}
-      {tab === "earnings" && (locked("earnings") ? <LockedCard /> : <EarningsTab />)}
-      {tab === "payouts" && (locked("payouts") ? <LockedCard /> : <PayoutsTab />)}
+      {tab === "earnings" && (locked("earnings") ? <LockedCard /> : <EarningsTab preview={previewFinancials} />)}
+      {tab === "payouts" && (locked("payouts") ? <LockedCard /> : <PayoutsTab preview={previewFinancials} />)}
       {tab === "bank" && (locked("bank") ? <LockedCard /> : <BankTab data={data} />)}
       {tab === "profile" && <ProfileTab data={data} />}
     </Shell>
@@ -161,7 +186,7 @@ function Shell({ partnerName, children }: { partnerName?: string; children: Reac
           <div className="text-sm mt-0.5 truncate">{partnerName ?? ""}</div>
         </div>
         <div className="mt-auto p-4">
-          <button onClick={() => supabase.auth.signOut()} className="w-full rounded-lg bg-white/5 hover:bg-white/10 text-sm py-2">Sign Out</button>
+          <button onClick={() => supabase.auth.signOut()} className="w-full rounded-lg bg-[#1c1c1f] hover:bg-[#2a2a2e] text-sm py-2">Sign Out</button>
         </div>
       </aside>
       <div className="flex-1 min-w-0 flex flex-col">
@@ -197,7 +222,7 @@ function VehiclesTab({ data, onAdd }: { data: PartnerPortalData; onAdd: () => vo
   return (
     <div className="space-y-8">
       {data.vehicles.length === 0 && data.submissions.length === 0 && (
-        <div className="rounded-xl bg-soft p-6 text-sm text-muted-foreground">No vehicles yet. <button className="text-real-red underline" onClick={onAdd}>Add your first vehicle</button>.</div>
+        <div className="rounded-xl bg-soft p-6 text-sm text-muted-foreground">No vehicles yet. <button className="text-real-red underline" onClick={onAdd}>Add Your First Vehicle</button>.</div>
       )}
       {data.vehicles.length > 0 && (
         <div className="grid md:grid-cols-2 gap-4" data-testid="partner-vehicles">
@@ -312,13 +337,15 @@ function AddVehicleTab({ onDone }: { onDone: () => void }) {
   );
 }
 
-function EarningsTab() {
+function EarningsTab({ preview }: { preview?: PartnerFinancials }) {
   const fetchFin = useServerFn(getMyPartnerFinancials);
-  const q = useQuery({ queryKey: ["partner", "financials", 6], queryFn: () => fetchFin({ data: { months: 6 } }) });
-  if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  if (q.error || !q.data) return <p className="text-sm text-real-red">Could not load earnings.</p>;
-  if ("locked" in q.data) return <LockedCard />;
-  const f = q.data;
+  const q = useQuery({ queryKey: ["partner", "financials", 6], queryFn: () => fetchFin({ data: { months: 6 } }), enabled: !preview });
+  if (!preview && q.isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!preview && (q.error || !q.data)) return <p className="text-sm text-real-red">Could not load earnings.</p>;
+  const loaded = preview ?? q.data;
+  if (!loaded) return <p className="text-sm text-real-red">Could not load earnings.</p>;
+  if ("locked" in loaded) return <LockedCard />;
+  const f = loaded;
   const total = f.months.reduce((a, m) => ({ g: a.g + m.grossRent, s: a.s + m.partnerShare, e: a.e + m.partnerExpenseShare, n: a.n + m.net }), { g: 0, s: 0, e: 0, n: 0 });
   return (
     <div className="space-y-8" data-testid="partner-earnings">
@@ -330,7 +357,7 @@ function EarningsTab() {
       </div>
       <div className="rounded-xl bg-soft overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-white/50 text-[11px] tracking-wider text-muted-foreground">
+          <thead className="bg-white text-[11px] tracking-wider text-muted-foreground">
             <tr><th className="text-left p-3">Month</th><th className="text-right p-3">Rent Collected</th><th className="text-right p-3">Your Share</th><th className="text-right p-3">Expenses (Your Share)</th><th className="text-right p-3">Net</th></tr>
           </thead>
           <tbody>
@@ -351,7 +378,7 @@ function EarningsTab() {
         {f.expenses.length === 0 ? <div className="rounded-xl bg-soft p-5 text-sm text-muted-foreground">No expenses in the last 6 months.</div> : (
           <div className="rounded-xl bg-soft overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-white/50 text-[11px] tracking-wider text-muted-foreground"><tr><th className="text-left p-3">Date</th><th className="text-left p-3">Vehicle</th><th className="text-left p-3">Category</th><th className="text-right p-3">Amount</th></tr></thead>
+              <thead className="bg-white text-[11px] tracking-wider text-muted-foreground"><tr><th className="text-left p-3">Date</th><th className="text-left p-3">Vehicle</th><th className="text-left p-3">Category</th><th className="text-right p-3">Amount</th></tr></thead>
               <tbody>{f.expenses.map((e) => (
                 <tr key={e.id} className="border-t border-border"><td className="p-3">{fmtDate(e.date)}</td><td className="p-3">{e.vehicleLabel}</td><td className="p-3">{e.label}</td><td className="p-3 text-right">{money(e.amount)}</td></tr>
               ))}</tbody>
@@ -368,14 +395,16 @@ function Stat({ label, value, strong }: { label: string; value: string; strong?:
   return <div className="rounded-xl bg-soft p-4"><div className="text-[11px] tracking-wider text-muted-foreground">{label}</div><div className={`mt-1 text-lg ${strong ? "font-semibold" : ""}`}>{value}</div></div>;
 }
 
-function PayoutsTab() {
+function PayoutsTab({ preview }: { preview?: PartnerFinancials }) {
   const fetchFin = useServerFn(getMyPartnerFinancials);
   const receipt = useServerFn(getMyPayoutReceiptUrl);
-  const q = useQuery({ queryKey: ["partner", "financials", 6], queryFn: () => fetchFin({ data: { months: 6 } }) });
-  if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  if (q.error || !q.data) return <p className="text-sm text-real-red">Could not load payouts.</p>;
-  if ("locked" in q.data) return <LockedCard />;
-  const payouts = q.data.payouts;
+  const q = useQuery({ queryKey: ["partner", "financials", 6], queryFn: () => fetchFin({ data: { months: 6 } }), enabled: !preview });
+  if (!preview && q.isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!preview && (q.error || !q.data)) return <p className="text-sm text-real-red">Could not load payouts.</p>;
+  const loaded = preview ?? q.data;
+  if (!loaded) return <p className="text-sm text-real-red">Could not load payouts.</p>;
+  if ("locked" in loaded) return <LockedCard />;
+  const payouts = loaded.payouts;
   async function open(id: string) {
     try { const { url } = await receipt({ data: { payoutId: id } }); window.open(url, "_blank", "noopener"); }
     catch (e: any) { toast.error(e?.message || "Could not open the receipt"); }
@@ -384,7 +413,7 @@ function PayoutsTab() {
   return (
     <div className="rounded-xl bg-soft overflow-x-auto" data-testid="partner-payouts">
       <table className="w-full text-sm">
-        <thead className="bg-white/50 text-[11px] tracking-wider text-muted-foreground"><tr><th className="text-left p-3">Period</th><th className="text-right p-3">Your Share</th><th className="text-right p-3">Expenses</th><th className="text-right p-3">Payout</th><th className="text-left p-3">Status</th><th className="p-3"></th></tr></thead>
+        <thead className="bg-white text-[11px] tracking-wider text-muted-foreground"><tr><th className="text-left p-3">Period</th><th className="text-right p-3">Your Share</th><th className="text-right p-3">Expenses</th><th className="text-right p-3">Payout</th><th className="text-left p-3">Status</th><th className="p-3"></th></tr></thead>
         <tbody>
           {payouts.map((p) => (
             <tr key={p.id} className="border-t border-border">
@@ -520,7 +549,7 @@ function PartnerSignIn({ initialEmail = "", initialMode = "signin" }: { initialE
     <div className="min-h-screen grid lg:grid-cols-2">
       <div className="relative hidden lg:block overflow-hidden bg-black">
         <img src={adminHero} alt="" className="absolute inset-0 w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/40 pointer-events-none" />
+        <div className="absolute inset-0 bg-black/50 pointer-events-none" />
         <div className="relative z-10 p-12"><Logo offset={false} /></div>
       </div>
       <div className="flex items-center justify-center px-6 py-12 bg-background">

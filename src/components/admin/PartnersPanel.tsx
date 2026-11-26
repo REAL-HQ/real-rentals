@@ -1,26 +1,48 @@
 import { PhoneInput } from "@/components/ui/phone-input";
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { Partner, InvestorLead } from "./types";
+import type { Partner, FleetOwner, InvestorLead } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useServerFn } from "@tanstack/react-start";
 import { linkPartnerLogin } from "@/lib/partner.functions";
 import { EmptyState } from "./ui";
+import { fmtDateTime } from "@/lib/date-format";
+import { OwnerVehiclePhotoGrid, OwnerVehiclePhotoThumb } from "./owner-vehicle-photos";
+import type { StaffSubmission } from "@/lib/partner-admin.functions";
 import { PartnerSubmissions, RecordPayoutButton } from "./PartnerSubmissions";
 
 const PARTNER_TYPES = ["vehicle_owner","capital_partner","private_lender","jv_partner","other"] as const;
 const PARTNER_STATUSES = ["prospect","active","paused","closed"] as const;
 
-export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
-  const [partners, setPartners] = useState<Partner[]>([]);
-  const [legacyInvestors, setLegacyInvestors] = useState<InvestorLead[]>([]);
+export function PartnersPanel({
+  externalSearch = "",
+  preview,
+}: {
+  externalSearch?: string;
+  /** Skip the server read and render these legacy rows. The detail test uses this. */
+  preview?: {
+    owners?: FleetOwner[];
+    investors?: InvestorLead[];
+    partners?: Partner[];
+    submissions?: { submissions: StaffSubmission[]; schema: "v2" | "legacy" };
+    photoUrls?: Record<string, string>;
+    expandedOwnerId?: string | null;
+  };
+} = {}) {
+  const [partners, setPartners] = useState<Partner[]>(preview?.partners ?? []);
+  const [legacyOwners, setLegacyOwners] = useState<FleetOwner[]>(preview?.owners ?? []);
+  const [legacyInvestors, setLegacyInvestors] = useState<InvestorLead[]>(preview?.investors ?? []);
+  const [openOwnerId, setOpenOwnerId] = useState<string | null>(preview?.expandedOwnerId ?? null);
   const [filter, setFilter] = useState<string>("all");
   const [showAdd, setShowAdd] = useState(false);
 
   useEffect(() => {
+    if (preview) return;
     refresh();
+    supabase.from("fleet_owner_submissions").select("*").order("created_at", { ascending: false })
+      .then(({ data }) => setLegacyOwners(data || []));
     supabase.from("investor_leads").select("*").order("created_at", { ascending: false })
       .then(({ data }) => setLegacyInvestors(data || []));
   }, []);
@@ -47,6 +69,9 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
     setPartners(cur => [data as Partner, ...cur]);
     setShowAdd(false);
     toast.success("Partner added");
+  }
+  async function convertOwner(o: FleetOwner) {
+    await add({ name: o.full_name, email: o.email, phone: o.phone, partner_type: "vehicle_owner", status: "prospect", vehicles_contributed: 1, notes: `Converted from fleet owner submission. Vehicle: ${o.year} ${o.make} ${o.model}` });
   }
   async function convertInvestor(l: InvestorLead) {
     await add({ name: l.name, email: l.email, phone: l.phone || undefined, partner_type: "capital_partner", status: "prospect", notes: [l.capital_range && `Range: ${l.capital_range}`, l.message].filter(Boolean).join(" — ") || null });
@@ -87,7 +112,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
               </div>
               <Select value={p.status} onValueChange={(status) => update(p.id, { status })}>
                 <SelectTrigger className="h-8 w-28 bg-white text-foreground"><SelectValue /></SelectTrigger>
-                <SelectContent>{PARTNER_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                <SelectContent>{PARTNER_STATUSES.map(s => <SelectItem key={s} value={s}>{formatStatusLabel(s)}</SelectItem>)}</SelectContent>
               </Select>
               <Select value={p.partner_type} onValueChange={(partner_type) => update(p.id, { partner_type })}>
                 <SelectTrigger className="h-8 w-36 bg-white text-foreground"><SelectValue /></SelectTrigger>
@@ -110,13 +135,25 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
         {filtered.length === 0 && <EmptyState title="No Partners" hint="Add a fleet partner to start assigning vehicles and tracking payouts." />}
       </div>
 
-      <div className="mt-10">
-        <PartnerSubmissions onChanged={refresh} />
-      </div>
+      {(!preview || preview.submissions) && (
+        <div className="mt-10">
+          <PartnerSubmissions onChanged={refresh} preview={preview?.submissions} />
+        </div>
+      )}
 
       <div className="mt-10">
-        <h3 className="text-sm font-semibold tracking-wider text-muted-foreground mb-3">Investor Leads</h3>
+        <h3 className="text-sm font-semibold tracking-wider text-muted-foreground mb-3">Legacy Submissions</h3>
         <div className="space-y-2">
+          {legacyOwners.map(o => (
+            <LegacyOwnerRow
+              key={o.id}
+              owner={o}
+              open={openOwnerId === o.id}
+              photoUrls={preview?.photoUrls}
+              onToggle={() => setOpenOwnerId((current) => current === o.id ? null : o.id)}
+              onConvert={() => convertOwner(o)}
+            />
+          ))}
           {legacyInvestors.map(l => (
             <div key={l.id} className="rounded-lg bg-white border border-border p-3 flex flex-wrap items-center gap-3 text-sm">
               <div className="flex-1 min-w-[200px]">
@@ -126,11 +163,90 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
               <button onClick={() => convertInvestor(l)} className="rounded-md bg-black text-white px-3 py-1.5 text-xs">Convert To Partner</button>
             </div>
           ))}
-          {legacyInvestors.length === 0 && <div className="text-xs text-muted-foreground">No investor leads.</div>}
+          {legacyOwners.length === 0 && legacyInvestors.length === 0 && (
+            <div className="text-xs text-muted-foreground">No Legacy Submissions</div>
+          )}
         </div>
       </div>
 
       {showAdd && <AddPartner onClose={() => setShowAdd(false)} onSave={add} />}
+    </div>
+  );
+}
+
+function LegacyOwnerRow({
+  owner,
+  open,
+  photoUrls,
+  onToggle,
+  onConvert,
+}: {
+  owner: FleetOwner;
+  open: boolean;
+  photoUrls?: Record<string, string>;
+  onToggle: () => void;
+  onConvert: () => void;
+}) {
+  const photos = owner.photo_urls ?? [];
+  const first = photos[0] ?? null;
+  return (
+    <div className="rounded-lg border border-border bg-white p-3 text-sm" data-testid="legacy-owner-row">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <OwnerVehiclePhotoThumb path={first} previewUrl={first ? photoUrls?.[first] : null} />
+          <div className="min-w-[200px] flex-1">
+            <div className="font-medium">{owner.full_name} <span className="text-xs text-muted-foreground">· Fleet Owner</span></div>
+            <div className="text-xs text-muted-foreground">{owner.email} · {owner.year} {owner.make} {owner.model}</div>
+          </div>
+        </button>
+        <button type="button" onClick={onConvert} className="rounded-md bg-black px-3 py-1.5 text-xs text-white">Convert To Partner</button>
+      </div>
+      {open && (
+        <div className="mt-3 border-t border-[#EDEDF0] pt-3" data-testid="legacy-owner-details">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-3">
+            <Detail label="Phone" value={owner.phone || "—"} />
+            <Detail label="VIN" value={owner.vin || "—"} />
+            <Detail label="Year" value={owner.year ? String(owner.year) : "—"} />
+            <Detail label="Make" value={owner.make || "—"} />
+            <Detail label="Model" value={owner.model || "—"} />
+            <Detail label="Trim" value={owner.trim || "—"} />
+            <Detail label="Mileage" value={owner.mileage == null ? "—" : `${owner.mileage.toLocaleString("en-US")} mi`} />
+            <Detail label="Title Status" value={owner.title_status || "—"} />
+            <Detail label="Lien Status" value={owner.lien_status || "—"} />
+            <Detail label="Registration State" value={owner.registration_state || "—"} />
+            <Detail label="Currently Insured" value={owner.currently_insured == null ? "—" : owner.currently_insured ? "Yes" : "No"} />
+            <Detail label="Condition" value={owner.condition || "—"} />
+            <Detail label="Status" value={formatStatusLabel(owner.status)} />
+            <Detail label="Created" value={fmtDateTime(owner.created_at) || "—"} />
+          </div>
+          <div className="mt-3">
+            <div className="text-[11px] font-semibold text-[#55555E]">Message</div>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-[#111114]">{owner.message || "—"}</p>
+          </div>
+          <div className="mt-3">
+            <div className="mb-2 text-[11px] font-semibold text-[#55555E]">Photos</div>
+            {photos.length > 0 ? (
+              <OwnerVehiclePhotoGrid paths={photos} previewUrls={photoUrls} />
+            ) : (
+              <p className="text-xs text-muted-foreground">No Photos</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[11px] font-semibold text-[#55555E]">{label}</div>
+      <div className="mt-0.5 break-words text-sm text-[#111114]">{value}</div>
     </div>
   );
 }
@@ -208,7 +324,7 @@ function LinkLoginRow({ partner, onLinked }: { partner: Partner & { user_id?: st
             className="rounded-md bg-black text-white px-3 py-1 disabled:opacity-50">
             {busy ? "…" : "Link Login"}
           </button>
-          <span className="text-muted-foreground">(or they sign up at /partner with this email and are linked automatically)</span>
+          <span className="text-muted-foreground">(account must have signed up at /partner first)</span>
         </>
       )}
     </div>

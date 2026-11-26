@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { getVehicleProfitReport } from "@/lib/vehicle-profitability.functions";
@@ -13,6 +14,7 @@ import {
   type VehicleProfitReport,
   type VehicleProfitRow,
 } from "@/lib/vehicle-profitability";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 /**
  * Read-only. Download CSV is built in the browser from the rows on screen.
@@ -117,7 +119,7 @@ function Report({ report }: { report: VehicleProfitReport }) {
                 {report.unattributed.map((row) => (
                   <tr key={row.id} className="border-b align-top">
                     <td className="py-2 pr-3">{row.paidDate ?? "—"}</td>
-                    <td className="py-2 pr-3">{row.status}</td>
+                    <td className="py-2 pr-3">{formatStatusLabel(row.status)}</td>
                     <td className="py-2 pr-3">{row.type}</td>
                     <td className="py-2 pr-3">{formatCents(row.amountCents) || "—"}</td>
                     <td className="py-2 pr-3"><Link to="/admin" search={{ tab: "payments" }} className="underline">Payments</Link></td>
@@ -139,9 +141,10 @@ function Report({ report }: { report: VehicleProfitReport }) {
 }
 
 function VehicleRow({ row }: { row: VehicleProfitRow }) {
+  const navigate = useNavigate();
   const perDay = row.daysRented === 0 ? "No Rented Days" : formatCents(row.revenuePerRentedDayCents) || "—";
   return (
-    <tr className="border-b align-top">
+    <tr {...rowNav(navigate, row.vehicleId ? { tab: "vehicles", id: row.vehicleId } : null, "border-b align-top")}>
       <td className="py-2 pr-3">{row.label}</td>
       <td className="py-2 pr-3">{formatCents(row.revenueCents) || "—"}</td>
       <td className="py-2 pr-3">{formatCents(row.expenseCents) || "—"}</td>

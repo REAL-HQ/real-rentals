@@ -5,8 +5,9 @@ import { isStructured, parseLayout, initialsOf, type Block } from "@/lib/agreeme
 import type { Adoption, Mark } from "@/lib/signature-adoption";
 
 // Draw an adopted mark (cursive text or drawn strokes) inside a box whose
-// bottom-left is (x, y). Shared by the signature line and Initial cells.
-async function markDrawer(pdf: PDFDocument) {
+// bottom-left is (x, y). Shared by the signature line, Initial cells, and
+// standalone documents stamped onto an uploaded PDF.
+export async function createMarkDrawer(pdf: PDFDocument) {
   const cache: Record<string, PDFFont> = {};
   let fk = false;
   const font = async (style: string) => {
@@ -157,7 +158,7 @@ export async function renderCompletedPdf(d: CompletedDocInput): Promise<Uint8Arr
   write(`Renter: /s/ ${d.signerName}`, 12, bold);
   if (d.adoption) {
     ensure(40);
-    await (await markDrawer(pdf))(page, d.adoption.signature, M, y - 34, 240, 30);
+    await (await createMarkDrawer(pdf))(page, d.adoption.signature, M, y - 34, 240, 30);
     y -= 38;
   }
   write(`Signed electronically ${fmt(d.signedAt)}`, 9.5, font, muted);
@@ -297,6 +298,80 @@ export async function renderPreviewPdf(d: PreviewDocInput): Promise<Uint8Array> 
     p.drawText("PREVIEW - NOT SENT", { x: 120, y: 360, size: 46, font: bold, color: wm, opacity: 0.12, rotate: degrees(35) });
   }
   return pdf.save({ useObjectStreams: false });
+}
+
+/** WinAnsi-safe text. Shared with standalone stamping so names survive the PDF. */
+export function pdfSafeText(s: string): string {
+  return clean(s);
+}
+
+/**
+ * The same Certificate of Completion renderCompletedPdf appends, drawn onto
+ * an existing PDF (a third-party original). Rental agreements keep calling
+ * renderCompletedPdf, so their bytes do not change.
+ */
+export async function appendCertificateOfCompletion(
+  pdf: PDFDocument,
+  d: CompletedDocInput & { originalSha256?: string | null; note?: string | null },
+): Promise<void> {
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const ink = rgb(0.07, 0.07, 0.08), muted = rgb(0.45, 0.45, 0.5);
+  let page: PDFPage = pdf.addPage([W, H]);
+  let y = H - M;
+  const footer = (p: PDFPage) =>
+    p.drawText(clean(`Document ${d.id}`), { x: M, y: 30, size: 8, font, color: muted });
+  footer(page);
+  const ensure = (h: number) => {
+    if (y - h < M) { page = pdf.addPage([W, H]); footer(page); y = H - M; }
+  };
+  const write = (t: string, size = 10.5, f = font, color = ink, lh = 1.45) => {
+    for (const l of wrap(t, f, size, W - 2 * M)) {
+      ensure(size * lh);
+      page.drawText(l, { x: M, y: y - size, size, font: f, color });
+      y -= size * lh;
+    }
+  };
+  write("Certificate of Completion", 18, bold);
+  y -= 6;
+  const rows: [string, string][] = [
+    ["Document ID", d.id],
+    ["Document title", d.title],
+    ["Created", fmt(d.createdAt)],
+    ["Sent", fmt(d.sentAt)],
+    ["Viewed", fmt(d.viewedAt)],
+    ["Signed", fmt(d.signedAt)],
+    ["Signer name", d.signerName],
+    ["Signer email", d.signerEmail ?? "-"],
+    ["IP address", d.ip ?? "-"],
+    ["Browser", d.userAgent ?? "-"],
+    ["Authentication", d.authMethod === "portal" ? "Signed-in renter portal session" : "Single-use emailed signing link"],
+    ["Signature method", d.adoption ? `${describeMark(d.adoption.signature)}; legal name typed; explicit consent checkbox` : "Typed legal name with explicit consent checkbox"],
+    ...(d.adoption ? ([
+      ["Initials", d.adoption.initials ? describeMark(d.adoption.initials) : "Not required"],
+      ["Acknowledgments", `${d.adoption.acks.filter(Boolean).length} of ${d.adoption.acks.length} initialed individually by the renter`],
+      ["Signature evidence SHA-256", d.adoptionSha256 ?? "-"],
+    ] as [string, string][]) : []),
+    ["Company signer", `${d.companySignerName}${d.companySignerTitle ? `, ${d.companySignerTitle}` : ""}`],
+    ["Agreement text SHA-256", d.bodySha256],
+    ...(d.originalSha256 ? ([["Original PDF SHA-256", d.originalSha256]] as [string, string][]) : []),
+  ];
+  for (const [k, v] of rows) {
+    ensure(30);
+    page.drawText(k, { x: M, y: y - 9, size: 9, font: bold, color: muted });
+    y -= 13;
+    write(v, 10);
+    y -= 4;
+  }
+  if (d.note) {
+    y -= 6;
+    write(d.note, 9, font, muted);
+  }
+  y -= 10;
+  write(
+    "The SHA-256 of this complete PDF file is recorded with the eSign record and can be used to verify the archived file has not changed.",
+    8.5, font, muted,
+  );
 }
 
 export async function sha256Hex(bytes: Uint8Array | string): Promise<string> {
@@ -478,7 +553,7 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
 
   const blocks = parseLayout(o.body);
   let sigDone = false;
-  const drawMark = await markDrawer(pdf);
+  const drawMark = await createMarkDrawer(pdf);
   const adoption = o.signed?.adoption ?? null;
   let ackIdx = 0;
   const pending: (() => Promise<void>)[] = [];

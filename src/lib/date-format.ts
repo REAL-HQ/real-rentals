@@ -60,3 +60,27 @@ export function fmtDateNumeric(v: DateInput): string {
   if (!d) return "";
   return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
 }
+
+const ET_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
+/**
+ * Activity stamp in America/New_York: "Nov 21, 2026 · 2:04 PM ET".
+ * A date-only value ("2026-11-21") has no real time, so it shows the date
+ * alone; no invented midnight.
+ */
+export function fmtActivityStamp(v: DateInput): string {
+  if (typeof v === "string" && DATE_ONLY.test(v.trim())) return fmtDate(v);
+  const d = toDate(v);
+  if (!d) return "";
+  const p: Record<string, string> = {};
+  for (const part of ET_PARTS.formatToParts(d)) p[part.type] = part.value;
+  return `${p.month} ${p.day}, ${p.year} · ${p.hour}:${p.minute} ${p.dayPeriod.toUpperCase()} ET`;
+}

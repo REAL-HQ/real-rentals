@@ -156,7 +156,13 @@ export async function fileRenterInsuranceCard(sb: Admin, itemId: string, deps: F
     if (sha) {
       const dup = await sb.from("documents").select("id").eq("driver_id", appId).eq("category", RENTER_INSURANCE_CATEGORY).eq("content_sha256", sha).limit(1);
       if (dup.error) return { status: "error", error: "documents_unreadable" };
-      if ((dup.data ?? []).length) return { status: "duplicate", documentId: dup.data[0].id, applicationId: appId };
+      if ((dup.data ?? []).length) {
+        try {
+          const { promotePendingReservationOnInsuranceCard } = await import("@/lib/pending-reservation.server");
+          await promotePendingReservationOnInsuranceCard(sb, appId);
+        } catch { /* the card is already filed */ }
+        return { status: "duplicate", documentId: dup.data[0].id, applicationId: appId };
+      }
     }
 
     const src = await sb.from("documents").select("storage_bucket,storage_path,mime_type,size_bytes").eq("id", item.document_id).maybeSingle();
@@ -167,7 +173,13 @@ export async function fileRenterInsuranceCard(sb: Admin, itemId: string, deps: F
     const contentSha = sha ?? (await sha256Hex(bytes));
     if (!sha) {
       const dup = await sb.from("documents").select("id").eq("driver_id", appId).eq("category", RENTER_INSURANCE_CATEGORY).eq("content_sha256", contentSha).limit(1);
-      if ((dup.data ?? []).length) return { status: "duplicate", documentId: dup.data[0].id, applicationId: appId };
+      if ((dup.data ?? []).length) {
+        try {
+          const { promotePendingReservationOnInsuranceCard } = await import("@/lib/pending-reservation.server");
+          await promotePendingReservationOnInsuranceCard(sb, appId);
+        } catch { /* the card is already filed */ }
+        return { status: "duplicate", documentId: dup.data[0].id, applicationId: appId };
+      }
     }
     const ext = extOf(src.data.mime_type, src.data.storage_path);
     const path = `${appId}/${RENTER_INSURANCE_CATEGORY}-${(deps.uuid ?? (() => crypto.randomUUID()))()}.${ext}`;
@@ -200,17 +212,21 @@ export async function fileRenterInsuranceCard(sb: Admin, itemId: string, deps: F
     }
     const docId = ins.data.id as string;
 
-    // History: older current cards point at the new one. A staff-verified
-    // card stays current until staff review this one (insurance-review-hold).
-    const older = await sb.from("documents").select("id,review_status").eq("driver_id", appId).eq("category", RENTER_INSURANCE_CATEGORY).eq("is_current", true).neq("id", docId);
-    const toSupersede = ((older.data ?? []) as any[]).filter((d) => d.review_status !== "verified").map((d) => d.id);
-    if (toSupersede.length) await sb.from("documents").update({ is_current: false, superseded_by: docId }).in("id", toSupersede);
+    // Nothing is superseded: every insurance card stays active (one per
+    // vehicle, one per swap). Staff archive the ones that no longer apply.
+    const toSupersede: string[] = [];
 
     // The Fleet Inbox item says where it went (staff only).
     const note = `Filed to the renter's Documents as ${RENTER_INSURANCE_LABEL} (not reviewed).`;
     const warnings = [note, ...((item.warnings ?? []) as string[]).filter((w) => !String(w).startsWith(RENTER_INSURANCE_WARNING_PREFIX) && w !== note)].slice(0, 10);
     await sb.from("fleet_import_items").update({ warnings }).eq("id", item.id);
 
+    try {
+      const { promotePendingReservationOnInsuranceCard } = await import("@/lib/pending-reservation.server");
+      await promotePendingReservationOnInsuranceCard(sb, appId);
+    } catch (err) {
+      console.error("[insurance-card] pending reservation promote failed", String(err).slice(0, 200));
+    }
     await (deps.audit ?? defaultAudit)({
       action: RENTER_INSURANCE_AUDIT_ACTION,
       summary: `Emailed insurance ID card filed to a renter's Documents (VIN …${decision.card.vin.slice(-6)}). Not reviewed; nothing verified.`,

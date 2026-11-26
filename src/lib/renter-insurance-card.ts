@@ -30,7 +30,7 @@ export const RENTER_INSURANCE_WARNING_PREFIX = "Insurance ID card — not filed 
 /** Upload channels whose insurance cards are auto-filed (emailed cards only). */
 export const RENTER_INSURANCE_CHANNELS = ["email"] as const;
 /** Rental states whose car's card belongs to the renter. */
-export const RENTER_INSURANCE_RENTAL_STATUSES = ["active", "reserved"] as const;
+export const RENTER_INSURANCE_RENTAL_STATUSES = ["active", "reserved", "pending_reservation"] as const;
 
 export function isAutoFileChannel(channel: string | null | undefined): boolean {
   return (RENTER_INSURANCE_CHANNELS as readonly string[]).includes(String(channel ?? ""));
@@ -172,7 +172,7 @@ export const REVIEW_REASON_TEXT: Record<ReviewReason, string> = {
   no_name: "no insured or driver name could be read on the card",
   expired: "the card has already expired",
   vehicle_not_found: "no car in the fleet has this VIN",
-  no_open_rental: "the car with this VIN has no active or reserved rental",
+  no_open_rental: "the car with this VIN has no active, reserved, or pending reservation",
   name_mismatch: "the name on the card does not match the renter on that car",
   ambiguous: "more than one renter matches this card",
 };

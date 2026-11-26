@@ -31,6 +31,9 @@ import {
 import { isHostedInvoiceUrl } from "@/lib/failed-payment-link";
 import { EARLY_PAYMENT_DAYS, type PaidInvoice } from "@/lib/stripe-link";
 import { dayDiff } from "@/lib/rent-reminders";
+import { loadLateFeeContext, type LateFeeContext } from "@/lib/late-fee-forgiveness.server";
+import { loadDailyRentPlans } from "@/lib/daily-rent-plans.server";
+import { activeDailyPlan, rentStanding } from "@/lib/rent-standing";
 
 export const RENT_REMINDER_TEMPLATES_KEY = "rent_reminder_templates";
 
@@ -231,10 +234,12 @@ async function finish(admin: any, row: { rentalId: string; dueDate: string; stag
 }
 
 /** Build each active rental's billing state. Stripe state comes from Stripe. */
-export async function loadBillingStates(admin: any, deps: ReminderDeps, today: string): Promise<{ states: RentalBillingState[]; errors: number }> {
-  const rentals = await admin.from("rentals")
+export async function loadBillingStates(admin: any, deps: ReminderDeps, today: string, opts: { rentalIds?: string[] } = {}): Promise<{ states: RentalBillingState[]; errors: number }> {
+  let rq = admin.from("rentals")
     .select("id, application_id, status, weekly_rate, next_payment_due, stripe_subscription_id, stripe_customer_id")
     .eq("status", "active");
+  if (opts.rentalIds) rq = rq.in("id", opts.rentalIds);
+  const rentals = await rq;
   if (rentals.error) throw new Error(rentals.error.message);
   const list: any[] = rentals.data ?? [];
   const appIds = [...new Set(list.map((r) => r.application_id).filter(Boolean))];
@@ -248,6 +253,14 @@ export async function loadBillingStates(admin: any, deps: ReminderDeps, today: s
     arr.push({ dueDate: w.due_date, waivedThrough: w.waived_through ?? null });
     waiversBy.set(w.rental_id, arr);
   }
+  // Late fee policy, payment-deal days and staff forgiveness, so every quoted fee matches the ledger.
+  let feeCtx: LateFeeContext | null = null;
+  try {
+    feeCtx = await loadLateFeeContext(admin, ids);
+  } catch {
+    feeCtx = null;
+  }
+  const dailyPlans = await loadDailyRentPlans(admin);
   const stripeSnap = deps.stripeSnapshot ?? liveStripeSnapshot;
   const paidInvoicesOf = deps.stripePaidInvoices ?? livePaidInvoices;
   const paidRows = async (rentalId: string) => {
@@ -262,7 +275,26 @@ export async function loadBillingStates(admin: any, deps: ReminderDeps, today: s
       rentalId: r.id, applicationId: r.application_id ?? null, firstName: app.full_name ?? null,
       phone: app.phone ?? null, email: app.email ?? null, weeklyRate: Number(r.weekly_rate ?? 0),
       waivers: waiversBy.get(r.id) ?? [],
+      ...(feeCtx
+        ? { forgiveness: feeCtx.forgivenessBy.get(r.id) ?? [], deals: feeCtx.dealsBy.get(r.id) ?? [], lateFeePolicy: feeCtx.policy }
+        : {}),
     };
+    const plan = activeDailyPlan(dailyPlans.get(r.id) ?? null, today);
+    if (plan) {
+      // Daily rent (e.g. $50/day while weekly autopay is paused): owed = rate × ET days
+      // from startsOn through today, less rent paid since. Same rule as Bookings > Active.
+      const all = await admin.from("payments").select("type, reason, notes, amount, status, due_date, paid_date").eq("rental_id", r.id);
+      if (all.error) { errors++; continue; }
+      const standing = rentStanding({
+        today, nextPaymentDue: r.next_payment_due ?? null, weeklyRate: base.weeklyRate, dailyPlan: plan,
+        payments: (all.data ?? []).map((p: any) => ({ type: p.type, reason: p.reason, notes: p.notes, amount: p.amount, status: p.status, dueDate: p.due_date, paidDate: p.paid_date })),
+      });
+      states.push({
+        ...base, mode: "manual", dueDate: standing.nextDue, owing: standing.rentOwed > 0, rentOwed: standing.rentOwed,
+        dailyPlan: { rate: plan.dailyRate, startsOn: plan.startsOn },
+      });
+      continue;
+    }
     if (r.stripe_subscription_id) {
       let snap: StripeBillingSnapshot | null = null;
       try { snap = await stripeSnap(r.stripe_subscription_id); } catch { errors++; continue; }
@@ -335,6 +367,8 @@ export async function runRentReminders(admin: any, deps: ReminderDeps = {}): Pro
 
   for (const s of states) {
     run.examined++;
+    // Daily-rent renters are on a staff-run arrangement; weekly rent texts would quote the wrong amount.
+    if (s.dailyPlan) { bump(run, "daily_plan"); continue; }
     if (!s.dueDate) { bump(run, "no_due_date"); continue; }
     // A payment deal (staff or FLEET) pauses this renter's automatic notices.
     const pause = await (deps.pauseCheck ?? activePaymentPause)(admin, s.rentalId, now);

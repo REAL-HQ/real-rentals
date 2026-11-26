@@ -39,6 +39,7 @@ export type BillingRental = {
   applicationId: string | null;
   driverName: string;
   vehicleLabel: string;
+  vehicleId?: string | null;
 };
 
 export type BillingSubscription = {
@@ -66,6 +67,7 @@ export type BillingMismatch = {
   applicationId: string | null;
   driverName: string;
   vehicleLabel: string;
+  vehicleId?: string | null;
   subscriptionId: string | null;
   subscriptionStatus: string | null;
   customerId: string | null;

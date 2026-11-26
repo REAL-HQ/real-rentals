@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { EmptyState } from "./ui";
 import { assignCarFromBoard, listAssignableDrivers, listAvailableCars } from "@/lib/available-cars.functions";
 import { SLOT_LABELS } from "@/lib/photo-studio";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 type Car = Awaited<ReturnType<typeof listAvailableCars>>["cars"][number];
 
@@ -67,7 +68,7 @@ export function AvailableCarsBoard({ canAssign }: { canAssign: boolean }) {
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-sm font-medium">{c.weeklyRate != null ? `$${c.weeklyRate.toFixed(0)}/week` : "Rate not set"}</span>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline">{c.assigned ? "assigned" : c.status}</Badge>
+                    <Badge variant="outline">{formatStatusLabel(c.assigned ? "assigned" : c.status)}</Badge>
                     {canAssign && !c.assigned && <Button size="sm" onClick={() => openAssign(c)}>Assign</Button>}
                   </div>
                 </div>
@@ -87,7 +88,7 @@ export function AvailableCarsBoard({ canAssign }: { canAssign: boolean }) {
               <button key={d.id} className="w-full text-left py-2 px-1 hover:bg-muted text-sm" onClick={async () => {
                 const r = await assign({ data: { vehicleId: target!.id, driverId: d.id } });
                 if (!r.ok) toast.error(r.error); else { toast.success(`Assigned to ${d.name}.`); setTarget(null); await load(); }
-              }}>{d.name} <span className="text-muted-foreground">· {d.status}</span></button>
+              }}>{d.name} <span className="text-muted-foreground">· {formatStatusLabel(d.status)}</span></button>
             ))}
           </div>
         </DialogContent>

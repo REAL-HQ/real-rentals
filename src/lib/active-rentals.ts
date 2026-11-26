@@ -4,6 +4,8 @@
 // null so the board never prints a zero in place of a query that did not load.
 
 import { isIssueClosed } from "@/lib/driver-issues";
+import { isRentRow } from "@/lib/payment-category";
+import { rentStanding, type DailyRentPlan, type StandingPayment } from "@/lib/rent-standing";
 
 /** Same window the vehicle profile already uses for plate, registration, and insurance. */
 export const DOCUMENT_EXPIRING_DAYS = 45;
@@ -113,6 +115,8 @@ export type ActiveRentalSource = {
   applicationId: string | null;
   vehicleId: string | null;
   vehicleLabel: string;
+  vehicleVinLast6?: string | null;
+  vehicleUnit?: string | null;
   startDate: string;
   weeklyRate: number | null;
   nextPaymentDue: string | null;
@@ -126,6 +130,11 @@ export type PaymentFact = {
   createdAt: string;
   stripeInvoiceId: string | null;
   stripePaymentIntentId: string | null;
+  /** payments.type / reason / notes / amount: needed to tell rent from fees and to apply payments to weeks. */
+  type?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+  amount?: number | string | null;
 };
 
 export type IssueFact = {
@@ -149,12 +158,20 @@ export type ActiveRentalRow = {
   applicationId: string | null;
   vehicleId: string | null;
   vehicleLabel: string;
+  vehicleVinLast6?: string | null;
+  vehicleUnit?: string | null;
   thumbnailPath?: string | null;
   startDate: string;
   weeksIn: number | null;
   weeklyRate: number | null;
   nextPaymentDue: string | null;
   overdueDays: number | null;
+  /** "daily" when a daily rent plan is in force (app_settings.daily_rent_plans). */
+  cadence?: "weekly" | "daily";
+  /** Daily plan rate, dollars per ET day. */
+  dailyRate?: number | null;
+  /** Rent still owed now from the shared rent standing (no late fees). Null when payments did not load. */
+  rentOwed?: number | null;
   /** Null when the payments read failed or no payment row exists. */
   lastPaymentStatus: string | null;
   /** Null when the payments read failed or there is no payment to attribute. */
@@ -172,10 +189,25 @@ function paymentRank(payment: PaymentFact): string {
   return payment.createdAt || payment.paidDate || payment.dueDate || "";
 }
 
-function latestPayment(rentalId: string, payments: PaymentFact[]): PaymentFact | null {
-  const mine = payments.filter((p) => p.rentalId === rentalId);
-  if (!mine.length) return null;
-  return mine.reduce((best, row) => (paymentRank(row) > paymentRank(best) ? row : best));
+function isZeroAmount(payment: PaymentFact): boolean {
+  if (payment.amount == null || payment.amount === "") return false;
+  const amount = Number(payment.amount);
+  return Number.isFinite(amount) && amount <= 0.004;
+}
+
+/**
+ * The Due cell describes the period that is due, not the newest rent row.
+ * A later $0 trial invoice must not make that period read Paid.
+ * No positive-amount row on the due date reads Unpaid.
+ */
+export function duePeriodPayment(rentalId: string, payments: PaymentFact[], dueDate: string | null): PaymentFact | null {
+  if (!dueDate) return null;
+  const rent = payments.filter((p) => p.rentalId === rentalId && (p.type === undefined || isRentRow(p)) && !isZeroAmount(p));
+  const onPeriod = rent.filter((p) => dateOnly(p.dueDate) === dueDate);
+  if (!onPeriod.length) return null;
+  const paid = onPeriod.filter((p) => String(p.status ?? "").trim().toLowerCase() === "paid");
+  const pool = paid.length ? paid : onPeriod;
+  return pool.reduce((best, row) => (paymentRank(row) > paymentRank(best) ? row : best));
 }
 
 function countsForRental(
@@ -210,6 +242,8 @@ export function buildActiveRentalRows(args: {
   issues: ReadResult<IssueFact>;
   incidents: ReadResult<IncidentFact>;
   documentDates: ReadResult<{ rentalId: string; dates: Array<string | null | undefined> }>;
+  /** Daily rent plans by rental id (app_settings.daily_rent_plans). */
+  dailyPlans?: Map<string, DailyRentPlan>;
 }): ActiveRentalRow[] {
   const documentByRental = new Map<string, Array<string | null | undefined>>();
   if (args.documentDates.ok) {
@@ -217,9 +251,18 @@ export function buildActiveRentalRows(args: {
   }
   return sortActiveRentals(
     args.rentals.map((rental) => {
-      const payment = args.payments.ok ? latestPayment(rental.id, args.payments.rows) : null;
       const issueCount = args.issues.ok ? countsForRental(rental, args.issues.rows, []).openIssues : null;
       const incidentCount = args.incidents.ok ? countsForRental(rental, [], args.incidents.rows).openIncidents : null;
+      const plan = args.dailyPlans?.get(rental.id) ?? null;
+      const standing = args.payments.ok
+        ? rentStanding({
+            today: args.today,
+            nextPaymentDue: rental.nextPaymentDue,
+            weeklyRate: rental.weeklyRate,
+            payments: args.payments.rows.filter((p) => p.rentalId === rental.id).map(toStanding),
+            dailyPlan: plan,
+          })
+        : null;
       return {
         id: rental.id,
         driverId: rental.driverId,
@@ -227,19 +270,19 @@ export function buildActiveRentalRows(args: {
         applicationId: rental.applicationId,
         vehicleId: rental.vehicleId,
         vehicleLabel: rental.vehicleLabel,
+        ...(rental.vehicleVinLast6 ? { vehicleVinLast6: rental.vehicleVinLast6 } : {}),
+        ...(rental.vehicleUnit ? { vehicleUnit: rental.vehicleUnit } : {}),
         startDate: rental.startDate,
         weeksIn: weeksIn(rental.startDate, args.today),
         weeklyRate: rental.weeklyRate,
-        nextPaymentDue: dateOnly(rental.nextPaymentDue),
-        overdueDays: rentalOverdueDays(
-          rental.nextPaymentDue,
-          args.payments.ok ? oldestUnpaidDue(rental.id, args.payments.rows) : null,
-          args.today,
-        ),
-        lastPaymentStatus: !args.payments.ok ? null : payment?.status?.trim() || null,
-        lastPaymentViaStripe: !args.payments.ok || !payment
-          ? null
-          : Boolean(payment.stripeInvoiceId || payment.stripePaymentIntentId),
+        // One rule for Due and Overdue (rent-standing.ts): payments applied to their weeks,
+        // daily plans honored. Falls back to the raw dates only when payments did not load.
+        nextPaymentDue: standing ? standing.nextDue : dateOnly(rental.nextPaymentDue),
+        overdueDays: standing ? standing.overdueDays : overdueDays(rental.nextPaymentDue, args.today),
+        cadence: standing?.cadence ?? "weekly",
+        dailyRate: standing?.daily?.rate ?? null,
+        rentOwed: standing ? standing.rentOwed : null,
+        ...duePeriodLabel(args.payments.ok, rental.id, args.payments.ok ? args.payments.rows : [], standing ? standing.nextDue : dateOnly(rental.nextPaymentDue)),
         paymentsLoaded: args.payments.ok,
         openIssues: issueCount,
         openIncidents: incidentCount,
@@ -249,6 +292,37 @@ export function buildActiveRentalRows(args: {
       };
     }),
   );
+}
+
+function duePeriodLabel(
+  loaded: boolean,
+  rentalId: string,
+  payments: PaymentFact[],
+  dueDate: string | null,
+): { lastPaymentStatus: string | null; lastPaymentViaStripe: boolean | null } {
+  if (!loaded) return { lastPaymentStatus: null, lastPaymentViaStripe: null };
+  if (!dueDate) return { lastPaymentStatus: null, lastPaymentViaStripe: null };
+  const payment = duePeriodPayment(rentalId, payments, dueDate);
+  if (!payment) return { lastPaymentStatus: "unpaid", lastPaymentViaStripe: false };
+  return {
+    lastPaymentStatus: payment.status?.trim() || "unpaid",
+    lastPaymentViaStripe: Boolean(payment.stripeInvoiceId || payment.stripePaymentIntentId),
+  };
+}
+
+function toStanding(p: PaymentFact): StandingPayment {
+  return {
+    type: p.type === undefined ? "rent" : p.type,
+    reason: p.reason ?? null,
+    notes: p.notes ?? null,
+    status: p.status,
+    amount: p.amount ?? 0,
+    dueDate: p.dueDate,
+    paidDate: p.paidDate,
+    createdAt: p.createdAt,
+    stripeInvoiceId: p.stripeInvoiceId,
+    stripePaymentIntentId: p.stripePaymentIntentId,
+  };
 }
 
 /** Overdue first, then open driver issues, then everyone else. */
@@ -291,6 +365,21 @@ export function overdueLabel(days: number | null): string {
   if (days == null) return "No Due Date";
   if (days <= 0) return "Current";
   return days === 1 ? "1 Day" : `${days} Days`;
+}
+
+export type DueBadge = "none" | "overdue" | "due" | "current";
+
+/**
+ * Status pill for the payment due date.
+ * A due date on today's Eastern calendar day is Due, not Current.
+ * A later day stays Current. Days already past stay overdue.
+ */
+export function dueBadge(days: number | null, due: string | null | undefined, today: string): DueBadge {
+  const day = dateOnly(due);
+  if (days == null && !day) return "none";
+  if ((days ?? 0) > 0) return "overdue";
+  if (day === today) return "due";
+  return "current";
 }
 
 export function formatWeeklyRate(amount: number | null): string {

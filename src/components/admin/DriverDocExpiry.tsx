@@ -4,6 +4,7 @@ import {
   DRIVER_DOC_EXPIRY_SEPARATE_TNC,
   type DriverDocExpiryResult,
 } from "@/lib/driver-doc-expiry-column";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 const LABELS: Record<string, string> = {
   expired: "Expired",
@@ -16,7 +17,7 @@ const LABELS: Record<string, string> = {
 };
 
 const TONES: Record<string, string> = {
-  expired: "bg-red-100 text-red-800",
+  expired: DANGER_BADGE,
   expiring: "bg-amber-100 text-amber-800",
   ok: "bg-emerald-100 text-emerald-800",
   unknown: "bg-[#F2F2F4] text-[#55555E]",

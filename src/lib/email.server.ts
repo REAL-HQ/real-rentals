@@ -6,7 +6,10 @@ import { fmtDate, formatReservationTime } from "@/lib/date-format";
 
 /** Canonical renter-facing sender identity. The only place it is defined. */
 import { PORTAL_PAY_URL } from "@/lib/portal-pay-link";
+import { driverRecordPath } from "@/lib/admin-record-links";
 import { findDisallowedOutboundUrls, outboundRefusalMessage, publicAppUrl } from "@/lib/public-app-url";
+import { isMissingColumnError } from "@/lib/db-errors";
+export { isMissingColumnError };
 
 export const EMAIL_FROM = "REAL RENTALS <team@drivereal.com>";
 /** Canonical Reply-To for every renter/customer email. Never hello@ or go@. */
@@ -24,6 +27,8 @@ export function resolvedEmailFrom(): string {
 
 type SendArgs = {
   to: string | string[];
+  /** Copied recipients. Omitted by every existing caller, so their Resend body is unchanged. */
+  cc?: string[];
   subject: string;
   html: string;
   from?: string;
@@ -35,8 +40,8 @@ type SendArgs = {
    * Resend webhook can later mark it delivered/bounced/complained. Without
    * it the send is untracked and "accepted" is all anyone will ever know.
    */
-  track?: { workflow: string };
-  /** Stable key for a reserved recovery attempt. Omitted by every other sender. */
+  track?: { workflow: string; meta?: Record<string, unknown> };
+  /** Stable key for a reserved recovery attempt or a lead alert. Omitted by every other sender. */
   idempotencyKey?: string;
   /**
    * Driver notices set this. Live sends omit it, so the Resend fetch is the
@@ -45,7 +50,15 @@ type SendArgs = {
   noticeTimeout?: boolean;
   /** Combined with the 5s notice abort. Live sends omit noticeTimeout, so this is ignored. */
   signal?: AbortSignal;
+  /**
+   * Files attached to the email (Resend `attachments`, base64 content). Only
+   * the signed-agreement emails use this (signed-agreement-pdf.server.ts).
+   * Omitted everywhere else, so those requests are unchanged.
+   */
+  attachments?: EmailAttachment[];
 };
+
+export type EmailAttachment = { filename: string; content: string; contentType?: string };
 
 export type SendResult = {
   ok: boolean;
@@ -59,7 +72,7 @@ export type SendResult = {
    * "off": the Owner switched it off. "held": the switches could not be read,
    * so it was held (recorded as failed "Held: ...") and may be retried.
    */
-  blocked?: "off" | "held";
+  blocked?: "off" | "held" | "blacklisted" | "bounced";
   retriable?: boolean;
 };
 
@@ -83,14 +96,31 @@ async function recordHeldDelivery(workflow: string, recipient: string): Promise<
  */
 // Create the tracking row BEFORE calling Resend, so a webhook can never race
 // ahead of persistence. The row starts as "sending" with no provider id.
-async function beginEmailDelivery(track: { workflow: string }, recipient: string): Promise<string | undefined> {
+async function beginEmailDelivery(
+  track: { workflow: string; meta?: Record<string, unknown> },
+  recipient: string,
+  subject?: string,
+): Promise<string | undefined> {
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await supabaseAdmin
-      .from("email_deliveries")
-      .insert({ workflow: track.workflow, recipient, state: "sending" })
-      .select("id")
-      .single();
+    const base = { workflow: track.workflow, recipient, state: "sending" };
+    // subject/meta let the Resend webhook and the lead-alert sweep match a row
+    // whose request was cut off (migration 20261122200000). Until that
+    // migration is applied the columns do not exist: fall back to the base row.
+    if (deliveryExtrasSupported !== false) {
+      const { data, error } = await (supabaseAdmin as any)
+        .from("email_deliveries")
+        .insert({ ...base, subject: subject ? subject.slice(0, 300) : null, meta: track.meta ?? null })
+        .select("id")
+        .single();
+      if (!error) {
+        deliveryExtrasSupported = true;
+        return data?.id;
+      }
+      if (!isMissingColumnError(error)) throw error;
+      deliveryExtrasSupported = false;
+    }
+    const { data, error } = await supabaseAdmin.from("email_deliveries").insert(base as any).select("id").single();
     if (error) throw error;
     return data?.id;
   } catch (err) {
@@ -98,6 +128,9 @@ async function beginEmailDelivery(track: { workflow: string }, recipient: string
     return undefined;
   }
 }
+
+/** null = not probed yet in this isolate. */
+let deliveryExtrasSupported: boolean | null = null;
 
 // Finish the row: attach the exact Resend email id (atomically folding in any
 // placeholder an early webhook created), or mark it failed.
@@ -138,7 +171,37 @@ function noticeFetchSignal(noticeTimeout: boolean | undefined, signal: AbortSign
   return signal ? AbortSignal.any([timeout, signal]) : timeout;
 }
 
-export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout, signal }: SendArgs): Promise<SendResult> {
+/** Every address a send will touch. Cc is included so blacklist and suppression see it. */
+export function emailRecipients(to: string | string[], cc?: string[]): string[] {
+  return [...(Array.isArray(to) ? to : [to]), ...(cc ?? [])].map((s) => String(s ?? "").trim()).filter(Boolean);
+}
+
+/** The JSON Resend receives. No `cc` key unless a copy was asked for. */
+export function buildResendPayload(args: {
+  from: string;
+  to: string[];
+  cc?: string[];
+  subject: string;
+  html: string;
+  text: string;
+  replyTo: string;
+  attachments?: EmailAttachment[];
+}): Record<string, unknown> {
+  return {
+    from: args.from,
+    to: args.to,
+    subject: args.subject,
+    html: args.html,
+    text: args.text,
+    reply_to: args.replyTo,
+    ...(args.cc && args.cc.length ? { cc: args.cc } : {}),
+    ...(args.attachments?.length
+      ? { attachments: args.attachments.map((f) => ({ filename: f.filename, content: f.content, ...(f.contentType ? { content_type: f.contentType } : {}) })) }
+      : {}),
+  };
+}
+
+export async function sendEmail({ to, cc, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout, signal, attachments }: SendArgs): Promise<SendResult> {
   // Company phone in templates resolves from Settings → Business Phone.
   let html = rawHtml;
   if (html.includes("{{company_phone}}")) {
@@ -167,6 +230,42 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
       return { ok: false, blocked: "held", retriable: true, error: "Held: automation settings could not be read. Not sent." };
     }
   }
+  // Blacklisted renters get no automated email, ever. A staff member writing to
+  // them (staff_message) and internal team notifications are not affected.
+  {
+    const wf = track?.workflow ?? "";
+    if (wf !== "staff_message" && !STAFF_WORKFLOWS.has(wf)) {
+      const recipients = emailRecipients(to, cc);
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { isBlacklistSuppressed, BLACKLIST_SUPPRESSED_ERROR } = await import("@/lib/blacklist.server");
+      for (const r of recipients) {
+        if (await isBlacklistSuppressed(supabaseAdmin, { email: r })) {
+          console.info("[email] recipient is blacklisted; automated email suppressed", { workflow: wf || null });
+          return { ok: false, blocked: "blacklisted", error: BLACKLIST_SUPPRESSED_ERROR };
+        }
+      }
+    }
+  }
+  // Bad addresses get no automated email: a past bounce or complaint, a typo
+  // domain (gmail.vom) or a test domain (.invalid). Staff writing by hand,
+  // sign-in emails a person asks for, and internal team notifications are not
+  // affected. Same rule as Missing-Items Outreach (email-suppression.ts).
+  {
+    const wf = track?.workflow ?? "";
+    const { BAD_EMAIL_EXEMPT_WORKFLOWS, BAD_EMAIL_SUPPRESSED_ERROR } = await import("@/lib/email-suppression");
+    if (!STAFF_WORKFLOWS.has(wf) && !BAD_EMAIL_EXEMPT_WORKFLOWS.has(wf)) {
+      const recipients = emailRecipients(to, cc);
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { badEmailForAddress } = await import("@/lib/email-suppression.server");
+      for (const r of recipients) {
+        const reason = await badEmailForAddress(supabaseAdmin, r);
+        if (reason) {
+          console.info("[email] bad recipient address; automated email suppressed", { workflow: wf || null, reason });
+          return { ok: false, blocked: "bounced", error: BAD_EMAIL_SUPPRESSED_ERROR };
+        }
+      }
+    }
+  }
   const text = htmlToText(html);
   const blocked = findDisallowedOutboundUrls(subject, html, text)[0];
   if (blocked) {
@@ -180,7 +279,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     return { ok: false, error: "RESEND_API_KEY is not set in this environment." };
   }
   const recipient = Array.isArray(to) ? (to[0] ?? "") : to;
-  const deliveryId = track ? await beginEmailDelivery(track, recipient) : undefined;
+  const deliveryId = track ? await beginEmailDelivery(track, recipient, subject) : undefined;
   const done = async (result: SendResult): Promise<SendResult> => {
     if (deliveryId) {
       await finishEmailDelivery(deliveryId, result);
@@ -197,14 +296,16 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
         "Content-Type": "application/json",
         ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
-      body: JSON.stringify({
+      body: JSON.stringify(buildResendPayload({
         from: from ?? resolvedEmailFrom(),
         to: Array.isArray(to) ? to : [to],
+        cc,
         subject,
         html,
         text,
-        reply_to: replyTo ?? EMAIL_REPLY_TO,
-      }),
+        replyTo: replyTo ?? EMAIL_REPLY_TO,
+        attachments,
+      })),
       ...(noticeSignal ? { signal: noticeSignal } : {}),
     });
     if (!res.ok) {
@@ -228,7 +329,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
   }
 }
 
-const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue", "payment_team_alert", "collections_plan", "duplicate_subscription_alert"]);
+const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue", "payment_team_alert", "collections_plan", "duplicate_subscription_alert", "phone_match_email_differs", "fee_paid_no_pickup"]);
 
 /** Why this recipient got this email — accurate per workflow, never promotional. */
 export function emailReason(workflow: string | undefined): string {
@@ -237,6 +338,7 @@ export function emailReason(workflow: string | undefined): string {
   if (workflow === "approval_confirmation") return "You received this because your REAL RENTALS driver application was approved.";
   if (workflow === "signup_confirm") return "You received this because you created a REAL RENTALS account.";
   if (workflow.startsWith("application")) return "You received this because you started a driver application with REAL RENTALS.";
+  if (workflow === "esign_standalone_delivered") return "You received this because a document was signed with REAL RENTALS.";
   if (workflow.startsWith("esign")) return "You received this because a REAL RENTALS rental agreement was prepared for you.";
   if (workflow.startsWith("payment") || workflow.startsWith("rent_reminder") || workflow === "card_expiring") return "You received this because you have a rental account with REAL RENTALS.";
   return "You received this email from REAL RENTALS about your application, account or rental.";
@@ -291,7 +393,18 @@ type LeadEmailArgs = {
   sms_consent: boolean | null;
   source: string | null;
   adminBaseUrl?: string;
+  /** The stuck lead_alert row this send replaces (lead-alert-sweep.server.ts). Sent at most once. */
+  retryOf?: string;
 };
+
+/**
+ * One alert per applicant per event. Resend keeps an idempotency key for 24
+ * hours, so a sweep resend of an alert that did reach Resend is not delivered
+ * twice. Previews never reach Resend (capturePreviewEmail).
+ */
+export function leadAlertIdempotencyKey(applicationId: string, event: "new" | "complete"): string {
+  return `lead-alert/${applicationId}/${event}`;
+}
 
 // -----------------------------------------------------------------------------
 // Where applicant alerts go
@@ -385,11 +498,11 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
   const marketLabel = market || city || "—";
   const subject =
     event === "complete"
-      ? `Wizard Completed: ${name}`
+      ? `New Applicant: ${name}`
       : `New Driver Lead: ${name} — ${marketLabel}`;
 
   const base = args.adminBaseUrl || "https://drivereal.com";
-  const adminLink = `${base}/admin?driver=${applicationId}`;
+  const adminLink = `${base}${driverRecordPath(applicationId)}`;
   const telHref = phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : null;
   const mailHref = email ? `mailto:${email}` : null;
   const platformsStr = platforms && platforms.length ? platforms.join(", ") : "—";
@@ -415,7 +528,7 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
     )
     .join("");
 
-  const heading = event === "complete" ? "Wizard Completed" : "New Driver Lead";
+  const heading = event === "complete" ? "New Applicant" : "New Driver Lead";
 
   const html = `<!doctype html>
 <html><body style="margin:0;background:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
@@ -448,7 +561,16 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
     console.error("[email] lead alert has no recipient; check Settings -> Notifications");
     return;
   }
-  await sendEmail({ to: prefs.recipients, subject, html, track: { workflow: "lead_alert" } });
+  await sendEmail({
+    to: prefs.recipients,
+    subject,
+    html,
+    idempotencyKey: leadAlertIdempotencyKey(applicationId, event),
+    track: {
+      workflow: "lead_alert",
+      meta: { applicationId, event, ...(args.retryOf ? { retry_of: args.retryOf } : {}) },
+    },
+  });
 }
 
 /**
@@ -567,8 +689,9 @@ export async function sendApplicationResumeEmail(args: {
 }
 
 /**
- * Approved/active applicants: point them at /login instead of a resume token.
- * Email is prefilled only; no auto-login and no account creation from this mail.
+ * Renters who picked up (t466u): point them at /login instead of a resume
+ * token. Email is prefilled only; no auto-login and no account creation from
+ * this mail. Before pickup they get sendDocumentsLinkEmail instead.
  */
 export async function sendPortalHandoffEmail(args: {
   to: string;
@@ -579,16 +702,48 @@ export async function sendPortalHandoffEmail(args: {
   const { portalLoginUrl } = await import("@/lib/portal-handoff");
   const url = portalLoginUrl(args.email);
   const html = shell(`
-      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">You're Approved — Sign In To Your Account</h1>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Hi ${escapeHtml(name)}, your application is approved. Sign in to your REAL RENTALS account to upload documents, sign your agreement, and finish setup. No password needed — we'll email you a sign-in code.</p>
-      <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Sign In To Your Account</a>
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Sign In To Your Driver Portal</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Hi ${escapeHtml(name)}, your rental is underway. Sign in to your driver portal to see your payments and receipts, your signed agreement and your documents. No password needed — we'll email you a sign-in code.</p>
+      <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Sign In To Your Driver Portal</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${url}</span></p>`);
   return sendEmail({
     to: args.to,
-    subject: "You're Approved — Sign In To Your REAL RENTALS Account",
+    subject: "Sign In To Your REAL RENTALS Driver Portal",
     html,
     replyTo: EMAIL_REPLY_TO,
     track: { workflow: "portal_handoff" },
+  });
+}
+
+/**
+ * Before pickup (t466u): the secure link for documents, sent instead of any
+ * portal sign-in. Single-use 30-minute link, exchanged for the normal secure
+ * session when opened. Contains no login details.
+ */
+export async function sendDocumentsLinkEmail(args: {
+  to: string;
+  firstName: string | null;
+  applicationId: string;
+  /** The name just typed into a form, when this send came from one (same rule as the resume email). */
+  submittedName?: string | null;
+}): Promise<SendResult> {
+  const name = resumeGreetingName(args.firstName, args.submittedName) || "there";
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { issueResumeToken, resumeUrl: buildUrl, RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
+  const url = buildUrl(await issueResumeToken(supabaseAdmin, args.applicationId, { recovery: true }));
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Secure Documents Link</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, here's your secure link to upload or replace documents, like a clearer photo of your driver's license or a new insurance card.</p>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Your driver portal opens once your rental is paid at pickup. We'll email your login then. For your security this link works once and expires in ${RECOVERY_TOKEN_MINUTES} minutes — you can always request a new one.</p>
+      <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update My Documents</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${url}</span></p>
+      <p style="color:#888;font-size:12px;margin:16px 0 0;line-height:1.5">If that wasn't you, you can ignore this email — nothing on your application has changed.</p>`);
+  return sendEmail({
+    to: args.to,
+    subject: "Your REAL RENTALS Secure Documents Link",
+    html,
+    replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "documents_link" },
   });
 }
 
@@ -684,7 +839,8 @@ export async function sendApprovalConfirmationEmail(args: {
         ? p(`Hi ${escapeHtml(name)}, your application is approved. Your rental agreement is on its way to this email; sign it${fee.enabled ? ` and pay the $${Number.isInteger(fee.amount) ? fee.amount : fee.amount.toFixed(2)} Reservation Fee` : ""} to lock in your car.`, true)
         : `${p(`Hi ${escapeHtml(name)}, you're approved to move forward. Next, we'll confirm your rental terms by phone and send your agreement.`)}
       ${p("Our team will be in touch to assign a vehicle and schedule your pickup.")}
-      ${p("No vehicle is reserved yet. We'll send your driver portal login and pickup details once your reservation is confirmed.", true)}`}`);
+      ${p("No vehicle is reserved yet. We'll send your pickup details once your reservation is confirmed.")}
+      ${p("Once your rental is paid at pickup, we'll email your driver portal login.", true)}`}`);
   return sendEmail({
     to: args.to,
     subject: "Your REAL RENTALS Application Is Approved",
@@ -692,6 +848,30 @@ export async function sendApprovalConfirmationEmail(args: {
     replyTo: EMAIL_REPLY_TO,
     track: { workflow: "approval_confirmation" },
     idempotencyKey: `approval-confirmation-${args.applicationId}`,
+  });
+}
+
+/** Short decision notice. The internal decline reason is never included. */
+export async function sendApplicationDeclinedEmail(args: {
+  to: string;
+  firstName: string | null;
+  applicationId: string;
+  companyPhone: string;
+}): Promise<SendResult> {
+  const { declineApplicantEmailText } = await import("@/lib/fleet-profile-note");
+  const copy = declineApplicantEmailText(args.firstName, args.companyPhone);
+  const p = (t: string, last = false) => `<p style="color:#444;font-size:15px;line-height:1.55;margin:0${last ? "" : " 0 16px"}">${t}</p>`;
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Application Update</h1>
+      ${p(escapeHtml(copy.greeting))}
+      ${p(escapeHtml(copy.body), true)}`);
+  return sendEmail({
+    to: args.to,
+    subject: copy.subject,
+    html,
+    replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "application_declined" },
+    idempotencyKey: `application-declined-${args.applicationId}`,
   });
 }
 
@@ -1115,52 +1295,38 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<S
 // Rental agreements (e-signature)
 // -----------------------------------------------------------------------------
 
-type AgreementSendArgs = { to: string; firstName: string | null; url: string; vehicle: string | null };
+type AgreementSendArgs = { to: string; firstName: string | null; url: string; vehicle: string | null; document?: boolean };
 
 /**
- * "Your pickup is reserved — set up your portal."
+ * "Your pickup is booked." Sent once, when Reserved saves the confirmed
+ * pickup appointment (staff, FLEET, or the renter picking a time after the
+ * Reservation Fee).
  *
- * Sent once, after Reserved saves the confirmed pickup appointment. A
- * returning driver never gets it: they already have a password, and a second
- * set-password link would reset an account they were already signed into.
- *
- * inviteUrl is a one-time Supabase recovery link. When it could not be minted
- * the mail still goes out pointing at the portal, where Forgot Password gets
- * them the same place.
+ * No login details (t463u / t466u): no set-password link, no portal button.
+ * The Driver Portal opens only at pickup, and sendPortalWelcomeEmail is the
+ * one email that carries the login.
  */
-export async function sendPortalInviteEmail(args: {
+export async function sendPickupBookedEmail(args: {
   to: string;
   firstName: string | null;
-  inviteUrl: string | null;
-  reservation?: {
+  reservation: {
     pickupDate: string;
     pickupTime: string;
     pickupLocation: string;
     vehicle: string | null;
   };
-}): Promise<void> {
+}): Promise<SendResult> {
   // Wording: SOP P36 (D13, decided Nov 16 2026): list order, "license", what to
   // bring and the pickup rules. Never names an insurance broker or carrier.
   const name = escapeHtml(args.firstName || "there");
-  const url = escapeHtml(args.inviteUrl || publicAppUrl("/login"));
   const reservation = args.reservation;
   const p = (t: string) => `<p>${t}</p>`;
   let feeLine = "";
-  if (reservation) {
-    try {
-      const fee = await reservationFeeForEmail();
-      if (fee.enabled) feeLine = p(`Your $${Number.isInteger(fee.amount) ? fee.amount : fee.amount.toFixed(2)} Reservation Fee goes toward your first week's rent.`);
-    } catch { /* no fee line */ }
-  }
-  const button = `
-      <p style="margin:26px 0">
-        <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">
-          ${args.inviteUrl ? "Set Your Password" : "Open Your Portal"}
-        </a>
-      </p>`;
-  const portal = p("In your driver portal you can upload documents, keep your contact details current and see your payments. Insurance is included in your weekly rate.");
-  const html = reservation
-    ? `
+  try {
+    const fee = await reservationFeeForEmail();
+    if (fee.enabled) feeLine = p(`Your $${Number.isInteger(fee.amount) ? fee.amount : fee.amount.toFixed(2)} Reservation Fee goes toward your first week's rent.`);
+  } catch { /* no fee line */ }
+  const html = `
       <p>Hi ${name},</p>
       <p>Your pickup is booked.</p>
       <p><strong>Pickup:</strong> ${escapeHtml(fmtDate(reservation.pickupDate))} at ${escapeHtml(formatReservationTime(reservation.pickupTime))}<br>
@@ -1172,28 +1338,65 @@ export async function sendPortalInviteEmail(args: {
         <li>Your insurance card is handed to you at pickup, not before.</li>
         <li>Set up your rideshare account after pickup, once your rental is paid.</li>
       </ul>
-      ${feeLine}${button}${portal}
-      <p>— REAL RENTALS · (888) 833-8280</p>
-    `
-    : `
-      <p>Hi ${name},</p>
-      <p>Your REAL RENTALS driver portal is ready.</p>
-      ${button}${portal}
-      <p>We'll let you know as soon as a vehicle is assigned to you.</p>
+      ${feeLine}
+      ${p("Once your rental is paid at pickup, we'll email your driver portal login.")}
       <p>— REAL RENTALS · (888) 833-8280</p>
     `;
-  await sendEmail({
+  return sendEmail({
     to: args.to,
-    subject: reservation
-      ? `Your Pickup Is Booked: ${fmtDate(reservation.pickupDate)} at ${formatReservationTime(reservation.pickupTime)}`
-      : "Set Up Your REAL RENTALS Driver Portal",
+    subject: `Your Pickup Is Booked: ${fmtDate(reservation.pickupDate)} at ${formatReservationTime(reservation.pickupTime)}`,
     html,
-    track: { workflow: "portal_invite" },
+    track: { workflow: "pickup_booked" },
+  });
+}
+
+/**
+ * "Welcome To Your Driver Portal." The ONE email that carries portal login
+ * details (t463u / t466u), sent automatically once the renter has picked up
+ * and the pickup rent is paid (portal-welcome.server.ts). Never for the
+ * Reservation Fee.
+ *
+ * setPasswordUrl is a one-time Supabase recovery link to /set-password. When
+ * it could not be minted the button opens /login, where the sign-in code or
+ * Forgot Password gets them in.
+ */
+export async function sendPortalWelcomeEmail(args: {
+  to: string;
+  firstName: string | null;
+  setPasswordUrl: string | null;
+  vehicle: string | null;
+  applicationId: string;
+}): Promise<SendResult> {
+  const name = escapeHtml((args.firstName || "").trim().split(/\s+/)[0] || "there");
+  const loginUrl = publicAppUrl("/login");
+  const button = escapeHtml(args.setPasswordUrl || loginUrl);
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Welcome To Your Driver Portal</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${name}, your rental is paid${args.vehicle ? ` and your <strong>${escapeHtml(args.vehicle)}</strong> is yours to drive` : ""}. Your driver portal is ready.</p>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">In your portal you can see your payments and receipts, your signed agreement, your insurance card and your documents, report an issue, and keep your details current.</p>
+      <a href="${button}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">${args.setPasswordUrl ? "Set Your Password" : "Sign In To Your Driver Portal"}</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">${args.setPasswordUrl ? "This set-password link works once. " : ""}You can always sign in at <span style="color:#555;word-break:break-all">${escapeHtml(loginUrl)}</span> with a one-time code sent to this email.</p>`);
+  return sendEmail({
+    to: args.to,
+    subject: "Welcome To Your REAL RENTALS Driver Portal",
+    html,
+    replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "portal_welcome" },
+    idempotencyKey: `portal-welcome-${args.applicationId}`,
   });
 }
 
 export async function sendAgreementEmail(args: AgreementSendArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  if (args.document) {
+    const { SIGNING_REQUEST_SUBJECT, signingRequestMessage } = await import("@/lib/standalone-doc");
+    const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${SIGNING_REQUEST_SUBJECT}</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(signingRequestMessage(args.firstName))}</p>
+      <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Review And Sign</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span><br>This secure link expires in 30 days.</p>`);
+    return sendEmail({ to: args.to, subject: SIGNING_REQUEST_SUBJECT, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
+  }
   const vehicleLine = args.vehicle
     ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Vehicle: <strong>${escapeHtml(args.vehicle)}</strong></p>`
     : "";
@@ -1204,6 +1407,31 @@ export async function sendAgreementEmail(args: AgreementSendArgs): Promise<SendR
       <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Review &amp; Sign Agreement</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span><br>This secure link expires in 30 days.</p>`);
   return sendEmail({ to: args.to, subject: "Your REAL RENTALS Rental Agreement Is Ready To Sign", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
+}
+
+/** Signed third-party PDF. Insurer is To; team@ and any other copies are Cc. */
+export async function sendSignedDocumentEmail(args: {
+  to: string;
+  cc?: string[];
+  title: string;
+  signerName: string;
+  copyFor: "insurer" | "renter";
+  attachment?: EmailAttachment | null;
+}): Promise<SendResult> {
+  const { signedDocumentSubject, signedDocumentMessage } = await import("@/lib/standalone-doc");
+  const message = signedDocumentMessage({ title: args.title, signerName: args.signerName, copyFor: args.copyFor });
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Signed Document</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(message)}</p>`);
+  return sendEmail({
+    to: args.to,
+    cc: args.cc,
+    subject: signedDocumentSubject(args.title),
+    html,
+    replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "esign_standalone_delivered", meta: { copy: args.copyFor } },
+    ...(args.attachment ? { attachments: [args.attachment] } : {}),
+  });
 }
 
 export async function sendAgreementSignedEmail(args: {
@@ -1218,6 +1446,14 @@ export async function sendAgreementSignedEmail(args: {
   reservationFeePay?: { url: string; amount: number } | null;
   /** An updated agreement for an active rental: when the new rate starts. */
   amendmentLine?: string | null;
+  /**
+   * The agreement prints a Reservation Fee but its payment link could not be
+   * created at signing. The email must not say "You're All Set"; it says the
+   * payment link follows (staff get the alert in the ops email).
+   */
+  reservationFeeLinkPending?: { amount: number } | null;
+  /** The signed agreement PDF (signed-agreement-pdf.server.ts), when it is available. */
+  attachment?: EmailAttachment | null;
 }): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   if (args.amendmentLine !== undefined) {
@@ -1225,11 +1461,14 @@ export async function sendAgreementSignedEmail(args: {
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Updated Agreement Signed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Thanks ${escapeHtml(name)}. Your updated rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} is signed and saved to your driver file, next to your original agreement.</p>${args.amendmentLine ? `
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(args.amendmentLine)}</p>` : ""}`);
-    await sendEmail({ to: args.to, subject: "Your REAL RENTALS Updated Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" } });
+    await sendEmail({ to: args.to, subject: "Your REAL RENTALS Updated Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" }, ...(args.attachment ? { attachments: [args.attachment] } : {}) });
     return;
   }
   const money = args.payment ? args.payment.amount.toLocaleString("en-US", { style: "currency", currency: "USD" }) : "";
-  const pay = args.reservationFeeLine
+  const pendingFee = !args.reservationFeeLine && args.reservationFeeLinkPending && args.reservationFeeLinkPending.amount > 0 ? args.reservationFeeLinkPending : null;
+  const pay = pendingFee
+    ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(reservationFeeLinkPendingLine(pendingFee.amount))}</p>`
+    : args.reservationFeeLine
     ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(args.reservationFeeLine)}</p>${args.reservationFeePay && /^https:\/\//i.test(args.reservationFeePay.url) ? `
       <a href="${escapeHtml(args.reservationFeePay.url)}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay ${escapeHtml(args.reservationFeePay.amount.toLocaleString("en-US", { style: "currency", currency: "USD" }))} Reservation Fee</a>` : ""}`
     : args.payment
@@ -1243,23 +1482,40 @@ export async function sendAgreementSignedEmail(args: {
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0">We'll send you access to your driver portal when your account is ready.</p>`;
   // While the Reservation Fee is unpaid the car is not held yet, so the heading
   // says so (card t315s1710) instead of "You're All Set".
-  const feeUnpaid = !!(args.reservationFeePay && /^https:\/\//i.test(args.reservationFeePay.url));
+  const feeUnpaid = !!(args.reservationFeePay && /^https:\/\//i.test(args.reservationFeePay.url)) || !!pendingFee;
   const heading = feeUnpaid ? "One Last Step: Reserve Your Car" : "Agreement Signed — You're All Set";
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${heading}</h1>
       ${pay}
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:16px 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} ${tail}`);
-  await sendEmail({ to: args.to, subject: feeUnpaid ? "Your REAL RENTALS Agreement Is Signed: One Last Step" : "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" } });
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:16px 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} ${tail}${args.attachment ? `
+      <p style="color:#666;font-size:13px;line-height:1.5;margin:14px 0 0">A copy of your signed agreement is attached as a PDF.</p>` : ""}`);
+  await sendEmail({ to: args.to, subject: feeUnpaid ? "Your REAL RENTALS Agreement Is Signed: One Last Step" : "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" }, ...(args.attachment ? { attachments: [args.attachment] } : {}) });
 }
 
-export async function sendAgreementSignedOpsEmail(args: { driverName: string; applicationId: string; vehicle: string | null; amendment?: boolean }): Promise<void> {
-  const url = `https://drivereal.com/admin?driver=${encodeURIComponent(args.applicationId)}`;
+/** Renter copy when the Reservation Fee link could not be created at signing (staff are alerted). */
+export function reservationFeeLinkPendingLine(amount: number): string {
+  return `Next step: your $${amount.toFixed(2)} Reservation Fee holds your car and is 100% applied to your first week's rent. We'll send you a secure payment link shortly.`;
+}
+
+export async function sendAgreementSignedOpsEmail(args: {
+  driverName: string;
+  applicationId: string;
+  vehicle: string | null;
+  amendment?: boolean;
+  /** The Reservation Fee payment link could not be created at signing: staff must send one. */
+  reservationFeeProblem?: { amount: number; reason: string } | null;
+  /** The signed agreement PDF, when available. */
+  attachment?: EmailAttachment | null;
+}): Promise<void> {
+  const url = `https://drivereal.com${driverRecordPath(args.applicationId)}`;
   const what = args.amendment ? "updated rental agreement (amendment)" : "rental agreement";
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:20px;color:#111">${args.amendment ? "Updated Agreement Signed" : "Rental Agreement Signed"}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px"><strong>${escapeHtml(args.driverName)}</strong> signed their ${what}${args.vehicle ? ` · ${escapeHtml(args.vehicle)}` : ""}.</p>
+      ${args.reservationFeeProblem ? `<p style="color:#B42318;background:#FEF3F2;border:1px solid #FECDCA;border-radius:8px;padding:10px 12px;font-size:14px;line-height:1.5;margin:0 0 12px"><strong>Action needed:</strong> the $${args.reservationFeeProblem.amount.toFixed(2)} Reservation Fee payment link was NOT created (${escapeHtml(args.reservationFeeProblem.reason)}). The renter was not sent to checkout. Open the driver record, use Payment Card → Copy Reservation Fee Link, and send it to them.</p>` : ""}
+      <p style="color:#666;font-size:13px;line-height:1.5;margin:0 0 12px">${args.attachment ? "The signed agreement is attached as a PDF." : "The signed PDF was not ready to attach; it is on the driver record."}</p>
       <a href="${url}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Driver Record</a>`);
-  await sendEmail({ to: DEFAULT_OPS_INBOX, subject: `${args.amendment ? "Signed Updated Agreement" : "Signed Agreement"} — ${args.driverName}`, html, track: { workflow: "esign_signed_ops" } });
+  await sendEmail({ to: DEFAULT_OPS_INBOX, subject: `${args.reservationFeeProblem ? "ACTION NEEDED: " : ""}${args.amendment ? "Signed Updated Agreement" : "Signed Agreement"} — ${args.driverName}`, html, track: { workflow: "esign_signed_ops" }, ...(args.attachment ? { attachments: [args.attachment] } : {}) });
 }
 
 /**
