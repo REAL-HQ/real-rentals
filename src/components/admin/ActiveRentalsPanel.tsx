@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { EmptyState } from "./ui";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { VehicleCell } from "./VehicleCell";
+import { OPEN_COLUMN, ROW_MENU_COLUMN } from "./open-column";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,20 +57,21 @@ function isAbortError(e: unknown): boolean {
   );
 }
 
-export function ActiveRentalsPanel() {
+export function ActiveRentalsPanel({ previewRows }: { previewRows?: ActiveRentalRow[] } = {}) {
   const navigate = useNavigate();
   const fetchBoard = useServerFn(listActiveRentals);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
-  const [rows, setRows] = useState<ActiveRentalRow[]>([]);
+  const [rows, setRows] = useState<ActiveRentalRow[]>(previewRows ?? []);
   const [loaded, setLoaded] = useState({ payments: true, issues: true, incidents: true, documents: true });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!previewRows);
   const fetchFees = useServerFn(getRentalLateFees);
   const [fees, setFees] = useState<Map<string, RentalLateFeeStatus>>(new Map());
-  const [feesLoaded, setFeesLoaded] = useState(false);
+  const [feesLoaded, setFeesLoaded] = useState(!!previewRows);
   const [reload, setReload] = useState(0);
   const [dialog, setDialog] = useState<{ kind: "pay" | "waive" | "return" | "fees"; row: ActiveRentalRow } | null>(null);
 
   useEffect(() => {
+    if (previewRows) return;
     let alive = true;
     setFeesLoaded(false);
     fetchFees()
@@ -86,9 +88,10 @@ export function ActiveRentalsPanel() {
     return () => {
       alive = false;
     };
-  }, [fetchFees, reload]);
+  }, [fetchFees, reload, previewRows]);
 
   useEffect(() => {
+    if (previewRows) return;
     let alive = true;
     setLoading(true);
     fetchBoard({ data: {} })
@@ -112,7 +115,7 @@ export function ActiveRentalsPanel() {
     return () => {
       alive = false;
     };
-  }, [fetchBoard, reload]);
+  }, [fetchBoard, reload, previewRows]);
 
   const visible = rows.filter((row) => {
     if (filter === "overdue") return (row.overdueDays ?? 0) > 0;
@@ -168,7 +171,7 @@ export function ActiveRentalsPanel() {
         />
       ) : (
         <AdminTableScroll className="mt-4 rounded-2xl border border-[#EDEDF0] bg-white">
-          {/* Fits ~1000px content width at 1280 / 100% zoom: no min-width, merged cells, sticky Open. */}
+          {/* Fits ~1000px content width at 1280 / 100% zoom: no min-width, merged cells. */}
           <table className="w-full table-fixed text-left text-sm" data-testid="active-rentals-table">
             <thead className="text-[11px] font-semibold text-[#55555E]">
               <tr className="border-b border-[#EDEDF0]">
@@ -178,7 +181,8 @@ export function ActiveRentalsPanel() {
                 <th className="w-[10%] px-2 py-2.5 font-semibold">Rate</th>
                 <th className="w-[16%] px-2 py-2.5 font-semibold">Due</th>
                 <th className="w-[12%] px-2 py-2.5 font-semibold">Overdue</th>
-                <th className="w-[10%] px-2 py-2.5 font-semibold text-right sticky right-0 bg-white">Open</th>
+                <th className={`${OPEN_COLUMN} py-2.5 font-semibold`}>Open</th>
+                <th className={`${ROW_MENU_COLUMN} py-2.5`} aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
@@ -252,8 +256,7 @@ export function ActiveRentalsPanel() {
                         <OverdueCellBody row={row} fee={fee} feesLoaded={feesLoaded} lateDue={lateDue} />
                       )}
                     </td>
-                    <td className="px-2 py-2 align-middle sticky right-0 bg-white">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className={`${OPEN_COLUMN} py-2`}>
                         <Link
                           to="/admin"
                           search={{ tab: "bookings", view: "past", id: row.id }}
@@ -261,6 +264,8 @@ export function ActiveRentalsPanel() {
                         >
                           Open
                         </Link>
+                    </td>
+                    <td className={`${ROW_MENU_COLUMN} py-2`}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
@@ -316,7 +321,6 @@ export function ActiveRentalsPanel() {
                             ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
                     </td>
                   </tr>
                 );

@@ -12,9 +12,11 @@ import {
   bookingDates,
   bookingVehicleName,
   isBookingPhaseFilter,
+  type BookingListResult,
   type BookingPhase,
   type BookingRow,
 } from "@/lib/bookings-list";
+import { OPEN_COLUMN } from "./open-column";
 import { BookingDetails } from "./BookingDetails";
 import { BookingConversion } from "./BookingConversion";
 import { AdminTableScroll } from "./AdminTableScroll";
@@ -88,6 +90,7 @@ export function BookingsPanel({
   /** Which rental statuses this list is allowed to show. */
   scope = "all",
   onCounts,
+  previewRows,
 }: {
   externalSearch?: string;
   openId?: string | null;
@@ -97,6 +100,8 @@ export function BookingsPanel({
   scope?: "past" | "all" | "completed" | "cancelled";
   /** Completed and Cancelled totals, including swap rows counted with Cancelled. */
   onCounts?: (counts: { completed: number; cancelled: number; swap: number }) => void;
+  /** Skip the server read and render these rows. The alignment test uses this. */
+  previewRows?: BookingRow[];
 } = {}) {
   const navigate = useNavigate();
 
@@ -172,8 +177,24 @@ export function BookingsPanel({
     queryKey: ["admin-bookings-list", params],
     queryFn: () => fetchList({ data: params }),
     placeholderData: keepPreviousData,
+    enabled: !previewRows,
   });
-  const result = listQuery.data;
+  const previewResult: BookingListResult | undefined = previewRows
+    ? {
+        rows: previewRows,
+        total: previewRows.length,
+        page: 1,
+        pageSize: BOOKING_LIST_PAGE_SIZE,
+        counts: {
+          active: 0,
+          completed: previewRows.filter((r) => r.phase === "completed").length,
+          cancelled: previewRows.filter((r) => r.phase === "cancelled").length,
+          swap: previewRows.filter((r) => r.phase === "swap").length,
+        },
+        canSeeMoney: true,
+      }
+    : undefined;
+  const result = previewResult ?? listQuery.data;
   useEffect(() => {
     if (!result?.counts || !onCounts) return;
     onCounts({
@@ -250,7 +271,7 @@ export function BookingsPanel({
                 <th className="w-[24%] px-2 py-2 font-medium">Dates</th>
                 <th className="w-[12%] px-2 py-2 font-medium">Status</th>
                 {money ? <th className="w-[14%] px-2 py-2 font-medium">Rent</th> : null}
-                <th className="w-[8%] px-2 py-2 font-medium text-right sticky right-0 bg-[#FAFAFB]">Open</th>
+                <th className={`${OPEN_COLUMN} py-2 font-medium`}>Open</th>
               </tr>
             </thead>
             <tbody>
@@ -289,7 +310,7 @@ export function BookingsPanel({
                       )}
                     </td>
                   ) : null}
-                  <td className="px-2 py-2 text-right sticky right-0 bg-white">
+                  <td className={`${OPEN_COLUMN} py-2`}>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

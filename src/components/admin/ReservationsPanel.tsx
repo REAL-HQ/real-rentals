@@ -8,6 +8,7 @@ import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { EmptyState } from "./ui";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { VehicleCell } from "./VehicleCell";
+import { OPEN_COLUMN, ROW_MENU_COLUMN } from "./open-column";
 import {
   cancelReservation,
   listReservations,
@@ -142,7 +143,14 @@ function RecordReservationFeeDialog({
   );
 }
 
-export function ReservationsPanel({ canManage = false }: { canManage?: boolean }) {
+export function ReservationsPanel({
+  canManage = false,
+  previewRows,
+}: {
+  canManage?: boolean;
+  /** Skip the server read and render these rows. The alignment test uses this. */
+  previewRows?: ReservationRow[];
+} = {}) {
   const navigate = useNavigate();
   const load = useServerFn(listReservations);
   const cancel = useServerFn(cancelReservation);
@@ -150,13 +158,13 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   const toCredit = useServerFn(convertReservationFeeToCredit);
   const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
   const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
-  const [rows, setRows] = useState<ReservationRow[]>([]);
+  const [rows, setRows] = useState<ReservationRow[]>(previewRows ?? []);
   // The $50 Reservation Fee lives in the reservation_deposit_* columns when its
   // switch is on; it is never called a deposit (Dolmar, t309u).
-  const [feeOn, setFeeOn] = useState(false);
+  const [feeOn, setFeeOn] = useState(!!previewRows);
   const chargeLabel = "Reservation Fee";
   const [failed, setFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!previewRows);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [depositRow, setDepositRow] = useState<ReservationRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -175,8 +183,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   }, [load]);
 
   useEffect(() => {
+    if (previewRows) return;
     refresh();
-  }, [refresh]);
+  }, [previewRows, refresh]);
 
   const onReleaseHold = async (row: ReservationRow) => {
     if (!window.confirm(`Release The Pending Reservation For ${row.driverName ?? "This Driver"}? The Car Returns To Available.`)) return;
@@ -262,7 +271,8 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                 <th className="w-[15%] px-2 py-2.5 font-semibold">Pickup</th>
                 <th className="w-[12%] px-2 py-2.5 font-semibold">{chargeLabel}</th>
                 <th className="w-[8%] px-2 py-2.5 font-semibold">Rate</th>
-                <th className="w-[13%] px-2 py-2.5 font-semibold text-right sticky right-0 bg-white">Open</th>
+                <th className={`${OPEN_COLUMN} py-2.5 font-semibold`}>Open</th>
+                {canManage ? <th className={`${ROW_MENU_COLUMN} py-2.5`} aria-hidden="true" /> : null}
               </tr>
             </thead>
             <tbody>
@@ -333,8 +343,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                     <td className="px-2 py-2 align-middle whitespace-nowrap">
                       {typeof row.weeklyRate === "number" ? `$${row.weeklyRate.toLocaleString()}/wk` : "—"}
                     </td>
-                    <td className="px-2 py-2 align-middle sticky right-0 bg-white">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className={`${OPEN_COLUMN} py-2`}>
                         <Link
                           to="/admin"
                           search={{ tab: "bookings", view: "past", id: row.id }}
@@ -342,7 +351,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                         >
                           Open
                         </Link>
-                        {canManage ? (
+                    </td>
+                    {canManage ? (
+                      <td className={`${ROW_MENU_COLUMN} py-2`}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
@@ -372,9 +383,8 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                               <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        ) : null}
-                      </div>
-                    </td>
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}
