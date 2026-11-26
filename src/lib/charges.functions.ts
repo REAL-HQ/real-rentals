@@ -3,6 +3,13 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { parseTollStatement, normalizePlate } from "@/lib/toll-import";
 import { fmtDate } from "@/lib/date-format";
+import { isMissingColumnError } from "@/lib/db-errors";
+import {
+  businessToday,
+  omitDeadlineColumns,
+  resolveChargeDeadlines,
+  TOLL_CHARGE_DEADLINE_COLUMNS,
+} from "@/lib/toll-charge-deadlines";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -58,6 +65,11 @@ export type TollCharge = {
   payment_id: string | null;
   notes: string | null;
   created_at: string;
+  agency_due_date?: string | null;
+  renter_pay_by?: string | null;
+  escalation?: string | null;
+  escalated_at?: string | null;
+  stripe_payment_link_id?: string | null;
   driver_name?: string | null;
   vehicle_label?: string | null;
 };
@@ -89,6 +101,31 @@ async function attribute(
   };
 }
 
+function chargeWriteError(error: { message?: string }): string {
+  if (String(error.message).includes("toll_charges_reference_idx")) {
+    return "A charge with that reference number is already recorded.";
+  }
+  return error.message || "Could not save the charge";
+}
+
+/**
+ * Insert a charge. When the deadline columns are not installed yet, retry
+ * without them so Add Charge and Import keep working before the migration.
+ */
+async function insertTollChargeRow(admin: any, row: Record<string, unknown>) {
+  const run = (payload: Record<string, unknown>) =>
+    admin.from("toll_charges").insert(payload).select("id").single();
+  const first = await run(row);
+  const namedDeadline = TOLL_CHARGE_DEADLINE_COLUMNS.some((key) =>
+    Object.prototype.hasOwnProperty.call(row, key),
+  );
+  if (first.error && namedDeadline && isMissingColumnError(first.error)) {
+    const retry = await run(omitDeadlineColumns(row));
+    return { data: retry.data, error: retry.error, droppedDeadlines: !retry.error };
+  }
+  return { data: first.data, error: first.error, droppedDeadlines: false };
+}
+
 export const listTollCharges = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
@@ -109,10 +146,21 @@ export const listTollCharges = createServerFn({ method: "POST" })
       .select("*")
       .order("occurred_at", { ascending: false })
       .limit(data.limit ?? 200);
-    if (data.status && data.status !== "all") q = q.eq("status", data.status);
+    if (data.status === "past_due") {
+      // Pay By has passed and the charge is still unpaid. The column is
+      // absent until the migration is applied; that returns an empty list.
+      const today = businessToday();
+      q = q.lt("renter_pay_by", today).neq("status", "paid").neq("status", "written_off");
+    } else if (data.status && data.status !== "all") {
+      q = q.eq("status", data.status);
+    }
     if (data.unassignedOnly) q = q.is("rental_id", null);
 
-    const { data: rows } = await q;
+    const { data: rows, error } = await q;
+    if (error && data.status === "past_due") {
+      if (isMissingColumnError(error)) return [];
+      throw new Error(error.message);
+    }
     if (!rows?.length) return [];
 
     // Decorate with names so the table is readable without another round trip.
@@ -140,6 +188,11 @@ export const listTollCharges = createServerFn({ method: "POST" })
       ...r,
       amount: Number(r.amount ?? 0),
       admin_fee: Number(r.admin_fee ?? 0),
+      agency_due_date: r.agency_due_date ?? null,
+      renter_pay_by: r.renter_pay_by ?? null,
+      escalation: r.escalation ?? "none",
+      escalated_at: r.escalated_at ?? null,
+      stripe_payment_link_id: r.stripe_payment_link_id ?? null,
       driver_name: r.application_id ? (appById.get(r.application_id) ?? null) : null,
       vehicle_label: vehById.get(r.vehicle_id) ?? null,
     }));
@@ -159,6 +212,8 @@ export const createTollCharge = createServerFn({ method: "POST" })
         location: z.string().max(240).nullable().optional(),
         referenceNumber: z.string().max(120).nullable().optional(),
         notes: z.string().max(1000).nullable().optional(),
+        agencyDueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+        renterPayBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
       })
       .parse(d),
   )
@@ -172,33 +227,33 @@ export const createTollCharge = createServerFn({ method: "POST" })
       data.occurredAt,
     );
 
-    const { data: row, error } = await supabaseAdmin
-      .from("toll_charges")
-      .insert({
-        vehicle_id: data.vehicleId,
-        rental_id: rentalId,
-        application_id: applicationId,
-        charge_type: data.chargeType,
-        occurred_at: data.occurredAt,
-        amount: data.amount,
-        admin_fee: data.adminFee ?? 0,
-        agency: data.agency ?? null,
-        location: data.location ?? null,
-        reference_number: data.referenceNumber || null,
-        notes: data.notes ?? null,
-        status: rentalId ? "assigned" : "new",
-        source: "manual",
-        created_by: context.userId,
-      })
-      .select("id")
-      .single();
-    if (error) {
-      if (String(error.message).includes("toll_charges_reference_idx")) {
-        throw new Error("A charge with that reference number is already recorded.");
-      }
-      throw new Error(error.message);
-    }
-    return { id: row.id as string, attributed: !!rentalId };
+    const deadlines = resolveChargeDeadlines({
+      agencyDueDate: data.agencyDueDate,
+      renterPayBy: data.renterPayBy,
+    });
+    const inserted = await insertTollChargeRow(supabaseAdmin, {
+      vehicle_id: data.vehicleId,
+      rental_id: rentalId,
+      application_id: applicationId,
+      charge_type: data.chargeType,
+      occurred_at: data.occurredAt,
+      amount: data.amount,
+      admin_fee: data.adminFee ?? 0,
+      agency: data.agency ?? null,
+      location: data.location ?? null,
+      reference_number: data.referenceNumber || null,
+      notes: data.notes ?? null,
+      status: rentalId ? "assigned" : "new",
+      source: "manual",
+      created_by: context.userId,
+      ...(deadlines ?? {}),
+    });
+    if (inserted.error || !inserted.data?.id) throw new Error(chargeWriteError(inserted.error ?? {}));
+    return {
+      id: inserted.data.id as string,
+      attributed: !!rentalId,
+      deadlinesSaved: !deadlines || !inserted.droppedDeadlines,
+    };
   });
 
 export type ImportOutcome = {
@@ -208,6 +263,8 @@ export type ImportOutcome = {
   failed: Array<{ row: number; reason: string }>;
   unknownPlates: string[];
   unmappedHeaders: string[];
+  /** Rows saved without a due date because those columns are not installed yet. */
+  deadlinesDeferred: number;
 };
 
 /**
@@ -241,6 +298,7 @@ export const importTollStatement = createServerFn({ method: "POST" })
       failed: [],
       unknownPlates: [],
       unmappedHeaders: parsed.unmappedHeaders,
+      deadlinesDeferred: 0,
     };
 
     // Plate -> vehicle, normalised the same way on both sides.
@@ -277,8 +335,11 @@ export const importTollStatement = createServerFn({ method: "POST" })
       const amount: number = r.amount;
 
       const { rentalId, applicationId } = await attribute(supabaseAdmin, vehicleId, occurredAt);
+      const deadlines = r.agencyDueDate
+        ? resolveChargeDeadlines({ agencyDueDate: r.agencyDueDate })
+        : null;
 
-      const { error } = await supabaseAdmin.from("toll_charges").insert({
+      const inserted = await insertTollChargeRow(supabaseAdmin, {
         vehicle_id: vehicleId,
         rental_id: rentalId,
         application_id: applicationId,
@@ -292,18 +353,20 @@ export const importTollStatement = createServerFn({ method: "POST" })
         status: rentalId ? "assigned" : "new",
         source: "import",
         created_by: context.userId,
+        ...(deadlines ?? {}),
       });
 
-      if (error) {
-        if (String(error.message).includes("toll_charges_reference_idx")) {
+      if (inserted.error) {
+        if (String(inserted.error.message).includes("toll_charges_reference_idx")) {
           outcome.duplicates++;
         } else {
-          outcome.failed.push({ row: r.row, reason: error.message });
+          outcome.failed.push({ row: r.row, reason: inserted.error.message });
         }
         continue;
       }
 
       outcome.imported++;
+      if (inserted.droppedDeadlines) outcome.deadlinesDeferred++;
       if (!rentalId) outcome.unattributed++;
     }
 
@@ -514,6 +577,84 @@ export const rebillCharges = createServerFn({ method: "POST" })
     }
 
     return result;
+  });
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** Edit the agency deadline or Pay By on one charge. Pay By is stored as sent. */
+export const updateChargeDates = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        agencyDueDate: isoDay.nullable().optional(),
+        renterPayBy: isoDay.nullable().optional(),
+      })
+      .refine((v) => v.agencyDueDate !== undefined || v.renterPayBy !== undefined, {
+        message: "Nothing to update",
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertStaff(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const patch: Record<string, string | null> = {};
+    if (data.agencyDueDate !== undefined) patch.agency_due_date = data.agencyDueDate;
+    if (data.renterPayBy !== undefined) patch.renter_pay_by = data.renterPayBy;
+    const { error } = await supabaseAdmin.from("toll_charges").update(patch as any).eq("id", data.id);
+    if (error) {
+      if (isMissingColumnError(error)) {
+        throw new Error("Agency due and pay-by dates aren't available until the database update is applied.");
+      }
+      throw new Error(error.message);
+    }
+    return { ok: true as const };
+  });
+
+/**
+ * Mark Disputed or File Affidavit. Manager and above. Records the escalation
+ * and the time. Mark Disputed also sets the charge status so it is not rebilled.
+ * File Affidavit stores affidavit_filed: that filing is what transfers the
+ * citation to the renter. The status is left as it is.
+ */
+export const setChargeEscalation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        escalation: z.enum(["disputed", "affidavit_filed"]),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const actor = await assertStaff(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const patch: Record<string, string> = {
+      escalation: data.escalation,
+      escalated_at: new Date().toISOString(),
+    };
+    if (data.escalation === "disputed") patch.status = "disputed";
+    const { error } = await supabaseAdmin.from("toll_charges").update(patch as any).eq("id", data.id);
+    if (error) {
+      if (isMissingColumnError(error)) {
+        throw new Error("Charge escalation isn't available until the database update is applied.");
+      }
+      throw new Error(error.message);
+    }
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, {
+      action: data.escalation === "disputed" ? "charge.disputed" : "charge.affidavit_filed",
+      summary:
+        data.escalation === "disputed"
+          ? "Marked a toll charge disputed"
+          : "Filed an affidavit to transfer a toll charge to the renter",
+      entityType: "toll_charge",
+      entityId: data.id,
+      metadata: { escalation: data.escalation },
+    });
+    return { ok: true as const };
   });
 
 export const updateChargeStatus = createServerFn({ method: "POST" })

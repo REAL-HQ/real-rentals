@@ -2230,6 +2230,7 @@ function MyChargesCard() {
                 {fmtDate(c.occurred_at)}
                 {c.location ? ` · ${c.location}` : ""}
                 {c.agency ? ` · ${c.agency}` : ""}
+                {c.renter_pay_by ? ` · Pay By ${fmtDate(c.renter_pay_by)}` : ""}
               </div>
             </div>
             <div className="text-right shrink-0">

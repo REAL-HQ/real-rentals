@@ -56,6 +56,12 @@ export type OneOffIdentity = {
   paidAt: number | null;
   purpose: string | null;
   reason: string | null;
+  /**
+   * Toll or citation notice number from metadata (notice, notice_number).
+   * Hand-made Payment Links carry this so a paid link can be matched to the
+   * charge. Absent on rent links.
+   */
+  notice?: string | null;
   receiptUrl: string | null;
   /** card, link, ach, cash_app, or the raw Stripe type. Null when the charge did not say. */
   paymentMethod: string | null;
@@ -238,6 +244,7 @@ export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charg
     paidAt: Number.isFinite(paidAt) && paidAt > 0 ? paidAt : null,
     purpose: text(sm.purpose) ?? text(pm.purpose) ?? text(cm.purpose) ?? text(lm.purpose) ?? text(pi?.description) ?? null,
     reason: text(pm.reason) ?? text(sm.reason) ?? text(cm.reason) ?? text(lm.reason),
+    notice: noticeOf(pi, session, charge, link),
     receiptUrl: text(charge?.receipt_url),
     paymentMethod: stripeChargePaymentMethod(charge),
   };
@@ -256,6 +263,18 @@ export const RENT_LINK_REASONS = ["daily_50", "daily_rent", "weekly_rent"] as co
 export function isRentLinkReason(reason: string | null | undefined): boolean {
   const key = String(reason ?? "").trim().toLowerCase();
   return key === "rent" || (RENT_LINK_REASONS as readonly string[]).includes(key);
+}
+
+/** Citation / toll notice number. The first object that has one wins, same order as reason. */
+export function noticeOf(...objs: Obj[]): string | null {
+  for (const o of objs) {
+    const m = meta(o);
+    for (const k of ["notice", "notice_number", "noticeNumber"]) {
+      const v = text(m[k]);
+      if (v) return v;
+    }
+  }
+  return null;
 }
 
 /**

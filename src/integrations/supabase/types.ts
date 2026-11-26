@@ -14328,11 +14328,14 @@ export type Database = {
         Row: {
           admin_fee: number
           agency: string | null
+          agency_due_date: string | null
           amount: number
           application_id: string | null
           charge_type: string
           created_at: string
           created_by: string | null
+          escalated_at: string | null
+          escalation: string
           id: string
           location: string | null
           notes: string | null
@@ -14340,19 +14343,24 @@ export type Database = {
           payment_id: string | null
           reference_number: string | null
           rental_id: string | null
+          renter_pay_by: string | null
           source: string
           status: string
+          stripe_payment_link_id: string | null
           updated_at: string
           vehicle_id: string
         }
         Insert: {
           admin_fee?: number
           agency?: string | null
+          agency_due_date?: string | null
           amount?: number
           application_id?: string | null
           charge_type?: string
           created_at?: string
           created_by?: string | null
+          escalated_at?: string | null
+          escalation?: string
           id?: string
           location?: string | null
           notes?: string | null
@@ -14360,19 +14368,24 @@ export type Database = {
           payment_id?: string | null
           reference_number?: string | null
           rental_id?: string | null
+          renter_pay_by?: string | null
           source?: string
           status?: string
+          stripe_payment_link_id?: string | null
           updated_at?: string
           vehicle_id: string
         }
         Update: {
           admin_fee?: number
           agency?: string | null
+          agency_due_date?: string | null
           amount?: number
           application_id?: string | null
           charge_type?: string
           created_at?: string
           created_by?: string | null
+          escalated_at?: string | null
+          escalation?: string
           id?: string
           location?: string | null
           notes?: string | null
@@ -14380,8 +14393,10 @@ export type Database = {
           payment_id?: string | null
           reference_number?: string | null
           rental_id?: string | null
+          renter_pay_by?: string | null
           source?: string
           status?: string
+          stripe_payment_link_id?: string | null
           updated_at?: string
           vehicle_id?: string
         }
