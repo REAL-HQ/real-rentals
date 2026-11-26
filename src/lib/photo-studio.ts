@@ -130,21 +130,52 @@ export function planShots(originals: Original[], maxSourcesPerSlot = 2): SlotPla
   return plans;
 }
 
-/**
- * Default listing scene. A later choice can pick another key from
- * PHOTO_STUDIO_SCENES; generation uses PHOTO_STUDIO_SCENE until then.
- */
-export const PHOTO_STUDIO_SCENES = {
-  shopping_plaza:
-    "bright daylight, a clean Florida shopping-plaza parking lot with tall palm trees and a beige stucco plaza behind, the car parked in a stall on asphalt with white stall lines, natural shadows matching the sun, eye-level, photoreal like a phone photo, 1024x768 landscape",
-} as const;
+/** Florida outdoor listing scenes. Every one has palms and no houses. */
+export type PhotoStudioScene = { id: string; name: string; background: string };
 
-export const PHOTO_STUDIO_SCENE = PHOTO_STUDIO_SCENES.shopping_plaza;
+export const PHOTO_STUDIO_SCENES: readonly PhotoStudioScene[] = [
+  { id: "shopping_plaza", name: "Shopping Plaza", background: "bright midday daylight, a clean Florida shopping-plaza parking lot with tall palm trees and a beige stucco plaza behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "office_park", name: "Glass Office Park", background: "late-morning daylight, a clean Florida office-park parking lot with tall palm trees and a modern glass-front office building behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "boulevard", name: "Palm Boulevard", background: "bright afternoon daylight, a palm-lined Florida commercial boulevard, the car parked at a clean curb with tall palm trees and low storefronts behind, asphalt and a painted curb" },
+  { id: "spanish_tile", name: "Tile-Roof Retail", background: "warm late-afternoon daylight, a clean Florida retail-center parking lot with tall palm trees and a Spanish tile roof on the shops behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "marina", name: "Marina Lot", background: "clear morning daylight, a clean Florida waterfront marina parking lot with tall palm trees and calm water behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "covered_walkway", name: "Covered Walkway", background: "bright daylight with soft shade from a covered walkway, a clean Florida plaza parking lot with tall palm trees and a beige covered walkway behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "car_lot", name: "Outdoor Car Lot", background: "high-noon daylight, a clean Florida outdoor car lot with tall palm trees and a plain white commercial building behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "grocery_plaza", name: "Grocery Plaza", background: "early-afternoon daylight, a clean Florida grocery-plaza parking lot with tall palm trees and a low beige canopy behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "hotel_entrance", name: "Hotel Entrance", background: "golden late-day daylight, a clean Florida hotel arrival court with tall palm trees and a wide porte-cochère on a pale stucco commercial facade, the car parked on a paved court" },
+  { id: "waterfront_promenade", name: "Waterfront Promenade", background: "soft morning daylight, a clean Florida parking lot beside a commercial waterfront promenade with tall palm trees and open water beyond, the car parked in a stall on asphalt with white stall lines" },
+  { id: "bank_plaza", name: "Bank Plaza", background: "crisp midday daylight, a clean Florida bank-plaza parking lot with tall palm trees and a low white bank building behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "outlet_row", name: "Outlet Row", background: "hazy bright afternoon daylight, a clean Florida outlet-row parking lot with tall palm trees and a single-story storefront row behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "medical_plaza", name: "Medical Plaza", background: "cool late-morning daylight, a clean Florida medical-plaza parking lot with tall palm trees and a pale office building behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "convention_drive", name: "Convention Drive", background: "harsh high-noon daylight, a wide Florida drive in front of a convention center with tall palm trees along the curb, the car parked in a marked stall on asphalt" },
+  { id: "restaurant_row", name: "Restaurant Row", background: "warm early-evening daylight, a clean Florida restaurant-row parking lot with tall palm trees and blank awnings on the shops behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "garage_apron", name: "Garage Apron", background: "pale morning daylight, an open Florida parking apron in front of a commercial parking garage with tall palm trees, the car parked in a stall on asphalt with white stall lines" },
+  { id: "beachfront_shops", name: "Beachfront Shops", background: "brilliant morning daylight, a clean Florida lot in front of beachfront shops with tall palm trees and distant sand and water, the car parked in a stall on asphalt with white stall lines" },
+  { id: "service_center", name: "Service Center", background: "bright overcast daylight, a clean Florida auto service-center lot with tall palm trees and a white service building behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "palm_courtyard", name: "Palm Courtyard", background: "dappled midday daylight, an open Florida commercial courtyard with tall palm trees and a stucco arcade behind, the car parked on clean pavers" },
+  { id: "ferry_lot", name: "Ferry Lot", background: "clear early-morning daylight, a clean Florida ferry-terminal parking lot with tall palm trees and a small terminal and water behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "stadium_lot", name: "Stadium Lot", background: "late-morning daylight, the near edge of a Florida stadium parking lot with tall palm trees and a distant grandstand, the car parked in an empty stall on asphalt with white stall lines" },
+  { id: "cell_phone_lot", name: "Cell Phone Lot", background: "bright afternoon daylight, a clean Florida airport cell-phone waiting lot with tall palm trees and a distant terminal, the car parked in a stall on asphalt with white stall lines" },
+  { id: "commerce_park", name: "Commerce Park", background: "early-afternoon daylight, a clean Florida commerce-park lot with tall palm trees and low commercial buildings behind, the car parked in a stall on asphalt with white stall lines" },
+  { id: "boardwalk_lot", name: "Boardwalk Lot", background: "soft late-afternoon daylight, a clean Florida lot beside a commercial boardwalk with tall palm trees and water beyond, the car parked in a stall on asphalt with white stall lines" },
+  { id: "transit_plaza", name: "Transit Plaza", background: "midday daylight under high thin clouds, a clean Florida transit-plaza parking lot with tall palm trees and a simple canopy behind, the car parked in a stall on asphalt with white stall lines" },
+];
+
+/** Same vehicle always gets the same scene. Different ids spread across the list. */
+export function pickScene(vehicleId: string): PhotoStudioScene {
+  let h = 2166136261;
+  const id = vehicleId ?? "";
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return PHOTO_STUDIO_SCENES[(h >>> 0) % PHOTO_STUDIO_SCENES.length];
+}
 
 /** Isolate on grey, then place that cutout in the scene. Two paid image calls. */
 export const PHOTO_STUDIO_GENERATIONS_PER_SHOT = 2;
 
-type PromptCar = { year?: number | null; make?: string | null; model?: string | null; color?: string | null };
+type PromptCar = { id?: string | null; year?: number | null; make?: string | null; model?: string | null; color?: string | null };
 
 function vehicleName(car: PromptCar): string {
   const name = [car.year, car.color, car.make, car.model].filter(Boolean).join(" ");
@@ -171,7 +202,7 @@ export function buildPrompt(slot: ShotSlot, car: PromptCar): string {
   return [
     `Place THIS EXACT vehicle${vehicleName(car)} into the scene as a realistic outdoor listing photo. The reference is the car already isolated on grey; do not bring back the original surroundings.`,
     `Framing: ${SLOT_TEMPLATE[slot]}.`,
-    `Background: ${PHOTO_STUDIO_SCENE}.`,
+    `Background: ${pickScene(car.id ?? "").background}. Natural shadows matching the sun. Eye-level, photoreal like a phone photo, 1024x768 landscape.`,
     "Completely replace the original surroundings. No houses or residential homes. Sign bands stay blank: no lettering, logos, or readable text anywhere. No people. No other readable plates. Other cars only far back and blurred, if any.",
     VEHICLE_FIDELITY,
   ].join("\n");
