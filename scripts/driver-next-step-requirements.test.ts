@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { activationRequirements, driverRequirementBlockers, type DriverReadinessFacts } from "../src/lib/activation-readiness";
 import { driverNextStepRequirements } from "../src/lib/driver-next-step-requirements";
-import { checklistAction } from "../src/components/admin/checklist-actions";
+import { checklistAction, reservationFeeReleaseAction } from "../src/components/admin/checklist-actions";
 
 const facts: DriverReadinessFacts = {
   status: "approved", agreements: [], documents: [], interviewCompletedAt: null,
@@ -32,13 +32,15 @@ describe("Next Step reservation payment facts", () => {
     expect(projected.find((item) => item.key === "rental_active")?.met).toBe(false);
   });
 
-  it("offers Release while the fee is unpaid, and View once it is paid", () => {
+  it("opens Bookings Reserved while the fee is unpaid, and Payments once it is paid", () => {
     const payment = driverNextStepRequirements([], "pending").find((item) => item.key === "reservation_paid");
     if (!payment) throw new Error("Missing reservation payment requirement");
-    expect(checklistAction(payment)).toEqual({ label: "Release", target: { kind: "release_reservation_fee" } });
+    expect(checklistAction(payment)).toEqual({ label: "View", target: { kind: "bookings_reserved" } });
+    expect(reservationFeeReleaseAction(payment)).toEqual({ label: "Release", target: { kind: "release_reservation_fee" } });
     expect(payment.enforcement).toBe("advisory");
     const paid = driverNextStepRequirements([], "paid").find((item) => item.key === "reservation_paid");
-    expect(checklistAction(paid!)?.target).toEqual({ kind: "section", tab: "payments", anchor: "" });
+    expect(checklistAction(paid!)).toEqual({ label: "View", target: { kind: "section", tab: "payments", anchor: "" } });
+    expect(reservationFeeReleaseAction(paid!)).toBeNull();
   });
 
   it("shows a paid fee that did not hold a car, and a released fee", () => {

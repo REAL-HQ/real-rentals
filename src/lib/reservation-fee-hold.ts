@@ -31,6 +31,21 @@ export function holdDeadline(signedAt: string | Date, hours: number): Date | nul
   return new Date(t + reservationFeeHoldHours(hours) * 3_600_000);
 }
 
+/** Hours and minutes left in the unpaid-fee window. Null when the start time is missing. */
+export function holdTimeLeftLabel(startedAt: string | null | undefined, now = new Date(), hours = DEFAULT_RESERVATION_FEE_HOLD_HOURS): string | null {
+  if (!startedAt) return null;
+  const end = holdDeadline(startedAt, hours);
+  if (!end) return null;
+  const ms = end.getTime() - now.getTime();
+  if (ms <= 0) return "Hold Ended";
+  const totalMinutes = Math.max(1, Math.ceil(ms / 60_000));
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (wholeHours > 0 && minutes === 0) return `${wholeHours} ${wholeHours === 1 ? "Hour" : "Hours"} Left`;
+  if (wholeHours > 0) return `${wholeHours}h ${minutes}m Left`;
+  return `${minutes}m Left`;
+}
+
 /** True while now is still before the deadline. Equal to the deadline means the window is closed. */
 export function holdWindowOpen(signedAt: string | Date | null | undefined, now: Date, hours: number): boolean {
   if (!signedAt) return false;

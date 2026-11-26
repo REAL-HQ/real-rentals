@@ -34,9 +34,20 @@ import { isOnHoldStatus } from "@/lib/rental-hold";
 import { isPendingReservationStatus, PENDING_RESERVATION_LABEL, WAITING_ON_INSURANCE_CARD } from "@/lib/pending-reservation";
 import { releaseReservationHold } from "@/lib/reservations.functions";
 import { ReleaseReservationFeeDialog } from "./ReleaseReservationFeeDialog";
+import { holdTimeLeftLabel } from "@/lib/reservation-fee-hold";
 import { etDateISO } from "@/lib/active-rentals";
 import { heldLengthDays, orderByLength, type BookingsListMode, type RentalLengthOrder } from "@/lib/rental-length-order";
 import { RentalLengthSort } from "./RentalLengthSort";
+
+function HoldCountdown({ startedAt }: { startedAt?: string | null }) {
+  const label = holdTimeLeftLabel(startedAt);
+  if (!label) return null;
+  return (
+    <span className="mt-1 block text-[11px] font-medium text-[#8A6A00]" data-testid="reservation-hold-countdown">
+      {label}
+    </span>
+  );
+}
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
 const primary = "inline-flex h-9 items-center justify-center rounded-md bg-[#D03020] px-4 text-sm font-semibold text-white hover:bg-[#B52818] disabled:opacity-50";
@@ -151,11 +162,16 @@ function RecordReservationFeeDialog({
 export function ReservationsPanel({
   canManage = false,
   previewRows,
+  previewAwaitingFees,
+  focusRentalId = null,
   initialLengthOrder = "default",
 }: {
   canManage?: boolean;
   /** Skip the server read and render these rows. The alignment test uses this. */
   previewRows?: ReservationRow[];
+  previewAwaitingFees?: AwaitingReservationFee[];
+  /** When this rental is on the list, show only that booking. */
+  focusRentalId?: string | null;
   initialLengthOrder?: BookingsListMode;
 } = {}) {
   const navigate = useNavigate();
@@ -167,7 +183,7 @@ export function ReservationsPanel({
   const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
   const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
   const [rows, setRows] = useState<ReservationRow[]>(previewRows ?? []);
-  const [awaitingFees, setAwaitingFees] = useState<AwaitingReservationFee[]>([]);
+  const [awaitingFees, setAwaitingFees] = useState<AwaitingReservationFee[]>(previewAwaitingFees ?? []);
   const [feeFilter, setFeeFilter] = useState<"all" | "unpaid">("all");
   const [lengthOrder, setLengthOrder] = useState<BookingsListMode>(initialLengthOrder);
   // The $50 Reservation Fee lives in the reservation_deposit_* columns when its
@@ -179,10 +195,13 @@ export function ReservationsPanel({
   const owesCount = rows.filter((row) => reservationOwes(row.depositStatus, feeOn)).length;
   const lengthSort: RentalLengthOrder = lengthOrder === "owes" ? "default" : lengthOrder;
   const listed = lengthOrder === "owes" ? feeScoped.filter((row) => reservationOwes(row.depositStatus, feeOn)) : feeScoped;
-  const shown = useMemo(
+  const ordered = useMemo(
     () => orderByLength(listed, (row) => heldLengthDays(row.createdAt, today), lengthSort),
     [listed, lengthSort, today],
   );
+  const focusHits = Boolean(focusRentalId && ordered.some((row) => row.id === focusRentalId));
+  const shown = focusHits ? ordered.filter((row) => row.id === focusRentalId) : ordered;
+  const shownAwaiting = focusHits ? [] : awaitingFees;
   const chargeLabel = "Reservation Fee";
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(!previewRows);
@@ -255,7 +274,7 @@ export function ReservationsPanel({
 
   const feeUnpaidCount = feeUnpaidRows.length + awaitingFees.length;
   const listEmpty = rows.length === 0 && awaitingFees.length === 0;
-  const filterEmpty = shown.length === 0 && awaitingFees.length === 0;
+  const filterEmpty = shown.length === 0 && shownAwaiting.length === 0;
 
   return (
     <div className="space-y-4" data-testid="reservations-panel">
@@ -398,6 +417,7 @@ export function ReservationsPanel({
                           {feeLine}
                         </span>
                       ) : null}
+                      {fee === "Unpaid" ? <HoldCountdown startedAt={row.feeHoldStartedAt} /> : null}
                     </td>
                     <td className="px-2 py-2 align-middle whitespace-nowrap">
                       {typeof row.weeklyRate === "number" ? `$${row.weeklyRate.toLocaleString()}/wk` : "—"}
@@ -450,7 +470,7 @@ export function ReservationsPanel({
                   </tr>
                 );
               })}
-              {awaitingFees.map((fee) => {
+              {shownAwaiting.map((fee) => {
                 const line = unpaidReservationFeeLine(fee.amount, fee.dueDate);
                 return (
                   <tr
@@ -469,6 +489,7 @@ export function ReservationsPanel({
                     <td className="px-2 py-2 align-middle">
                       <span className="inline-flex rounded-full bg-[#FFF4D6] px-2 py-0.5 text-xs font-medium text-[#8A6A00]">Unpaid</span>
                       {line ? <span className="mt-1 block text-[11px] text-[#55555E]" data-testid="reservation-fee-unpaid">{line}</span> : null}
+                      <HoldCountdown startedAt={fee.holdStartedAt} />
                     </td>
                     <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
                     <td className="px-2 py-2 align-middle sticky right-0 bg-white">

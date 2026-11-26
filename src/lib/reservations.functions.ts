@@ -153,6 +153,7 @@ function feeHoldFromPayment(row: any): FeeHoldPayment {
     rentalId: row.rental_id ? String(row.rental_id) : null,
     amount: Number.isFinite(owed) ? owed : 0,
     dueDate: due,
+    createdAt: typeof row.created_at === "string" ? row.created_at : null,
   };
 }
 
@@ -160,7 +161,7 @@ function feeHoldFromPayment(row: any): FeeHoldPayment {
 async function loadUnpaidReservationFeePayments(admin: any): Promise<FeeHoldPayment[]> {
   const { data, error } = await admin
     .from("payments")
-    .select("id,driver_id,rental_id,amount,balance_due,due_date,status,type,reason,notes")
+    .select("id,driver_id,rental_id,amount,balance_due,due_date,status,type,reason,notes,created_at")
     .or("reason.eq.reservation_fee,type.eq.reservation")
     .limit(500);
   if (error || !data) return [];
@@ -194,6 +195,7 @@ async function nameAwaitingFees(
       driverName: app?.full_name ?? app?.email ?? null,
       amount: fee.amount,
       dueDate: fee.dueDate,
+      holdStartedAt: fee.createdAt ?? null,
       vehicleId: app?.vehicle_id ? String(app.vehicle_id) : null,
       vehicleLabel,
     }];

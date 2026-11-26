@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
   assignmentStillBlocks,
+  holdTimeLeftLabel,
   holdWindowOpen,
   releaseConfirmMessage,
   reservationFeeHoldHours,
@@ -120,6 +121,9 @@ describe("reservation fee hold rules", () => {
     expect(holdWindowOpen(SIGNED, AFTER, 24)).toBe(false);
     expect(releaseConfirmMessage("Jordan Hale")).toContain("payment link will be turned off");
     expect(reservationFeeHoldSentence(24)).toBe("If the Reservation Fee is not paid within 24 hours, the car is released.");
+    expect(holdTimeLeftLabel(SIGNED, INSIDE, 24)).toBe("18 Hours Left");
+    expect(holdTimeLeftLabel(SIGNED, AFTER, 24)).toBe("Hold Ended");
+    expect(holdTimeLeftLabel(null, INSIDE, 24)).toBeNull();
     expect(assignmentStillBlocks([{ status: "current", reason: "reservation_fee" }])).toBe(true);
     expect(assignmentStillBlocks([{ status: "expired", reason: "reservation_fee" }])).toBe(false);
     expect(assignmentStillBlocks([])).toBe(true);
