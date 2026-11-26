@@ -15,6 +15,7 @@ import {
   type BookingPhase,
   type BookingRow,
 } from "@/lib/bookings-list";
+import { OPEN_COLUMN } from "./open-column";
 import { BookingDetails } from "./BookingDetails";
 import { BookingConversion } from "./BookingConversion";
 import { AdminTableScroll } from "./AdminTableScroll";
@@ -250,7 +251,7 @@ export function BookingsPanel({
                 <th className="w-[24%] px-2 py-2 font-medium">Dates</th>
                 <th className="w-[12%] px-2 py-2 font-medium">Status</th>
                 {money ? <th className="w-[14%] px-2 py-2 font-medium">Rent</th> : null}
-                <th className="w-[8%] px-2 py-2 font-medium text-right sticky right-0 bg-[#FAFAFB]">Open</th>
+                <th className={`${OPEN_COLUMN} py-2 font-medium`}>Open</th>
               </tr>
             </thead>
             <tbody>
@@ -289,7 +290,7 @@ export function BookingsPanel({
                       )}
                     </td>
                   ) : null}
-                  <td className="px-2 py-2 text-right sticky right-0 bg-white">
+                  <td className={`${OPEN_COLUMN} py-2`}>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

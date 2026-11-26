@@ -8,6 +8,7 @@ import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { EmptyState } from "./ui";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { VehicleCell } from "./VehicleCell";
+import { OPEN_COLUMN, ROW_MENU_COLUMN } from "./open-column";
 import {
   cancelReservation,
   listReservations,
@@ -262,7 +263,8 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                 <th className="w-[15%] px-2 py-2.5 font-semibold">Pickup</th>
                 <th className="w-[12%] px-2 py-2.5 font-semibold">{chargeLabel}</th>
                 <th className="w-[8%] px-2 py-2.5 font-semibold">Rate</th>
-                <th className="w-[13%] px-2 py-2.5 font-semibold text-right sticky right-0 bg-white">Open</th>
+                <th className={`${OPEN_COLUMN} py-2.5 font-semibold`}>Open</th>
+                {canManage ? <th className={`${ROW_MENU_COLUMN} py-2.5`} aria-hidden="true" /> : null}
               </tr>
             </thead>
             <tbody>
@@ -333,8 +335,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                     <td className="px-2 py-2 align-middle whitespace-nowrap">
                       {typeof row.weeklyRate === "number" ? `$${row.weeklyRate.toLocaleString()}/wk` : "—"}
                     </td>
-                    <td className="px-2 py-2 align-middle sticky right-0 bg-white">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className={`${OPEN_COLUMN} py-2`}>
                         <Link
                           to="/admin"
                           search={{ tab: "bookings", view: "past", id: row.id }}
@@ -342,7 +343,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                         >
                           Open
                         </Link>
-                        {canManage ? (
+                    </td>
+                    {canManage ? (
+                      <td className={`${ROW_MENU_COLUMN} py-2`}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
@@ -372,9 +375,8 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                               <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        ) : null}
-                      </div>
-                    </td>
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}
