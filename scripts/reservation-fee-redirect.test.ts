@@ -154,10 +154,12 @@ describe("signing wiring", () => {
   test("the sign page and portal render the next step from the server answer only", () => {
     const page = readFileSync("src/routes/sign.$token.tsx", "utf8");
     expect(page).toContain("setFeeStep((res as any)?.reservationFee ?? null);");
-    expect(page).toContain("<ReservationFeeNextStep step={feeStep} />");
+    expect(page).toContain("<ReservationFeeNextStep");
+    expect(page).toContain("step={feeStep}");
     expect(page).not.toMatch(/useSearch|searchParams/);
     const portal = readFileSync("src/routes/portal.tsx", "utf8");
-    expect(portal).toContain("<ReservationFeeNextStep step={feeStep} />");
+    expect(portal).toContain("<ReservationFeeNextStep");
+    expect(portal).toContain("step={feeStep}");
     expect(readFileSync("src/routeTree.gen.ts", "utf8")).toContain("/reservation-fee");
   });
   test("the payment still records on the lead through the existing webhook", () => {
@@ -193,7 +195,7 @@ describe("what the applicant sees", () => {
     const r = readFileSync("src/routes/reservation-fee.tsx", "utf8");
     const canceled = readFileSync("src/components/reservation/PaymentNotCompletedPage.tsx", "utf8");
     expect(r).toContain('createFileRoute("/reservation-fee")');
-    expect(r).toContain("Payment Received");
+    expect(r).toContain("PaymentReceivedLive");
     expect(r).toContain("PaymentNotCompletedLive");
     expect(canceled).toContain("Payment Not Completed");
     expect(canceled).toContain("Your Car Isn't Reserved Yet");

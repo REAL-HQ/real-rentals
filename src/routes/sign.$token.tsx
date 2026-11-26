@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getAgreementByToken, signAgreement, type SigningView } from "@/lib/agreements.functions";
+import { recordReservationFeeSmsConsent } from "@/lib/sms-consent-signing.functions";
 import { Logo } from "@/components/site/Logo";
 import { layoutToText } from "@/lib/agreement-layout";
 import { SigningPanel } from "@/components/esign/SigningPanel";
@@ -29,6 +30,7 @@ function SignPage() {
   const { token } = Route.useParams();
   const fetchAgreement = useServerFn(getAgreementByToken);
   const submitSign = useServerFn(signAgreement);
+  const recordFeeConsent = useServerFn(recordReservationFeeSmsConsent);
 
   const [loading, setLoading] = useState(true);
   const [agreement, setAgreement] = useState<SigningView>(null);
@@ -40,6 +42,8 @@ function SignPage() {
   const [portalAccess, setPortalAccess] = useState(false);
   // The $50 Reservation Fee step, from the server's answer after signing only.
   const [feeStep, setFeeStep] = useState<ReservationFeeSigningStep | null>(null);
+  const [smsChecked, setSmsChecked] = useState(true);
+  const [feeSms, setFeeSms] = useState<{ needed: boolean; ticket: string | null }>({ needed: false, ticket: null });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -63,10 +67,23 @@ function SignPage() {
     setError(null);
     setBusy(true);
     try {
-      const res = await submitSign({ data: { token, signerName: v.signerName, agree: true, adoption: v.adoption } });
+      const res = await submitSign({
+        data: {
+          token,
+          signerName: v.signerName,
+          agree: true,
+          adoption: v.adoption,
+          ...(agreement?.sms_consent_needed ? { smsConsent: smsChecked } : {}),
+        },
+      });
       setAwaitingOthers((res as { awaitingOthers?: boolean })?.awaitingOthers === true);
       setPortalAccess(res?.portalAccess === true);
       setFeeStep((res as any)?.reservationFee ?? null);
+      setSmsChecked(true);
+      setFeeSms({
+        needed: (res as { smsConsentNeeded?: boolean })?.smsConsentNeeded === true,
+        ticket: (res as { smsConsentTicket?: string | null })?.smsConsentTicket ?? null,
+      });
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: any) {
@@ -133,7 +150,18 @@ function SignPage() {
             {awaitingOthers ? (
               <p className="mt-2 text-sm text-[#55555E]">The agreement is signed once every driver has signed. The reservation fee comes after that, and insurance is added after the fee is paid.</p>
             ) : null}
-            {feeStep && !awaitingOthers ? <ReservationFeeNextStep step={feeStep} /> : null}
+            {feeStep && !awaitingOthers ? (
+              <ReservationFeeNextStep
+                step={feeStep}
+                smsConsent={feeSms.needed && feeSms.ticket ? {
+                  checked: smsChecked,
+                  onChange: setSmsChecked,
+                  onCommit: async (checked) => {
+                    await recordFeeConsent({ data: { ticket: feeSms.ticket as string, consent: checked } });
+                  },
+                } : null}
+              />
+            ) : null}
             {awaitingOthers ? null : portalAccess ? (
               <>
                 <p className="mt-2 text-sm text-[#55555E]">
@@ -173,6 +201,7 @@ function SignPage() {
                 companySigner={agreement.company_signer_name}
                 busy={busy}
                 error={error}
+                smsConsent={agreement.sms_consent_needed ? { checked: smsChecked, onChange: setSmsChecked } : null}
                 onSubmit={onSign}
               />
             </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CreditCard, Loader2 } from "lucide-react";
 import { RESERVATION_FEE_REDIRECT_SECONDS, type ReservationFeeSigningStep } from "@/lib/reservation-fee";
+import { RentalSmsConsentField } from "@/components/esign/RentalSmsConsentField";
 
 const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
@@ -15,13 +16,16 @@ export function ReservationFeeNextStep({
   step,
   autoRedirect = true,
   redirect = (url: string) => window.location.assign(url),
+  smsConsent = null,
 }: {
   step: ReservationFeeSigningStep;
   autoRedirect?: boolean;
   redirect?: (url: string) => void;
+  /** Shown only when this person still has no text consent. Paying still proceeds. */
+  smsConsent?: { checked: boolean; onChange: (v: boolean) => void; onCommit: (checked: boolean) => Promise<void> } | null;
 }) {
   const payUrl = step.state === "pay" ? step.url : null;
-  const [seconds, setSeconds] = useState<number | null>(payUrl && autoRedirect ? RESERVATION_FEE_REDIRECT_SECONDS : null);
+  const [seconds, setSeconds] = useState<number | null>(payUrl && autoRedirect && !smsConsent ? RESERVATION_FEE_REDIRECT_SECONDS : null);
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
@@ -56,11 +60,19 @@ export function ReservationFeeNextStep({
       <p className="mt-1.5 text-sm text-[#55555E]">
         Pay your {usd(step.amount)} Reservation Fee to hold your car. It is applied in full to your first week, and the card you use is saved on file for your rental balance.
       </p>
+      {smsConsent ? (
+        <div className="mt-4" data-testid="reservation-fee-sms-consent">
+          <RentalSmsConsentField checked={smsConsent.checked} onChange={smsConsent.onChange} />
+        </div>
+      ) : null}
       <a
         href={step.url}
-        onClick={() => {
+        onClick={(e) => {
           setSeconds(null);
           setLeaving(true);
+          if (!smsConsent) return;
+          e.preventDefault();
+          void smsConsent.onCommit(smsConsent.checked).catch(() => {}).then(() => redirect(step.url));
         }}
         className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#D03020] px-5 py-3.5 text-[15px] font-semibold text-white active:scale-[.98]"
       >

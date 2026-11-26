@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckboxInput } from "@/components/ui/checkbox-input";
+import { RentalSmsConsentField } from "@/components/esign/RentalSmsConsentField";
 import {
   SIGNATURE_STYLES, SIGNATURE_FONTS_HREF, ackRows, defaultInitials, normalizeInitialsText,
   type Adoption, type Mark, type SignatureStyle,
@@ -127,13 +128,15 @@ function MarkPicker({ kind, text, onAdopt }: { kind: "signature" | "initials"; t
   );
 }
 
-export function SigningPanel({ body, defaultName, companySigner, busy, error, onSubmit }: {
+export function SigningPanel({ body, defaultName, companySigner, busy, error, onSubmit, smsConsent }: {
   body: string;
   defaultName: string;
   companySigner?: string;
   busy: boolean;
   error?: string | null;
   onSubmit: (v: { signerName: string; adoption: Adoption }) => void;
+  /** Shown only when this signer has no text consent. Pre-checked by the parent. */
+  smsConsent?: { checked: boolean; onChange: (v: boolean) => void } | null;
 }) {
   useSignatureFonts();
   const rows = useMemo(() => ackRows(body), [body]);
@@ -222,6 +225,11 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
             {isStructured(body) ? " I initialed each Renter Acknowledgment individually." : null}
           </span>
         </label>
+        {smsConsent ? (
+          <div className="mt-4" data-testid="signing-sms-consent">
+            <RentalSmsConsentField checked={smsConsent.checked} onChange={smsConsent.onChange} />
+          </div>
+        ) : null}
         {companySigner && <p className="mt-3 text-[12px] text-[#8A8A93]">Countersigned by {companySigner}. Your name, date, IP address, browser and signature method are recorded for the audit trail.</p>}
         {error && <p className="mt-3 text-[14px] text-[#D03020]">{error}</p>}
         <button type="button" disabled={!ready}

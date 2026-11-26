@@ -19,6 +19,7 @@ import {
   stickyReserveVisible,
   type PaymentNotCompletedView,
 } from "@/lib/payment-not-completed";
+import { RentalSmsConsentField } from "@/components/esign/RentalSmsConsentField";
 import "./PaymentNotCompletedPage.css";
 
 export function PaymentNotCompletedPage({
@@ -29,12 +30,15 @@ export function PaymentNotCompletedPage({
   now,
 }: {
   view: PaymentNotCompletedView | null;
-  onReserve?: () => void | Promise<void>;
+  onReserve?: (consent: boolean | null) => void | Promise<void>;
   reserving?: boolean;
   error?: string | null;
   now?: Date;
 }) {
   const d = displayView(view);
+  const askSms = d.smsConsentNeeded === true;
+  const [smsChecked, setSmsChecked] = useState(true);
+  const reserve = onReserve ? () => onReserve(askSms ? smsChecked : null) : undefined;
   const expiry = linkExpiryLabel(d.linkExpiresAt, now ?? new Date());
   const photos = d.vehicle?.photos ?? [];
   const generic = d.vehicle ? representativePhoto(d.vehicle.bodyType) : null;
@@ -95,8 +99,13 @@ export function PaymentNotCompletedPage({
               <> Your car is not held until you pay — cars go to whoever reserves first.</>
             )}
           </p>
+          {askSms ? (
+            <div className="pnc-sms" data-testid="reservation-fee-sms-consent">
+              <RentalSmsConsentField checked={smsChecked} onChange={setSmsChecked} />
+            </div>
+          ) : null}
           <div ref={heroCtaRef} data-testid="pnc-hero-cta">
-            <Cta amount={d.amount} checkoutUrl={d.checkoutUrl} processing={d.processing} onReserve={onReserve} reserving={reserving} expiry={expiry} error={error} size="lg" />
+            <Cta amount={d.amount} checkoutUrl={d.checkoutUrl} processing={d.processing} onReserve={reserve} reserving={reserving} expiry={expiry} error={error} size="lg" recordBeforeLeave={askSms} />
           </div>
         </div>
       </section>
@@ -257,7 +266,7 @@ export function PaymentNotCompletedPage({
           <p className="pnc-section-kicker">A Smart Move</p>
           <h2 id="final-heading">Reserve Your Car Before Someone Else Does</h2>
           <p className="pnc-lead">You've already been approved and you've already signed. Pay the ${d.amount} Reservation Fee now to hold your car and pick your pickup time.</p>
-          <Cta amount={d.amount} checkoutUrl={d.checkoutUrl} processing={d.processing} onReserve={onReserve} reserving={reserving} expiry={expiry} error={error} size="lg" terms />
+          <Cta amount={d.amount} checkoutUrl={d.checkoutUrl} processing={d.processing} onReserve={reserve} reserving={reserving} expiry={expiry} error={error} size="lg" terms recordBeforeLeave={askSms} />
         </section>
       </div>
 
@@ -274,14 +283,14 @@ export function PaymentNotCompletedPage({
         data-testid="pnc-sticky"
         hidden={!showSticky}
       >
-        <Cta amount={d.amount} checkoutUrl={d.checkoutUrl} processing={d.processing} onReserve={onReserve} reserving={reserving} expiry={expiry} error={null} size="md" />
+        <Cta amount={d.amount} checkoutUrl={d.checkoutUrl} processing={d.processing} onReserve={reserve} reserving={reserving} expiry={expiry} error={null} size="md" recordBeforeLeave={askSms} />
       </div>
     </div>
   );
 }
 
 function Cta({
-  amount, checkoutUrl, processing, onReserve, reserving, expiry, error, size, terms,
+  amount, checkoutUrl, processing, onReserve, reserving, expiry, error, size, terms, recordBeforeLeave,
 }: {
   amount: number;
   checkoutUrl: string | null;
@@ -292,12 +301,15 @@ function Cta({
   error: string | null;
   size: "lg" | "md";
   terms?: boolean;
+  recordBeforeLeave?: boolean;
 }) {
   const label = reserveLabel(amount);
   const cls = `pnc-btn pnc-btn-primary${size === "lg" ? " pnc-btn-lg" : ""}`;
   let action: ReactNode;
   if (processing) {
     action = <p className="pnc-cta-error">Your Reservation Fee is processing. This page will update once it goes through.</p>;
+  } else if (recordBeforeLeave && onReserve) {
+    action = <button type="button" className={cls} onClick={() => void onReserve()} disabled={reserving}>{reserving ? "Opening Checkout…" : label}</button>;
   } else if (checkoutUrl) {
     action = <a className={cls} href={checkoutUrl}>{label}</a>;
   } else if (onReserve) {
