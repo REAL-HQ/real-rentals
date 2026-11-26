@@ -57,9 +57,10 @@ const cancelled: BookingRow[] = [
   },
 ];
 
+const NOW = new Date("2026-11-26T16:00:00Z");
 const credits: RenterCreditRow[] = [
   {
-    id: "c-live",
+    id: "c-many",
     applicationId: "802fb55c-d7e8-45ae-9b40-dc5efa74753f",
     driverName: "Fabio Hale",
     amount: 50,
@@ -67,8 +68,32 @@ const credits: RenterCreditRow[] = [
     status: "available",
     appliedToRentalId: null,
     createdAt: "2026-11-26T15:00:00Z",
-    expiresAt: "2027-02-24T15:00:00Z",
+    expiresAt: "2027-02-21T16:00:00Z",
     sourcePaymentId: PAY,
+  },
+  {
+    id: "c-soon",
+    applicationId: "802fb55c-d7e8-45ae-9b40-dc5efa74753f",
+    driverName: "Fabio Hale",
+    amount: 50,
+    reason: "Reservation Fee Credit Toward Next Rental",
+    status: "available",
+    appliedToRentalId: null,
+    createdAt: "2026-11-20T15:00:00Z",
+    expiresAt: "2026-12-03T16:00:00Z",
+    sourcePaymentId: "03733dbe-a9c1-4eaf-9f42-2c04e386945c",
+  },
+  {
+    id: "c-today",
+    applicationId: "802fb55c-d7e8-45ae-9b40-dc5efa74753f",
+    driverName: "Fabio Hale",
+    amount: 50,
+    reason: "Reservation Fee Credit Toward Next Rental",
+    status: "available",
+    appliedToRentalId: null,
+    createdAt: "2026-11-26T12:00:00Z",
+    expiresAt: "2026-11-26T22:00:00Z",
+    sourcePaymentId: "03733dbe-a9c1-4eaf-9f42-2c04e386945d",
   },
   {
     id: "c-old",
@@ -81,6 +106,18 @@ const credits: RenterCreditRow[] = [
     createdAt: "2025-10-01T15:00:00Z",
     expiresAt: "2026-01-01T15:00:00Z",
     sourcePaymentId: "03733dbe-a9c1-4eaf-9f42-2c04e386945b",
+  },
+  {
+    id: "c-open",
+    applicationId: "802fb55c-d7e8-45ae-9b40-dc5efa74753f",
+    driverName: "Fabio Hale",
+    amount: 50,
+    reason: "Reservation Fee Credit Toward Next Rental",
+    status: "available",
+    appliedToRentalId: null,
+    createdAt: "2026-11-01T15:00:00Z",
+    expiresAt: null,
+    sourcePaymentId: "03733dbe-a9c1-4eaf-9f42-2c04e386945e",
   },
 ];
 
@@ -121,10 +158,14 @@ describe("forfeited fee credit screens", () => {
         canManage: true,
         rentals: [],
         previewRows: credits,
-        now: new Date("2026-11-26T16:00:00Z"),
+        now: NOW,
       }),
     );
-    assert.match(card, /Expires Feb 24, 2027/);
+    assert.match(card, />87 days left</);
+    assert.match(card, />7 days left</);
+    assert.match(card, /Expires today/);
+    assert.match(card, /No expiry/);
+    assert.match(card, /Expires Feb 21, 2027/);
     assert.match(card, /data-credit-state="expired"/);
     assert.match(card, /Expired Jan 1, 2026/);
   });
@@ -166,7 +207,7 @@ if (process.env.WRITE_FEE_CREDIT_HTML === "1") {
           canManage: false,
           rentals: [],
           previewRows: credits,
-          now: new Date("2026-11-26T16:00:00Z"),
+          now: NOW,
         }),
       ),
     ),
