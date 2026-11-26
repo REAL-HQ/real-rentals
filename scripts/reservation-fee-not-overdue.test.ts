@@ -7,6 +7,7 @@ import {
   buildPaymentsSummary,
   countsAsOwed,
   isOverdueRow,
+  isRecentFailure,
   isUnpaidReservationFee,
   rowOwed,
 } from "../src/lib/payments-summary";
@@ -18,7 +19,7 @@ describe("isUnpaidReservationFee", () => {
     expect(isUnpaidReservationFee({ type: "reservation", status: "unpaid" })).toBe(true);
     expect(isUnpaidReservationFee({ type: "fee", reason: "reservation_fee", status: "current" })).toBe(true);
     expect(isUnpaidReservationFee({ type: "fee", notes: "reservation_fee:ag-1", status: "pending" })).toBe(true);
-    for (const status of ["paid", "refunded", "void", "waived"]) {
+    for (const status of ["paid", "refunded", "void", "waived", "expired"]) {
       expect(isUnpaidReservationFee({ type: "reservation", reason: "reservation_fee", status })).toBe(false);
     }
     expect(isUnpaidReservationFee({ type: "fee", reason: "cleaning", status: "unpaid" })).toBe(false);
@@ -50,13 +51,28 @@ describe("Heather: Reservation Fee is not Overdue or Outstanding", () => {
 });
 
 describe("wording and the shared rule", () => {
-  test("Payments labels the hold and keeps it beside Outstanding", () => {
+  test("Payments hides unpaid Reservation Fees and does not chip them beside Outstanding", () => {
     const panel = read("src/components/admin/PaymentsPanel.tsx");
-    expect(panel).toContain("Awaiting Reservation Fee:");
-    expect(panel).toContain("awaitingReservationFee(");
+    expect(panel).toContain("ledgerPayments");
+    expect(panel).toContain("isUnpaidReservationFee");
+    expect(panel).not.toContain("Awaiting Reservation Fee:");
+    expect(panel).not.toContain("awaiting-reservation-fee");
+    expect(panel).not.toContain("awaitingReservationFee(");
     expect(panel).toContain("isOverdueRow(");
     expect(panel).not.toContain("Awaiting Deposit");
     expect(panel).not.toContain("reservation deposit");
+  });
+  test("a recently failed Reservation Fee is not a Failed Payment", () => {
+    const now = new Date("2026-11-22T15:00:00Z");
+    expect(isRecentFailure({
+      id: "hold",
+      type: "reservation",
+      reason: "reservation_fee",
+      status: "failed",
+      amount: 50,
+      failure_reason: "card_declined",
+      last_attempt_at: "2026-11-22T14:00:00Z",
+    }, now)).toBe(false);
   });
   test("Overview, Today's Ops, the cron and fleet status use the shared rule", () => {
     for (const file of [

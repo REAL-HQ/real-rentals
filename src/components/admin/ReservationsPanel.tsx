@@ -13,8 +13,9 @@ import {
   cancelReservation,
   listReservations,
   recordReservationFee,
+  releaseUnpaidReservationFee,
 } from "@/lib/reservations.functions";
-import { reservationFeeLabel, reservationOwes, type ReservationRow } from "@/lib/reservations";
+import { reservationFeeLabel, reservationOwes, unpaidReservationFeeLine, type AwaitingReservationFee, type ReservationRow } from "@/lib/reservations";
 import { MANUAL_METHODS, easternParts } from "@/lib/rent-reminders";
 import { fmtDate, formatReservationTime } from "@/lib/date-format";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -32,9 +33,21 @@ import { convertReservationFeeToCredit } from "@/lib/rental-hold.functions";
 import { isOnHoldStatus } from "@/lib/rental-hold";
 import { isPendingReservationStatus, PENDING_RESERVATION_LABEL, WAITING_ON_INSURANCE_CARD } from "@/lib/pending-reservation";
 import { releaseReservationHold } from "@/lib/reservations.functions";
+import { ReleaseReservationFeeDialog } from "./ReleaseReservationFeeDialog";
+import { holdTimeLeftLabel } from "@/lib/reservation-fee-hold";
 import { etDateISO } from "@/lib/active-rentals";
 import { heldLengthDays, orderByLength, type BookingsListMode, type RentalLengthOrder } from "@/lib/rental-length-order";
 import { RentalLengthSort } from "./RentalLengthSort";
+
+function HoldCountdown({ startedAt }: { startedAt?: string | null }) {
+  const label = holdTimeLeftLabel(startedAt);
+  if (!label) return null;
+  return (
+    <span className="mt-1 block text-[11px] font-medium text-[#8A6A00]" data-testid="reservation-hold-countdown">
+      {label}
+    </span>
+  );
+}
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
 const primary = "inline-flex h-9 items-center justify-center rounded-md bg-[#D03020] px-4 text-sm font-semibold text-white hover:bg-[#B52818] disabled:opacity-50";
@@ -149,33 +162,46 @@ function RecordReservationFeeDialog({
 export function ReservationsPanel({
   canManage = false,
   previewRows,
+  previewAwaitingFees,
+  focusRentalId = null,
   initialLengthOrder = "default",
 }: {
   canManage?: boolean;
   /** Skip the server read and render these rows. The alignment test uses this. */
   previewRows?: ReservationRow[];
+  previewAwaitingFees?: AwaitingReservationFee[];
+  /** When this rental is on the list, show only that booking. */
+  focusRentalId?: string | null;
   initialLengthOrder?: BookingsListMode;
 } = {}) {
   const navigate = useNavigate();
   const load = useServerFn(listReservations);
   const cancel = useServerFn(cancelReservation);
   const releaseHold = useServerFn(releaseReservationHold);
+  const releaseFee = useServerFn(releaseUnpaidReservationFee);
   const toCredit = useServerFn(convertReservationFeeToCredit);
   const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
   const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
   const [rows, setRows] = useState<ReservationRow[]>(previewRows ?? []);
+  const [awaitingFees, setAwaitingFees] = useState<AwaitingReservationFee[]>(previewAwaitingFees ?? []);
+  const [feeFilter, setFeeFilter] = useState<"all" | "unpaid">("all");
   const [lengthOrder, setLengthOrder] = useState<BookingsListMode>(initialLengthOrder);
   // The $50 Reservation Fee lives in the reservation_deposit_* columns when its
   // switch is on; it is never called a deposit (Dolmar, t309u).
   const [feeOn, setFeeOn] = useState(!!previewRows);
   const today = etDateISO();
+  const feeUnpaidRows = rows.filter((row) => reservationFeeLabel(row.depositStatus, feeOn) === "Unpaid");
+  const feeScoped = feeFilter === "unpaid" ? feeUnpaidRows : rows;
   const owesCount = rows.filter((row) => reservationOwes(row.depositStatus, feeOn)).length;
   const lengthSort: RentalLengthOrder = lengthOrder === "owes" ? "default" : lengthOrder;
-  const listed = lengthOrder === "owes" ? rows.filter((row) => reservationOwes(row.depositStatus, feeOn)) : rows;
-  const shown = useMemo(
+  const listed = lengthOrder === "owes" ? feeScoped.filter((row) => reservationOwes(row.depositStatus, feeOn)) : feeScoped;
+  const ordered = useMemo(
     () => orderByLength(listed, (row) => heldLengthDays(row.createdAt, today), lengthSort),
     [listed, lengthSort, today],
   );
+  const focusHits = Boolean(focusRentalId && ordered.some((row) => row.id === focusRentalId));
+  const shown = focusHits ? ordered.filter((row) => row.id === focusRentalId) : ordered;
+  const shownAwaiting = focusHits ? [] : awaitingFees;
   const chargeLabel = "Reservation Fee";
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(!previewRows);
@@ -183,6 +209,8 @@ export function ReservationsPanel({
   const [depositRow, setDepositRow] = useState<ReservationRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [switchRow, setSwitchRow] = useState<ReservationRow | null>(null);
+  const [releaseFeeTarget, setReleaseFeeTarget] = useState<{ applicationId: string; driverName: string | null } | null>(null);
+  const [releasingFee, setReleasingFee] = useState(false);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -190,6 +218,7 @@ export function ReservationsPanel({
     load()
       .then((r) => {
         setRows(r.rows);
+        setAwaitingFees(r.awaitingFees ?? []);
         setFeeOn((r as { reservationFeeOn?: boolean }).reservationFeeOn === true);
       })
       .catch(() => setFailed(true))
@@ -243,13 +272,39 @@ export function ReservationsPanel({
     }
   };
 
+  const feeUnpaidCount = feeUnpaidRows.length + awaitingFees.length;
+  const listEmpty = rows.length === 0 && awaitingFees.length === 0;
+  const filterEmpty = shown.length === 0 && shownAwaiting.length === 0;
+
   return (
     <div className="space-y-4" data-testid="reservations-panel">
       <div className="admin-sticky-bar flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-[#55555E]">
-          Cars held for a renter before pickup.
-          {feeOn ? " Reservation Fee (applied to week 1)." : " Reservation Fee Off."}
-        </p>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Reservation Fee">
+            {([
+              { id: "all" as const, label: "All" },
+              { id: "unpaid" as const, label: `Fee Unpaid (${feeUnpaidCount})` },
+            ]).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setFeeFilter(item.id)}
+                data-testid={item.id === "unpaid" ? "fee-unpaid-filter" : "fee-all-filter"}
+                className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                  feeFilter === item.id
+                    ? "border-[#D03020] bg-[#D03020] text-white"
+                    : "border-[#EDEDF0] bg-white text-[#55555E] hover:border-[#D6D6DB]"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-[#55555E]">
+            Cars held for a renter before pickup.
+            {feeOn ? " Reservation Fee (applied to week 1)." : " Reservation Fee Off."}
+          </p>
+        </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground" data-testid="reserved-count">
             {shown.length} Reserved Vehicle{shown.length === 1 ? "" : "s"}{rows.some((r) => isOnHoldStatus(r.status)) ? ` (${rows.filter((r) => isOnHoldStatus(r.status)).length} On Hold)` : ""}{rows.some((r) => isPendingReservationStatus(r.status)) ? ` (${rows.filter((r) => isPendingReservationStatus(r.status)).length} Pending Reservation)` : ""}
@@ -269,12 +324,14 @@ export function ReservationsPanel({
         </p>
       ) : failed ? (
         <p className="text-sm text-[#8A1C10]">Could Not Load Reservations. Apply The Rental Reservations Migration If It Is Missing.</p>
-      ) : rows.length === 0 ? (
+      ) : listEmpty ? (
         <EmptyState
           icon={<CalendarCheck className="w-6 h-6" strokeWidth={1.75} />}
           title="No Reserved Vehicles"
           hint="Rentals with status Reserved show up here."
         />
+      ) : filterEmpty ? (
+        <p className="text-sm text-[#55555E]">No Unpaid Reservation Fees</p>
       ) : (
         <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white">
           <table className="w-full table-fixed text-left text-sm" data-testid="reserved-table">
@@ -293,6 +350,7 @@ export function ReservationsPanel({
             <tbody>
               {shown.map((row) => {
                 const fee = reservationFeeLabel(row.depositStatus, feeOn);
+                const feeLine = fee === "Unpaid" ? unpaidReservationFeeLine(row.feeAmount ?? row.depositAmount, row.feeDueDate) : "";
                 return (
                   <tr
                     key={row.id}
@@ -354,6 +412,12 @@ export function ReservationsPanel({
                       >
                         {fee}
                       </span>
+                      {feeLine ? (
+                        <span className="mt-1 block text-[11px] text-[#55555E]" data-testid="reservation-fee-unpaid">
+                          {feeLine}
+                        </span>
+                      ) : null}
+                      {fee === "Unpaid" ? <HoldCountdown startedAt={row.feeHoldStartedAt} /> : null}
                     </td>
                     <td className="px-2 py-2 align-middle whitespace-nowrap">
                       {typeof row.weeklyRate === "number" ? `$${row.weeklyRate.toLocaleString()}/wk` : "—"}
@@ -395,11 +459,60 @@ export function ReservationsPanel({
                                 <DropdownMenuItem onSelect={() => void onKeepAsCredit(row)}>Keep {chargeLabel} As Credit</DropdownMenuItem>
                               ) : null}
                               {!isOnHoldStatus(row.status) && !isPendingReservationStatus(row.status) && <DropdownMenuItem onSelect={() => setSwitchRow(row)}>Switch Vehicle</DropdownMenuItem>}
+                              {row.feeAmount != null && row.applicationId ? (
+                                <DropdownMenuItem onSelect={() => setReleaseFeeTarget({ applicationId: row.applicationId!, driverName: row.driverName })}>Release</DropdownMenuItem>
+                              ) : null}
                               <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                       </td>
                     ) : null}
+                  </tr>
+                );
+              })}
+              {shownAwaiting.map((fee) => {
+                const line = unpaidReservationFeeLine(fee.amount, fee.dueDate);
+                return (
+                  <tr
+                    key={fee.paymentId}
+                    className={`border-b border-[#EDEDF0] last:border-0 ${ROW_OPEN_CLASS}`}
+                    data-testid="awaiting-fee-row"
+                    data-payment-id={fee.paymentId}
+                    {...rowOpenProps(() => void navigate({ to: "/admin", search: { tab: "drivers", id: fee.applicationId } as never }))}
+                  >
+                    <td className="px-2 py-2 align-middle font-medium text-[#111114]">
+                      <span className="block truncate">{fee.driverName ?? "—"}</span>
+                    </td>
+                    <td className="px-2 py-2 align-middle text-[#55555E]">{fee.vehicleLabel ?? "Not Held"}</td>
+                    <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
+                    <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
+                    <td className="px-2 py-2 align-middle">
+                      <span className="inline-flex rounded-full bg-[#FFF4D6] px-2 py-0.5 text-xs font-medium text-[#8A6A00]">Unpaid</span>
+                      {line ? <span className="mt-1 block text-[11px] text-[#55555E]" data-testid="reservation-fee-unpaid">{line}</span> : null}
+                      <HoldCountdown startedAt={fee.holdStartedAt} />
+                    </td>
+                    <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
+                    <td className="px-2 py-2 align-middle sticky right-0 bg-white">
+                      <div className="flex items-center justify-end">
+                        <Link
+                          to="/admin"
+                          search={{ tab: "drivers", id: fee.applicationId } as never}
+                          className="inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
+                        >
+                          Open
+                        </Link>
+                        {canManage ? (
+                          <button
+                            type="button"
+                            data-testid="release-reservation-fee"
+                            className="ml-1 inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
+                            onClick={() => setReleaseFeeTarget({ applicationId: fee.applicationId, driverName: fee.driverName })}
+                          >
+                            Release
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -426,6 +539,25 @@ export function ReservationsPanel({
           onSwitched={refresh}
         />
       ) : null}
+      <ReleaseReservationFeeDialog
+        open={!!releaseFeeTarget}
+        driverName={releaseFeeTarget?.driverName ?? null}
+        busy={releasingFee}
+        onOpenChange={(open) => { if (!open && !releasingFee) setReleaseFeeTarget(null); }}
+        onConfirm={() => {
+          if (!releaseFeeTarget || releasingFee) return;
+          const target = releaseFeeTarget;
+          setReleasingFee(true);
+          void releaseFee({ data: { applicationId: target.applicationId } })
+            .then(() => {
+              toast.success("Hold Released");
+              setReleaseFeeTarget(null);
+              refresh();
+            })
+            .catch((e) => toast.error(e instanceof Error ? e.message : "Could Not Release The Hold"))
+            .finally(() => setReleasingFee(false));
+        }}
+      />
       <RenterCreditsCard
         canManage={canManage}
         rentals={rows.map((r) => ({ id: r.id, applicationId: r.applicationId, label: r.vehicleLabel ?? "Reservation" }))}

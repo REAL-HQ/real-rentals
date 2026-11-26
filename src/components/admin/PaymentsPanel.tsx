@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check, ListFilter } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
-import { FAILED_RECENT_FILTER, awaitingReservationFee, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, isZeroMoneyRow, rowOwed } from "@/lib/payments-summary";
+import { FAILED_RECENT_FILTER, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, isZeroMoneyRow, rowOwed } from "@/lib/payments-summary";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { PaymentSummaryCards } from "./PaymentSummaryCards";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
@@ -131,6 +131,8 @@ function isReservationFeePayment(p: { reason?: string | null; notes?: string | n
   return p.reason === RESERVATION_FEE_REASON || /reservation_fee:/.test(String(p.notes ?? ""));
 }
 function paymentStatusLabel(p: { status?: string | null; type?: string | null; reason?: string | null; notes?: string | null }) {
+  if (String(p.notes ?? "").includes("reservation_fee_no_hold") && String(p.status ?? "") === "paid") return "Paid · No Car Held";
+  if (String(p.status ?? "").toLowerCase() === "expired") return "Expired";
   if (isUnpaidReservationFee(p)) return "Awaiting Reservation Fee";
   if (isReservationFeePayment(p) && (p.status === "refunded" || refundReasonFromNotes(p.notes))) {
     return reservationFeeRefundedDetail(refundReasonFromNotes(p.notes));
@@ -138,9 +140,10 @@ function paymentStatusLabel(p: { status?: string | null; type?: string | null; r
   return STATUS_LABEL[String(p.status ?? "")] ?? enumDisplayLabel(String(p.status ?? ""));
 }
 
-export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initialRecordId }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null; initialRecordId?: string } = {}) {
+export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initialRecordId, previewPayments }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null; initialRecordId?: string; /** Skip the payments read. Screenshots and tests pass the rows. */ previewPayments?: Payment[] } = {}) {
   const navigate = useNavigate();
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const preview = previewPayments != null;
+  const [payments, setPayments] = useState<Payment[]>(previewPayments ?? []);
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   // Arriving from the dashboard's Collections card asks for everything
@@ -160,6 +163,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
   const [lateFeeRow, setLateFeeRow] = useState<{ rentalId: string; name: string } | null>(null);
 
   useEffect(() => {
+    if (preview) return;
     supabase
       .from("payments")
       .select("*")
@@ -177,16 +181,16 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
       .select("id,status,next_payment_due,weekly_rate,autopay_active,stripe_subscription_id")
       .eq("status", "active")
       .then(({ data }) => setRentals((data as any) || []));
-  }, []);
+  }, [preview]);
   useEffect(() => {
-    if (!canSeeCollections) return setCollectionItems(null);
+    if (preview || !canSeeCollections) return setCollectionItems(null);
     (supabase as any)
       .from("collection_items")
       .select("amount,amount_paid,status,application_id")
       .then(({ data, error }: { data: any[] | null; error: unknown }) =>
         setCollectionItems(error ? null : (data ?? []).map((i) => ({ ...i, amount: Number(i.amount), amount_paid: Number(i.amount_paid) }))),
       );
-  }, [canSeeCollections, collectionsNonce]);
+  }, [preview, canSeeCollections, collectionsNonce]);
 
   const driverMap = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d])), [drivers]);
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
@@ -297,9 +301,13 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
     }
   }
 
-  // $0 invoices (a paused subscription) are not ledger rows. They owe nothing,
-  // so Outstanding, which still sums countsAsOwed on this list, does not change.
-  const ledgerPayments = useMemo(() => payments.filter((p) => !isZeroMoneyRow(p)), [payments]);
+  // $0 invoices owe nothing. Unpaid Reservation Fees are holds, shown on
+  // Reserved. Paid, refunded, void and waived fees stay on this list.
+  // Outstanding already skips unpaid fees via countsAsOwed.
+  const ledgerPayments = useMemo(
+    () => payments.filter((p) => !isZeroMoneyRow(p) && !isUnpaidReservationFee(p)),
+    [payments],
+  );
 
   // Filter first, then sort a copy. Outstanding is computed from the filtered
   // set so clicking a header never changes the total.
@@ -353,7 +361,6 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
   const totalDue = filtered
     .filter((p) => countsAsOwed(p as any, coveredIds))
     .reduce((s, p) => s + rowOwed(p as any), 0);
-  const awaiting = awaitingReservationFee(filtered);
   const summary = useMemo(
     () => buildPaymentsSummary({ payments: payments as any, coveredIds, rentals, collectionItems }),
     [payments, coveredIds, rentals, collectionItems],
@@ -452,11 +459,6 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
                 <span>
                   Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
                 </span>
-                {awaiting.count > 0 ? (
-                  <span className="text-xs" data-testid="awaiting-reservation-fee">
-                    {`Awaiting Reservation Fee: $${awaiting.total.toLocaleString()} (${awaiting.count})`}
-                  </span>
-                ) : null}
               </div>
             </>
           ) : null}

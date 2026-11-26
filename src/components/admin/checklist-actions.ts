@@ -28,6 +28,12 @@ export function checklistDocumentCategories(key: ActivationRequirementKey): ("li
 
 type ChecklistAction = { label: string; target: FixTarget };
 
+/** Staff can still release an unpaid hold from Next Step. View is a separate button. */
+export function reservationFeeReleaseAction(requirement: ActivationRequirement): ChecklistAction | null {
+  if (requirement.key !== "reservation_paid" || requirement.met !== false) return null;
+  return { label: "Release", target: { kind: "release_reservation_fee" } };
+}
+
 /** Navigation only: never approve, verify, sign, or activate from a checkmark. */
 export function checklistAction(requirement: ActivationRequirement): ChecklistAction | null {
   const documentTarget: FixTarget = { kind: "section", tab: "documents", anchor: "profile-documents" };
@@ -56,6 +62,8 @@ export function checklistAction(requirement: ActivationRequirement): ChecklistAc
       // Its own Move Forward control (TermsConfirmedControl); never a navigation shortcut.
       return null;
     case "reservation_paid":
+      // Unpaid fees are listed on Bookings > Reserved, not on Payments.
+      if (requirement.met === false) return { label: "View", target: { kind: "bookings_reserved" } };
       return { label: "View", target: { kind: "section", tab: "payments", anchor: "" } };
     case "pickup":
       return { label: "Activate Rental", target: { kind: "activate" } };
