@@ -515,8 +515,11 @@ export async function deliverSigningLink(
     vehicle: string | null;
     applicationId: string | null;
     actor: Actor | null;
+    /** False sends no text at all, including extra numbers on the application. */
+    allowSms?: boolean;
   },
 ): Promise<{ email: ChannelStatus; sms: ChannelStatus; delivered: boolean }> {
+  const allowSms = args.allowSms !== false;
   const at = new Date().toISOString();
   let email: ChannelStatus = "not_attempted";
   let emailError: string | null = "No email on file";
@@ -538,14 +541,16 @@ export async function deliverSigningLink(
     try {
       const { renterEmailTargets, renterSmsTargets } = await import("@/lib/driver-contacts.server");
       const emails = await renterEmailTargets(admin, args.applicationId, { email: args.email });
-      const phones = await renterSmsTargets(admin, args.applicationId);
       const primaryEmail = (args.email ?? "").trim().toLowerCase();
       for (const e of emails) if (e !== primaryEmail) extraEmails.push(e);
-      const primaryPhone = args.phone;
-      for (const p of phones) {
-        if (!p.canText) continue;
-        const same = primaryPhone && String(p.e164).replace(/\D/g, "").slice(-10) === String(primaryPhone).replace(/\D/g, "").slice(-10);
-        if (!same) extraPhones.push(p.e164);
+      if (allowSms) {
+        const phones = await renterSmsTargets(admin, args.applicationId);
+        const primaryPhone = args.phone;
+        for (const p of phones) {
+          if (!p.canText) continue;
+          const same = primaryPhone && String(p.e164).replace(/\D/g, "").slice(-10) === String(primaryPhone).replace(/\D/g, "").slice(-10);
+          if (!same) extraPhones.push(p.e164);
+        }
       }
     } catch {
       // Table missing or unreadable: send only to the primary, as before.
@@ -553,8 +558,8 @@ export async function deliverSigningLink(
   }
 
   let sms: ChannelStatus = "not_attempted";
-  let smsError: string | null = "No phone on file";
-  if (args.phone) {
+  let smsError: string | null = allowSms ? "No phone on file" : null;
+  if (allowSms && args.phone) {
     try {
       const { sendSms } = await import("@/lib/sms.server");
       const r: any = await sendSms({
@@ -586,7 +591,7 @@ export async function deliverSigningLink(
       }
     }
   }
-  if (extraPhones.length) {
+  if (allowSms && extraPhones.length) {
     try {
       const { sendSms } = await import("@/lib/sms.server");
       const body = `REAL RENTALS: Your rental agreement is ready to sign: ${args.url} Reply STOP to opt out.`;

@@ -50,12 +50,13 @@ export type AgreementRow = {
   company_signer_name: string | null;
   company_signer_title: string | null;
   timeline: { at: string; label: string }[];
+  signers: { id: string; name: string | null; email: string | null; role: string; status: string; signing_order: number; signed_at: string | null }[];
 };
 
 const TIMELINE_LABELS: Record<string, string> = {
   "document.created": "Created",
   "document.sent": "Sent",
-  "document.resent": "Link reissued",
+  "document.resent": "Link Resent",
   "document.delivery_failed": "Delivery failed",
   "document.viewed": "Viewed",
   "document.signed": "Signed",
@@ -950,7 +951,29 @@ export const listAgreements = createServerFn({ method: "GET" })
         byId.set(e.entity_id as string, arr);
       }
     }
-    return list.map((r) => ({ ...r, timeline: byId.get(r.id) ?? [] })) as AgreementRow[];
+    const signersById = new Map<string, AgreementRow["signers"]>();
+    if (ids.length) {
+      const { data: recipients } = await supabaseAdmin
+        .from("esign_recipients")
+        .select("id,document_id,name,email,role,status,signing_order,signed_at")
+        .in("document_id", ids)
+        .eq("role", "signer")
+        .order("signing_order", { ascending: true });
+      for (const recipient of recipients ?? []) {
+        const listForDoc = signersById.get(recipient.document_id as string) ?? [];
+        listForDoc.push({
+          id: recipient.id as string,
+          name: (recipient.name as string | null) ?? null,
+          email: (recipient.email as string | null) ?? null,
+          role: (recipient.role as string) ?? "signer",
+          status: (recipient.status as string) ?? "",
+          signing_order: Number(recipient.signing_order ?? 0),
+          signed_at: (recipient.signed_at as string | null) ?? null,
+        });
+        signersById.set(recipient.document_id as string, listForDoc);
+      }
+    }
+    return list.map((r) => ({ ...r, timeline: byId.get(r.id) ?? [], signers: signersById.get(r.id) ?? [] })) as AgreementRow[];
   });
 
 async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepareAgreement>>, namedVehicle: boolean) {
@@ -1150,7 +1173,7 @@ export async function issueAgreement(
   // a live reservation/rental, tie this one to it now so the booking shows it.
   if (!amendment) await (await import("@/lib/booking-links.server")).linkAgreementToLiveRental(admin, row.id as string);
 
-  await admin.from("esign_recipients").insert({
+  const { data: primaryRecipient, error: primaryRecipientError } = await admin.from("esign_recipients").insert({
     document_id: row.id,
     name: (app.full_name as string | null) ?? null,
     email: app.email,
@@ -1161,7 +1184,10 @@ export async function issueAgreement(
     sent_at: new Date().toISOString(),
     token_hash: tokenHash,
     token_expires_at: expires,
-  });
+  }).select("id").single();
+  if (primaryRecipientError) throw new Error(primaryRecipientError.message);
+  const { rememberSigningToken } = await import("@/lib/agreement-resend.server");
+  await rememberSigningToken(admin, primaryRecipient?.id as string | undefined, token);
   if (!amendment) await attachAdditionalDriverSigners(admin, { agreementId: row.id as string, applicationId, primaryEmail: String(app.email), vehicle: merge.vehicle || null, expires });
   {
     const { logAudit } = await import("@/lib/audit.server");
@@ -1208,7 +1234,7 @@ async function attachAdditionalDriverSigners(
   for (const driver of extras) {
     const token = randomToken();
     const tokenHash = await hashToken(token);
-    const { error } = await admin.from("esign_recipients").insert({
+    const { data: extraRecipient, error } = await admin.from("esign_recipients").insert({
       document_id: args.agreementId,
       name: driver.name,
       email: driver.email.trim().toLowerCase(),
@@ -1219,8 +1245,10 @@ async function attachAdditionalDriverSigners(
       sent_at: new Date().toISOString(),
       token_hash: tokenHash,
       token_expires_at: args.expires,
-    });
+    }).select("id").single();
     if (error) throw new Error(error.message);
+    const { rememberSigningToken } = await import("@/lib/agreement-resend.server");
+    await rememberSigningToken(admin, extraRecipient?.id as string | undefined, token);
     order += 1;
     const url = `${SITE_URL()}/sign/${token}`;
     try {
@@ -1425,78 +1453,40 @@ export const sendAgreement = createServerFn({ method: "POST" })
   });
 
 /**
- * Retry Delivery and Resend are the same operation, on purpose. Only a hash of
- * the signing token is stored, so the current link can't be re-sent; every
- * delivery retry rotates the token: the old link dies immediately, the new one
- * becomes canonical on the same agreement row (no duplicate document), and the
- * audit history is kept. The company signer snapshot is not touched.
+ * Retry Delivery and Resend are the same operation. Each signer keeps their
+ * own link. A still-valid token is reused; an expired or revoked one is
+ * reissued for that signer only. Signed signers are skipped. signerId limits
+ * the send to one person. channels "email" sends no text.
  */
 export const resendAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
+  .inputValidator((d: unknown) =>
+    z.object({
+      agreementId: z.string().uuid(),
+      signerId: z.string().uuid().optional(),
+      channels: z.enum(["email", "email_and_sms"]).optional(),
+    }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     const actor = await requireTierFor(context.userId, "manager");
-    void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: ag } = await supabaseAdmin
-      .from("agreements")
-      .select("id,status,signer_email,merge_data,application_id")
-      .eq("id", data.agreementId)
-      .maybeSingle();
-    if (!ag) throw new Error("Agreement not found");
-    if (ag.status === "signed" || ag.status === "voided")
-      throw new Error("This agreement can no longer be sent");
-    // A link reissue sends the SAME frozen document again, so it must meet the
-    // same readiness bar as a new send. Documents issued before the gate
-    // existed (blank VIN, licence, etc.) must be voided and re-prepared.
-    {
-      const md = (ag.merge_data ?? {}) as Record<string, string>;
-      const gaps = AGREEMENT_REQUIRED_KEYS.filter((k) => !String(md[k] ?? "").trim());
-      if (gaps.length)
-        throw new Error(
-          `This agreement was prepared without ${gaps.join(", ").replace(/_/g, " ")}. Void it and prepare a new one.`,
-        );
+    const { resendAgreementSigners, SignerResendError } = await import("@/lib/agreement-resend.server");
+    try {
+      const result = await resendAgreementSigners(supabaseAdmin, {
+        agreementId: data.agreementId,
+        signerId: data.signerId,
+        channels: data.channels,
+        actor,
+        source: "staff",
+        siteUrl: SITE_URL(),
+        setStatusSent: true,
+        statuses: ["draft", "sent", "viewed"],
+      });
+      return { ok: true as const, url: result.url, delivery: result.delivery, signers: result.signers };
+    } catch (e) {
+      if (e instanceof SignerResendError) throw new Error(e.message);
+      throw e;
     }
-
-    const token = randomToken();
-    const tokenHash = await hashToken(token);
-    const exp = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
-    // Conditional: never resurrect a signing/signed/voided document. The new
-    // hash replaces the old one, so the prior link stops working.
-    const { data: upd } = await supabaseAdmin
-      .from("agreements")
-      .update({ token_hash: tokenHash, token_expires_at: exp, sent_at: new Date().toISOString(), status: "sent" })
-      .eq("id", ag.id)
-      .in("status", ["draft", "sent", "viewed"])
-      .select("id");
-    if (!upd?.length) throw new Error("This agreement can no longer be sent");
-    await supabaseAdmin
-      .from("esign_recipients")
-      .update({ token_hash: tokenHash, token_expires_at: exp, sent_at: new Date().toISOString(), status: "sent" })
-      .eq("document_id", ag.id)
-      .eq("role", "signer");
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit(actor, { action: "document.resent", summary: "Signing link reissued", entityType: "esign_document", entityId: ag.id as string });
-
-    const url = `${SITE_URL()}/sign/${token}`;
-    const merge = (ag.merge_data ?? {}) as MergeData;
-    let phone: string | null = null;
-    if (ag.application_id) {
-      const { data: app } = await supabaseAdmin.from("applications").select("phone").eq("id", ag.application_id).maybeSingle();
-      phone = (app?.phone as string | null) ?? null;
-    }
-    const { deliverSigningLink } = await import("@/lib/esign.server");
-    const delivery = await deliverSigningLink(supabaseAdmin, {
-      id: ag.id as string,
-      url,
-      email: (ag.signer_email as string | null) ?? null,
-      phone,
-      name: merge.driver_name ?? null,
-      vehicle: merge.vehicle || null,
-      applicationId: (ag.application_id as string | null) ?? null,
-      actor,
-    });
-    return { ok: true, url, delivery };
   });
 
 export const voidAgreement = createServerFn({ method: "POST" })
@@ -1645,6 +1635,10 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
         const { logAudit } = await import("@/lib/audit.server");
         await logAudit(null, { action: "document.viewed", summary: "Signer opened the document", entityType: "esign_document", entityId: ag.id as string });
       }
+    }
+    {
+      const { noteSignerViewed } = await import("@/lib/agreement-resend.server");
+      await noteSignerViewed(supabaseAdmin, ag.id as string, hash, new Date().toISOString());
     }
     return {
       ...base,

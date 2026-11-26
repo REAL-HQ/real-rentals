@@ -6,6 +6,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { FileSignature, Send, Ban, RefreshCw, Loader2, Download, Copy, AlertTriangle, Eye } from "lucide-react";
 import { SectionCard } from "./ui";
+import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton } from "./modal";
+import { AppSelect } from "@/components/ui/app-select";
 import {
   listAgreements,
   previewAgreement,
@@ -69,6 +71,9 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
   const [loadError, setLoadError] = useState<string | null>(null);
   // Latest signing link per agreement, held only in memory for Copy.
   const [links, setLinks] = useState<Record<string, string>>({});
+  const [resendFor, setResendFor] = useState<AgreementRow | null>(null);
+  const [resendWho, setResendWho] = useState("all");
+  const [emailOnly, setEmailOnly] = useState(false);
 
   function reportDelivery(d: { email: string; sms: string; delivered: boolean } | undefined, okMsg: string) {
     if (!d) return toast.success(okMsg);
@@ -124,6 +129,14 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
     }
   }
 
+  async function runResend(agreementId: string, signerId?: string, channels?: "email" | "email_and_sms") {
+    const r = await doResend({ data: { agreementId, signerId, channels } });
+    const url = r.url;
+    if (url) setLinks((l) => ({ ...l, [agreementId]: url }));
+    reportDelivery(r.delivery, "Signing link sent");
+    await refresh();
+  }
+
   function fixLink(b: Blocker) {
     if (!b.fix) return null;
     if ("vehicleId" in b.fix)
@@ -158,6 +171,49 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
       }
     >
       {viewing && <AgreementViewerDialog agreementId={viewing.id} title={viewing.title} onClose={() => setViewing(null)} />}
+      {resendFor ? (
+        <ModalShell onClose={() => setResendFor(null)} size="sm" label="Resend Signing Link">
+          <ModalHeader title="Resend Signing Link" subtitle="Each signer gets their own link." onClose={() => setResendFor(null)} />
+          <ModalBody>
+            <label className="block space-y-1.5">
+              <span className="text-[13px] font-medium text-foreground">Send To</span>
+              <AppSelect aria-label="Send To" value={resendWho} onChange={(e) => setResendWho(e.target.value)} className="h-11 w-full">
+                <option value="all">All Unsigned Signers</option>
+                {(resendFor.signers ?? []).filter((s) => s.status !== "signed" && !s.signed_at).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name || s.email || "Signer"}</option>
+                ))}
+              </AppSelect>
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-foreground">
+              <input type="checkbox" checked={emailOnly} onChange={(e) => setEmailOnly(e.target.checked)} />
+              Email Only
+            </label>
+          </ModalBody>
+          <ModalFooter>
+            <ModalButton onClick={() => setResendFor(null)}>Cancel</ModalButton>
+            <ModalButton
+              variant="primary"
+              disabled={busy}
+              onClick={async () => {
+                const id = resendFor.id;
+                const signerId = resendWho === "all" ? undefined : resendWho;
+                const channels = emailOnly ? "email" : "email_and_sms";
+                setBusy(true);
+                try {
+                  await runResend(id, signerId, channels);
+                  setResendFor(null);
+                } catch (e: any) {
+                  toast.error(e?.message || "Could not resend");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Resend Link
+            </ModalButton>
+          </ModalFooter>
+        </ModalShell>
+      ) : null}
       {prepOpen && (
         <PrepareAgreementDialog
           applicationId={applicationId}
@@ -335,6 +391,11 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                       Company signer: {a.company_signer_name}{a.company_signer_title ? `, ${a.company_signer_title}` : ""}
                     </div>
                   ) : null}
+                  {(a.signers ?? []).length > 1 ? (
+                    <div className="mt-1 text-[11px] text-[#55555E]">
+                      {a.signers.map((s) => `${s.name || s.email || "Signer"}: ${s.status === "signed" || s.signed_at ? "Signed" : "Unsigned"}`).join(" · ")}
+                    </div>
+                  ) : null}
                   {a.timeline?.length ? (
                     <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10.5px] text-[#77777F]">
                       {a.timeline.map((t, i) => (
@@ -407,13 +468,16 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                         </button>
                       ) : null}
                       <button
-                        title="Retry Delivery (issues a new link; the old one stops working)"
+                        title="Resend the signing link"
                         onClick={async () => {
+                          if ((a.signers ?? []).length > 1) {
+                            setResendWho("all");
+                            setEmailOnly(false);
+                            setResendFor(a);
+                            return;
+                          }
                           try {
-                            const r = await doResend({ data: { agreementId: a.id } });
-                            if (r.url) setLinks((l) => ({ ...l, [a.id]: r.url }));
-                            reportDelivery(r.delivery, "New signing link sent");
-                            await refresh();
+                            await runResend(a.id);
                           } catch (e: any) {
                             toast.error(e?.message || "Could not resend");
                           }
