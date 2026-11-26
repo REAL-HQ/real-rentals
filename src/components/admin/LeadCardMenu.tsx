@@ -78,7 +78,7 @@ export function LeadCardMenu({
   const name = lead.full_name ? displayPersonName(lead.full_name) : leadDisplayName(null);
 
   async function write(draft: ContactStatusDraft, done: string, undoable = true) {
-    const problems = leadDraftProblems(draft);
+    const problems = leadDraftProblems(draft, today);
     if (problems.length) return void toast.error(problems.join(" "));
     if (busy) return;
     setBusy(true);

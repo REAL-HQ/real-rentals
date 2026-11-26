@@ -84,10 +84,15 @@ export const PAST_STATUS_VALUES: readonly string[] = [
  * Returns null when every non-reserved rental is in scope (legacy "all").
  * Past scope never includes active or reserved rows.
  */
+export type BookingListScope = "past" | "all" | "completed" | "cancelled";
+
 export function statusesForBookingList(input: {
-  scope?: "past" | "all" | null;
+  scope?: BookingListScope | null;
   phase: BookingPhaseFilter;
 }): readonly string[] | null {
+  if (input.scope === "completed") return PHASE_STATUSES.completed;
+  // Cancelled includes swap-ended rows: they are cancelled statuses, not completed ones.
+  if (input.scope === "cancelled") return PHASE_STATUSES.cancelled;
   const scope = input.scope === "past" ? "past" : "all";
   if (scope === "past") {
     if (input.phase === "completed") return PHASE_STATUSES.completed;
@@ -101,6 +106,28 @@ export function statusesForBookingList(input: {
 
 export function isPastPhase(phase: BookingPhase): boolean {
   return phase === "completed" || phase === "cancelled" || phase === "swap";
+}
+
+/**
+ * Drivers who have at least one rental on the Bookings Completed or Cancelled
+ * tab. Those tabs filter by PHASE_STATUSES, so an unknown status is neither.
+ * One driver can be in both lists. Swap-ended rows are cancelled statuses.
+ */
+export function bookingOutcomeApplicationIds(
+  rentals: readonly { application_id?: string | null; status?: string | null }[],
+): { completed: string[]; cancelled: string[] } {
+  const completedStatuses = new Set(PHASE_STATUSES.completed.map((status) => status.toLowerCase()));
+  const cancelledStatuses = new Set(PHASE_STATUSES.cancelled.map((status) => status.toLowerCase()));
+  const completed = new Set<string>();
+  const cancelled = new Set<string>();
+  for (const rental of rentals) {
+    const id = String(rental.application_id ?? "").trim();
+    if (!id) continue;
+    const status = String(rental.status ?? "").toLowerCase();
+    if (completedStatuses.has(status)) completed.add(id);
+    if (cancelledStatuses.has(status)) cancelled.add(id);
+  }
+  return { completed: [...completed], cancelled: [...cancelled] };
 }
 
 export type BookingRow = {
@@ -175,6 +202,8 @@ export type BookingListResult = {
   counts: BookingCounts;
   /** False for a Coordinator: money is absent from the rows, not hidden in CSS. */
   canSeeMoney: boolean;
+  /** Rows in this list with a balance due. Null when money is hidden. */
+  owesCount?: number | null;
 };
 
 export const BOOKING_LIST_PAGE_SIZE = 25;

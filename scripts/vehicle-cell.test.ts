@@ -67,6 +67,14 @@ describe("shared cell is used in every list", () => {
   test("thumbnail click does not open the row", () => {
     expect(src("components/admin/VehicleCell.tsx")).toContain("e.stopPropagation()");
   });
+  test("the enlarged photo title and plate open the vehicle and close the popup", () => {
+    const cell = src("components/admin/VehicleCell.tsx");
+    expect(cell).toContain('data-testid="vehicle-photo-title"');
+    expect(cell).toContain('data-testid="vehicle-photo-plate"');
+    expect(cell).toContain('tab: "vehicles"');
+    expect(cell).toContain("setOpen(false)");
+    expect(src("components/admin/ReservationsPanel.tsx")).toContain("vehicleId={row.vehicleId}");
+  });
   test("card endpoint is staff only and returns no full VIN", () => {
     const f = src("lib/vehicle-cards.functions.ts");
     expect(f).toContain("requireStaff");

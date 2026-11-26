@@ -69,6 +69,18 @@
   padding: 88px 20px 36px;
   text-align: center;
 }
+.pnc-sms {
+  margin: 18px auto 0;
+  max-width: 640px;
+  text-align: left;
+  background: #fff;
+  color: #111114;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+@media (max-width: 719px) {
+  .pnc-sms { margin-top: 14px; padding: 12px 14px; }
+}
 .pnc-status-pill {
   display: inline-flex;
   align-items: center;

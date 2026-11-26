@@ -170,7 +170,10 @@ describe("matchStripeToRental", () => {
 describe("paid invoices", () => {
   it("normalises a paid invoice and writes the webhook's row shape", () => {
     const p = paidInvoiceOf(inv())!;
-    assert.deepEqual(p, { id: "in_h1", customerId: "cus_heather", customerEmail: "heatherbell863@gmail.com", subscriptionId: "sub_heather", amountPaid: 350, createdOn: "2026-11-10", paidOn: "2026-11-10" });
+    assert.deepEqual(p, { id: "in_h1", customerId: "cus_heather", customerEmail: "heatherbell863@gmail.com", subscriptionId: "sub_heather", amountPaid: 350, createdOn: "2026-11-10", paidOn: "2026-11-10", paymentMethod: "card" });
+    const linked = paidInvoiceOf(inv({ charge: { id: "ch_link", payment_method_details: { type: "link" } } }))!;
+    assert.equal(linked.paymentMethod, "link");
+    assert.equal(paymentRowForPaidInvoice(linked, { id: HEATHER, application_id: HEATHER_APP, vehicle_id: "v1" }).payment_method, "link");
     const row = paymentRowForPaidInvoice(p, { id: HEATHER, application_id: HEATHER_APP, vehicle_id: "v1" });
     assert.equal(row.status, "paid");
     assert.equal(row.due_date, "2026-11-10");

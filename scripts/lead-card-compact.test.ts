@@ -92,8 +92,10 @@ describe("compact lead cards", () => {
       }),
     );
     expect(html).toContain('data-status="">Contacted<');
-    expect(html).toContain(">3d overdue<");
-    expect(html).toContain("Due Nov 5, 2026 (3 days overdue)");
+    // The contact stamp is after Nov 5, so the old follow-up is not the overdue count.
+    expect(html).toContain('title="Overdue"');
+    expect(html).not.toContain(">3d overdue<");
+    expect(html).not.toContain("Due Nov 5, 2026");
     expect(html).toContain("bg-[#F9D0CC]");
     expect(html).toContain("text-[#111114]");
     expect(html).not.toContain("text-brand");
@@ -162,6 +164,7 @@ describe("compact lead cards", () => {
       today: "Follow Up Today",
       information: "Check What Info Is Missing",
       future: "Review Note Before Follow-Up",
+      incomplete: "Ask Them To Finish",
     });
     for (const step of Object.values(LEAD_NEXT_STEP)) {
       for (const word of step.split(/[\s-]+/)) {

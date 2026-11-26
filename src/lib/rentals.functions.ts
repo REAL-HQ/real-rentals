@@ -265,12 +265,10 @@ export async function evaluateReadiness(
     requirements: activationRequirements(facts),
     insurance,
     vehicleId: vehicleId ?? null,
-    suggestedWeeklyRate:
-      app.weekly_rent != null
-        ? Number(app.weekly_rent)
-        : vehicle?.weekly_rate != null
-          ? Number(vehicle.weekly_rate)
-          : null,
+    suggestedWeeklyRate: await (async () => {
+      const { weeklyRateForApplication } = await import("@/lib/agreement-weekly.server");
+      return weeklyRateForApplication(admin, applicationId, vehicle?.weekly_rate);
+    })(),
     suggestedDeposit: vehicle?.deposit != null ? Number(vehicle.deposit) : null,
     inspectionMileage,
     currentMileage,

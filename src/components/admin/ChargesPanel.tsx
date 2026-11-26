@@ -1,5 +1,5 @@
 import { VehicleOrLabel } from "./VehicleCell";
-import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
+import { chargeTypeLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, X, Receipt, Upload, AlertTriangle, Loader2, Trash2, Send } from "lucide-react";
 import { StatusPill, EmptyState, MicroLabel } from "./ui";
+import { ConfirmDialog, ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton } from "./modal";
 import {
   listTollCharges,
   createTollCharge,
@@ -14,12 +15,20 @@ import {
   rebillCharges,
   reattributeCharge,
   updateChargeStatus,
+  updateChargeDates,
+  setChargeEscalation,
   deleteCharge,
   CHARGE_TYPES,
   type TollCharge,
   type ImportOutcome,
 } from "@/lib/charges.functions";
-import { fmtDateTime } from "@/lib/date-format";
+import {
+  PAY_BY_LEAD_DAYS,
+  businessToday,
+  chargeDeadlineFlags,
+  defaultRenterPayBy,
+} from "@/lib/toll-charge-deadlines";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 import { VEHICLE_COMBOBOX_SELECT } from "@/lib/vehicle-label";
 
@@ -36,6 +45,7 @@ type VehicleLite = {
 
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
+  { value: "past_due", label: "Past Due" },
   { value: "new", label: "Unassigned" },
   { value: "assigned", label: "Ready To Bill" },
   { value: "rebilled", label: "Billed" },
@@ -53,6 +63,8 @@ export function ChargesPanel() {
   const rebill = useServerFn(rebillCharges);
   const reattribute = useServerFn(reattributeCharge);
   const setStatus = useServerFn(updateChargeStatus);
+  const saveDates = useServerFn(updateChargeDates);
+  const escalate = useServerFn(setChargeEscalation);
   const remove = useServerFn(deleteCharge);
 
   const [rows, setRows] = useState<TollCharge[]>([]);
@@ -63,6 +75,12 @@ export function ChargesPanel() {
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pendingEscalation, setPendingEscalation] = useState<null | {
+    id: string;
+    escalation: "disputed" | "affidavit_filed";
+  }>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const today = businessToday();
 
   async function load() {
     setLoading(true);
@@ -85,6 +103,7 @@ export function ChargesPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
+  const detail = rows.find((row) => row.id === detailId) ?? null;
   const unassigned = useMemo(() => rows.filter((r) => !r.rental_id).length, [rows]);
   const billable = useMemo(
     () => rows.filter((r) => r.rental_id && (r.status === "assigned" || r.status === "new")),
@@ -102,6 +121,37 @@ export function ChargesPanel() {
       else next.add(id);
       return next;
     });
+  }
+
+  async function saveChargeDates(
+    row: TollCharge,
+    patch: { agencyDueDate?: string | null; renterPayBy?: string | null },
+  ) {
+    const next = { ...patch };
+    if (next.agencyDueDate && !row.renter_pay_by && next.renterPayBy === undefined) {
+      next.renterPayBy = defaultRenterPayBy(next.agencyDueDate);
+    }
+    try {
+      await saveDates({ data: { id: row.id, ...next } });
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save dates");
+    }
+  }
+
+  async function confirmEscalation() {
+    if (!pendingEscalation) return;
+    setBusy(true);
+    try {
+      await escalate({ data: pendingEscalation });
+      toast.success(pendingEscalation.escalation === "disputed" ? "Marked Disputed" : "Affidavit Filed");
+      setPendingEscalation(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update the charge");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function doRebill() {
@@ -217,8 +267,11 @@ export function ChargesPanel() {
             {rows.map((r) => {
               const total = r.amount + r.admin_fee;
               const canBill = !!r.rental_id && (r.status === "assigned" || r.status === "new");
+              const flags = chargeDeadlineFlags(r, today);
+              const open = r.status !== "paid" && r.status !== "written_off";
               return (
-                <li key={r.id} className="p-3 flex items-start gap-3">
+                <li key={r.id} className="space-y-3 p-3">
+                  <div className="flex items-start gap-3">
                   <input
                     type="checkbox"
                     checked={selected.has(r.id)}
@@ -230,7 +283,7 @@ export function ChargesPanel() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm ">
-                        {enumDisplayLabel(r.charge_type)}
+                        {chargeTypeLabel(r.charge_type)}
                       </span>
                       <StatusPill
                         status={
@@ -247,16 +300,27 @@ export function ChargesPanel() {
                       </StatusPill>
                       {r.source === "import" ? (
                         <span className="text-[10px] tracking-wide text-[#9A9AA3]">
-                          imported
+                          Imported
                         </span>
                       ) : null}
+                      {flags.overdue ? <SolidPill label="Overdue" bg="#D03020" fg="#FFFFFF" /> : null}
+                      {flags.agencyDueSoon ? (
+                        <SolidPill label="Agency Due Soon" bg="#C68A12" fg="#FFFFFF" />
+                      ) : null}
+                      {r.escalation === "affidavit_filed" ? (
+                        <SolidPill label="Affidavit Filed" bg="#55555E" fg="#FFFFFF" />
+                      ) : null}
+                      {r.escalation === "transferred" ? (
+                        <SolidPill label="Transferred" bg="#55555E" fg="#FFFFFF" />
+                      ) : null}
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {fmtDateTime(r.occurred_at)} ·{" "}
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+                      <span>{fmtDateTime(r.occurred_at)}</span>
+                      <span>·</span>
                       <VehicleOrLabel vehicleId={r.vehicle_id} label={r.vehicle_label ?? "unknown vehicle"} size="sm" />
-                      {r.location ? ` · ${r.location}` : ""}
-                      {r.agency ? ` · ${r.agency}` : ""}
-                    </p>
+                      {r.location ? <span>· {r.location}</span> : null}
+                      {r.agency ? <span>· {r.agency}</span> : null}
+                    </div>
                     <p className="mt-0.5 text-xs">
                       {r.driver_name ? (
                         <span className="text-[#111114]">Billed to {r.driver_name}</span>
@@ -277,56 +341,90 @@ export function ChargesPanel() {
                         incl. {money(r.admin_fee)} fee
                       </div>
                     ) : null}
-                    <div className="mt-1 flex items-center justify-end gap-1">
-                      {!r.rental_id ? (
+                  </div>
+                  </div>
+                  <DeadlinePair
+                    testId="charge-deadlines"
+                    agencyDue={r.agency_due_date}
+                    payBy={r.renter_pay_by}
+                    onAgencyDue={(value) => saveChargeDates(r, { agencyDueDate: value })}
+                    onPayBy={(value) => saveChargeDates(r, { renterPayBy: value })}
+                  />
+                  <div className="flex flex-col gap-1.5 text-[#111114] sm:flex-row sm:flex-wrap sm:items-center" data-testid="charge-actions">
+                    {!r.rental_id ? (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await reattribute({ data: { id: r.id } });
+                            toast[res.attributed ? "success" : "error"](
+                              res.attributed
+                                ? "Matched to a renter"
+                                : "Still no rental covers that time",
+                            );
+                            load();
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : "Retry failed");
+                          }
+                        }}
+                        className={actionClass + " text-[#D03020]"}
+                      >
+                        Retry Match
+                      </button>
+                    ) : null}
+                    {open && r.escalation !== "disputed" && r.status !== "disputed" ? (
+                      <button
+                        type="button"
+                        onClick={() => setPendingEscalation({ id: r.id, escalation: "disputed" })}
+                        className={actionClass}
+                      >
+                        Mark Disputed
+                      </button>
+                    ) : null}
+                    {open && r.escalation !== "affidavit_filed" ? (
+                      <button
+                        type="button"
+                        onClick={() => setPendingEscalation({ id: r.id, escalation: "affidavit_filed" })}
+                        className={actionClass}
+                      >
+                        File Affidavit (Transfer To Renter)
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setDetailId(r.id)}
+                      className={actionClass}
+                    >
+                      Details
+                    </button>
+                    {r.status !== "rebilled" && r.status !== "paid" ? (
+                      <>
                         <button
                           onClick={async () => {
+                            await setStatus({ data: { id: r.id, status: "written_off" } });
+                            toast.success("Written off");
+                            load();
+                          }}
+                          className={actionClass}
+                        >
+                          Write Off
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm("Delete this charge?")) return;
                             try {
-                              const res = await reattribute({ data: { id: r.id } });
-                              toast[res.attributed ? "success" : "error"](
-                                res.attributed
-                                  ? "Matched to a renter"
-                                  : "Still no rental covers that time",
-                              );
+                              await remove({ data: { id: r.id } });
                               load();
                             } catch (e) {
-                              toast.error(e instanceof Error ? e.message : "Retry failed");
+                              toast.error(e instanceof Error ? e.message : "Could not delete");
                             }
                           }}
-                          className="text-[11px] font-semibold text-[#D03020] px-1.5"
+                          className={actionClass + " gap-1.5"}
                         >
-                          Retry Match
+                          <Trash2 className="w-3 h-3" />
+                          Delete
                         </button>
-                      ) : null}
-                      {r.status !== "rebilled" && r.status !== "paid" ? (
-                        <>
-                          <button
-                            onClick={async () => {
-                              await setStatus({ data: { id: r.id, status: "written_off" } });
-                              toast.success("Written off");
-                              load();
-                            }}
-                            className="text-[11px] text-[#55555E] px-1.5"
-                          >
-                            Write Off
-                          </button>
-                          <button
-                            onClick={async () => {
-                              if (!confirm("Delete this charge?")) return;
-                              try {
-                                await remove({ data: { id: r.id } });
-                                load();
-                              } catch (e) {
-                                toast.error(e instanceof Error ? e.message : "Could not delete");
-                              }
-                            }}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[#55555E] hover:text-[#D03020]"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
+                      </>
+                    ) : null}
                   </div>
                 </li>
               );
@@ -354,6 +452,138 @@ export function ChargesPanel() {
           }}
         />
       ) : null}
+      {detail ? (
+        <ModalShell onClose={() => setDetailId(null)} size="md" label="Charge Detail">
+          <ModalHeader title="Charge Detail" onClose={() => setDetailId(null)} subtitle={chargeTypeLabel(detail.charge_type)} />
+          <ModalBody>
+            <DeadlinePair
+              testId="charge-detail-deadlines"
+              agencyDue={detail.agency_due_date}
+              payBy={detail.renter_pay_by}
+              onAgencyDue={(value) => saveChargeDates(detail, { agencyDueDate: value })}
+              onPayBy={(value) => saveChargeDates(detail, { renterPayBy: value })}
+            />
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <dt className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">Amount</dt>
+                <dd className="mt-1 font-medium">{money(detail.amount + detail.admin_fee)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">Status</dt>
+                <dd className="mt-1">{detail.status === "new" ? "Unassigned" : formatStatusLabel(detail.status)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">When It Happened</dt>
+                <dd className="mt-1">{fmtDateTime(detail.occurred_at) || "Not Set"}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">Reference</dt>
+                <dd className="mt-1">{detail.reference_number || "Not Set"}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">Agency</dt>
+                <dd className="mt-1">{detail.agency || "Not Set"}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">Renter</dt>
+                <dd className="mt-1">{detail.driver_name || "Unassigned"}</dd>
+              </div>
+            </dl>
+          </ModalBody>
+          <ModalFooter>
+            <ModalButton onClick={() => setDetailId(null)}>Close</ModalButton>
+          </ModalFooter>
+        </ModalShell>
+      ) : null}
+      {pendingEscalation ? (
+        <ConfirmDialog
+          title={pendingEscalation.escalation === "disputed" ? "Mark Disputed" : "File Affidavit"}
+          confirmLabel={pendingEscalation.escalation === "disputed" ? "Mark Disputed" : "File Affidavit"}
+          onCancel={() => setPendingEscalation(null)}
+          onConfirm={confirmEscalation}
+          busy={busy}
+        >
+          <p className="text-sm text-[#55555E]">
+            {pendingEscalation.escalation === "disputed"
+              ? "Record this charge as disputed? The time is saved with the charge, and it will not be billed while it is disputed."
+              : "File the affidavit and transfer this citation to the renter? The time is saved with the charge."}
+          </p>
+        </ConfirmDialog>
+      ) : null}
+    </div>
+  );
+}
+
+const actionClass =
+  "inline-flex min-h-8 w-full items-center justify-center rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1 text-center text-[11px] font-semibold leading-tight sm:w-auto";
+
+function SolidPill({ label, bg, fg }: { label: string; bg: string; fg: string }) {
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+      style={{ backgroundColor: bg, color: fg }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function DeadlinePair({
+  agencyDue,
+  payBy,
+  onAgencyDue,
+  onPayBy,
+  testId,
+}: {
+  agencyDue: string | null | undefined;
+  payBy: string | null | undefined;
+  onAgencyDue: (value: string | null) => void;
+  onPayBy: (value: string | null) => void;
+  testId: string;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2" data-testid={testId}>
+      <DeadlineColumn label="Agency Deadline" value={agencyDue} onChange={onAgencyDue} />
+      <DeadlineColumn label="Pay By" value={payBy} onChange={onPayBy} />
+    </div>
+  );
+}
+
+function DeadlineColumn({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | null | undefined;
+  onChange: (value: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const shown = value ? fmtDate(value) : "Not Set";
+  return (
+    <div className="min-w-0">
+      <span className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">{label}</span>
+      {editing ? (
+        <input
+          type="date"
+          aria-label={label}
+          autoFocus
+          value={(value ?? "").slice(0, 10)}
+          onChange={(e) => {
+            onChange(e.target.value || null);
+            setEditing(false);
+          }}
+          onBlur={() => setEditing(false)}
+          className="mt-1 w-full min-w-0 rounded-md border border-[#EDEDF0] bg-white px-2 py-1 text-xs text-[#111114]"
+        />
+      ) : (
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className={`text-sm font-medium ${value ? "text-[#111114]" : "text-[#55555E]"}`}>{shown}</span>
+          <button type="button" onClick={() => setEditing(true)} className="text-[11px] font-semibold text-[#111114]">
+            Edit
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -408,6 +638,9 @@ function AddChargeForm({
   const [agency, setAgency] = useState("");
   const [location, setLocation] = useState("");
   const [reference, setReference] = useState("");
+  const [agencyDue, setAgencyDue] = useState("");
+  const [payBy, setPayBy] = useState("");
+  const [payByTouched, setPayByTouched] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -426,8 +659,13 @@ function AddChargeForm({
           agency: agency.trim() || null,
           location: location.trim() || null,
           referenceNumber: reference.trim() || null,
+          agencyDueDate: agencyDue || null,
+          renterPayBy: payBy || null,
         },
       });
+      if (res.deadlinesSaved === false && (agencyDue || payBy)) {
+        toast.warning("Charge saved. Agency due and pay-by dates need the database update before they can be stored.");
+      }
       toast[res.attributed ? "success" : "warning"](
         res.attributed
           ? "Charge recorded and matched to the renter"
@@ -529,6 +767,38 @@ function AddChargeForm({
           className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm"
         />
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <MicroLabel>Agency Deadline</MicroLabel>
+          <input
+            type="date"
+            aria-label="Agency Deadline"
+            value={agencyDue}
+            onChange={(e) => {
+              const next = e.target.value;
+              setAgencyDue(next);
+              if (!payByTouched) setPayBy(defaultRenterPayBy(next) ?? "");
+            }}
+            className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] bg-white px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <MicroLabel>Pay By</MicroLabel>
+          <input
+            type="date"
+            aria-label="Pay By"
+            value={payBy}
+            onChange={(e) => {
+              setPayByTouched(true);
+              setPayBy(e.target.value);
+            }}
+            className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] bg-white px-3 py-2 text-sm"
+          />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground -mt-1">
+        Pay By defaults to {PAY_BY_LEAD_DAYS} days before the agency deadline. The agency deadline stays on the charge so staff can see the notice date. Change Pay By on this charge if the renter needs a different date.
+      </p>
       <div className="flex justify-end gap-2 pt-2">
         <button onClick={onClose} className="rounded-lg border border-[#EDEDF0] px-4 py-2 text-sm">
           Cancel
@@ -605,6 +875,11 @@ function ImportForm({ onClose, onDone }: { onClose: () => void; onDone: () => vo
               </div>
             </div>
           ) : null}
+          {result.deadlinesDeferred > 0 ? (
+            <div className="rounded-xl border border-[#F0DCBB] bg-[#FDF8EF] p-3 text-sm text-[#8A5A00]">
+              {result.deadlinesDeferred} charge(s) were imported without an agency due date. Those columns are not on the database yet.
+            </div>
+          ) : null}
           {result.unmappedHeaders.length ? (
             <div className="text-xs text-muted-foreground">
               Columns ignored: {result.unmappedHeaders.join(", ")}
@@ -647,7 +922,8 @@ function ImportForm({ onClose, onDone }: { onClose: () => void; onDone: () => vo
           <p className="text-sm text-muted-foreground">
             Paste the CSV straight from your toll or citation portal. Columns are matched by name,
             vehicles by license plate, and each charge is billed to whoever had the car at that
-            moment. Re-importing an overlapping statement is safe — anything already on file is
+            moment. A due-date column is the agency deadline. Pay By is {PAY_BY_LEAD_DAYS} days
+            before that. Re-importing an overlapping statement is safe — anything already on file is
             skipped.
           </p>
           <div className="grid grid-cols-3 gap-3">

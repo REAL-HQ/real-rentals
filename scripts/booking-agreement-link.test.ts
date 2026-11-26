@@ -7,6 +7,7 @@ import {
   selectBookingAgreements,
 } from "../src/lib/booking-links.ts";
 import { linkOrphansToRental, linkAgreementToLiveRental } from "../src/lib/booking-links.server.ts";
+import { isUsableSignedAgreement } from "../src/lib/activation-readiness.ts";
 import { applicationWasSubmitted, buildApplicationSummary } from "../src/lib/application-summary.ts";
 import { rowOpenProps, shouldIgnoreRowEvent } from "../src/lib/row-click.ts";
 
@@ -73,7 +74,7 @@ function fake(tables: Record<string, any>) {
         select: () => b,
         maybeSingle: () => Promise.resolve({ data: tables[t + ":one"] ?? null }),
         then: (res: any, rej: any) => {
-          if (q.patch) calls.push(q);
+          calls.push(q);
           return Promise.resolve({ data: q.patch ? (tables[t + ":updated"] ?? []) : (tables[t + ":list"] ?? []) }).then(res, rej);
         },
       };
@@ -85,20 +86,69 @@ function fake(tables: Record<string, any>) {
 }
 
 describe("linking at creation time", () => {
-  it("linkOrphansToRental stamps the rental on unlinked agreements and the fee payment", async () => {
+  const signed = { source: "rental", status: "signed", signed_at: "2026-11-18T16:00:00Z", voided_at: null };
+
+  it("a signed agreement with no rental_id is still usable at activation", () => {
+    assert.equal(isUsableSignedAgreement({ ...signed, rental_id: null }), true);
+    assert.equal(isUsableSignedAgreement({ ...signed, rental_id: "R" }), false);
+  });
+
+  for (const status of ["pending_reservation", "reserved", "on_hold"]) {
+    it(`linkOrphansToRental leaves the agreement unlinked for ${status} and still links the fee payment`, async () => {
+      const { admin, calls } = fake({
+        "rentals:one": { id: "R", application_id: APP, vehicle_id: VEH, status, reservation_deposit_payment_id: "PAY" },
+        "rentals:list": [],
+        "agreements:updated": [{ id: "A" }],
+        "payments:updated": [{ id: "PAY" }],
+      });
+      const r = await linkOrphansToRental(admin, "R");
+      assert.deepEqual(r, { agreements: 0, payments: 1 });
+      assert.equal(calls.some((c) => c.t === "agreements"), false);
+      const pay = calls.find((c) => c.t === "payments");
+      assert.deepEqual(pay.patch, { rental_id: "R" });
+      assert.ok(pay.filters.some((f: any[]) => f[0] === "is" && f[1] === "rental_id" && f[2] === null));
+    });
+  }
+
+  it("linkOrphansToRental stamps the rental on unlinked agreements once the rental is active", async () => {
     const { admin, calls } = fake({
-      "rentals:one": { id: "R", application_id: APP, vehicle_id: VEH, status: "reserved", reservation_deposit_payment_id: "PAY" },
+      "rentals:one": { id: "R", application_id: APP, vehicle_id: VEH, status: "active", reservation_deposit_payment_id: "PAY" },
       "rentals:list": [],
       "agreements:updated": [{ id: "A" }],
       "payments:updated": [{ id: "PAY" }],
     });
     const r = await linkOrphansToRental(admin, "R");
     assert.deepEqual(r, { agreements: 1, payments: 1 });
-    const ag = calls.find((c) => c.t === "agreements");
+    const ag = calls.find((c) => c.t === "agreements" && c.patch);
     assert.deepEqual(ag.patch, { rental_id: "R" });
     assert.ok(ag.filters.some((f: any[]) => f[0] === "is" && f[1] === "rental_id" && f[2] === null), "only unlinked rows");
     assert.ok(ag.filters.some((f: any[]) => f[0] === "eq" && f[1] === "application_id" && f[2] === APP));
   });
+
+  it("linkAgreementToLiveRental attaches only to an active rental", async () => {
+    const held = fake({
+      "agreements:one": { id: "A", application_id: APP, vehicle_id: VEH, rental_id: null },
+      "rentals:list": [
+        { id: "hold", vehicle_id: VEH, status: "pending_reservation" },
+        { id: "res", vehicle_id: VEH, status: "reserved" },
+        { id: "on", vehicle_id: VEH, status: "on_hold" },
+      ],
+    });
+    await linkAgreementToLiveRental(held.admin, "A");
+    assert.equal(held.calls.some((c) => c.t === "agreements" && c.patch), false);
+    const lookup = held.calls.find((c) => c.t === "rentals");
+    assert.ok(lookup.filters.some((f: any[]) => f[0] === "eq" && f[1] === "status" && f[2] === "active"));
+
+    const live = fake({
+      "agreements:one": { id: "A", application_id: APP, vehicle_id: VEH, rental_id: null },
+      "rentals:list": [{ id: "R", vehicle_id: VEH, status: "active" }],
+    });
+    await linkAgreementToLiveRental(live.admin, "A");
+    const ag = live.calls.find((c) => c.t === "agreements" && c.patch);
+    assert.deepEqual(ag.patch, { rental_id: "R" });
+    assert.ok(ag.filters.some((f: any[]) => f[0] === "is" && f[1] === "rental_id" && f[2] === null));
+  });
+
   it("never throws", async () => {
     const r = await linkOrphansToRental({ from() { throw new Error("db down"); } }, "R");
     assert.deepEqual(r, { agreements: 0, payments: 0 });
@@ -114,9 +164,10 @@ describe("wiring", () => {
     assert.match(bookings, /paymentBelongsToBooking\(/);
   });
   it("reserve, fee-hold, agreement-create and activation link records to the rental", () => {
-    for (const f of ["src/lib/reservations.functions.ts", "src/lib/reservation-fee.server.ts", "src/lib/rentals.functions.ts"])
+    for (const f of ["src/lib/reservations.functions.ts", "src/lib/pending-reservation.server.ts", "src/lib/rentals.functions.ts"])
       assert.match(readFileSync(f, "utf8"), /booking-links\.server/, f);
     assert.match(readFileSync("src/lib/agreements.functions.ts", "utf8"), /linkAgreementToLiveRental/);
+    assert.match(readFileSync("src/lib/reservation-confirmation.server.ts", "utf8"), /!a\.rental_id \|\| a\.rental_id === r\.id/);
   });
 });
 

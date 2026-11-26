@@ -45,6 +45,10 @@ export function readLivePartnerCharges(window: { gte: number; lt: number }, sign
   return readPartnerCharges(createReadOnlyStripe("live", { cache: true }) as unknown as ReadOnlyStripeGateway, window, { signal });
 }
 
+export function readLivePartnerChargesTimed(window: { gte: number; lt: number }, timeoutMs: number, signal?: AbortSignal) {
+  return readPartnerCharges(createReadOnlyStripe("live", { cache: true }) as unknown as ReadOnlyStripeGateway, window, { signal, timeoutMs });
+}
+
 function remaining(deadline: number, now: () => number): number {
   return Math.max(1, Math.min(10_000, deadline - now()));
 }

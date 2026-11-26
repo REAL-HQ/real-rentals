@@ -436,7 +436,8 @@ export async function createReservationCore(
     throw new Error("That Pickup Slot Is Already Booked.");
   }
 
-  const weekly = typeof vehicle.weekly_rate === "number" ? vehicle.weekly_rate : 0;
+  const { weeklyRateForApplication } = await import("@/lib/agreement-weekly.server");
+  const weekly = (await weeklyRateForApplication(admin, data.applicationId, vehicle.weekly_rate)) ?? 0;
   const insertRow: Record<string, unknown> = {
     driver_id: app.user_id,
     vehicle_id: data.vehicleId,
@@ -467,7 +468,9 @@ export async function createReservationCore(
   }
 
   await admin.from("vehicles").update({ status: "reserved" }).eq("id", data.vehicleId).neq("status", "rented");
-  // The agreement and the Reservation Fee were created before this row: tie them to it.
+  // The Reservation Fee was paid before this row. Link that payment. The signed
+  // agreement stays unlinked until the rental is active, so pickup can still
+  // count it (linkOrphansToRental).
   await (await import("@/lib/booking-links.server")).linkOrphansToRental(admin, inserted.id);
 
   const loginEmail = await maybeSendPickupBookedEmail(admin, data.applicationId, {
@@ -806,12 +809,12 @@ export const listVehiclesForReservation = createServerFn({ method: "GET" })
 
 export const listApprovedForReservation = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<Array<{ id: string; full_name: string | null; email: string | null }>> => {
+  .handler(async ({ context }): Promise<Array<{ id: string; full_name: string | null; email: string | null; phone: string | null }>> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("applications")
-      .select("id,full_name,email,status,user_id")
+      .select("id,full_name,email,phone,status,user_id")
       .in("status", ["approved", "active"])
       .order("full_name", { ascending: true })
       .limit(500);
@@ -822,5 +825,10 @@ export const listApprovedForReservation = createServerFn({ method: "GET" })
     const taken = new Set((reserved.data ?? []).map((r) => r.application_id).filter(Boolean));
     return (data ?? [])
       .filter((a) => !taken.has(a.id))
-      .map((a) => ({ id: a.id, full_name: a.full_name ?? null, email: a.email ?? null }));
+      .map((a) => ({
+        id: a.id,
+        full_name: a.full_name ?? null,
+        email: a.email ?? null,
+        phone: a.phone ?? null,
+      }));
   });

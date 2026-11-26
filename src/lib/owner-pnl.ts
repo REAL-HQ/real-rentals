@@ -45,16 +45,21 @@ export type OwnerPaymentLink = {
   id: string;
   vehicleId: string | null;
   rentalId?: string | null;
+  driverId?: string | null;
   type: string | null;
   status?: string | null;
   paymentMethod?: string | null;
   amount?: string | number | null;
+  balanceDue?: string | number | null;
+  dueDate?: string | null;
   refundedAmount?: string | number | null;
   refundedAt?: string | null;
   paidDate?: string | null;
   paymentIntentId: string | null;
   invoiceId: string | null;
   subscriptionId: string | null;
+  reason?: string | null;
+  notes?: string | null;
 };
 export type OwnerVehicleRef = {
   id: string;
@@ -89,6 +94,15 @@ export type OwnerRentalLink = {
   vehicleId: string | null;
   customerId: string | null;
   subscriptionId: string | null;
+  driverId?: string | null;
+  applicationId?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  status?: string | null;
+  depositHeld?: boolean | null;
+  depositAmount?: string | number | null;
+  depositRefundAmount?: string | number | null;
+  depositStatus?: string | null;
 };
 export type OwnerExpenseRow = {
   id: string;
@@ -115,6 +129,8 @@ export type OwnerRefundRow = {
   createdAt: string | null;
   paymentIds: string[];
 };
+export type OwnerPerson = { driverId: string; name: string };
+export type OwnerPurchase = { vehicleId: string; priceCents: number | null };
 export type OwnerPnlDirectory = {
   payments: OwnerPaymentLink[];
   rentals: OwnerRentalLink[];
@@ -122,6 +138,8 @@ export type OwnerPnlDirectory = {
   maintenance: OwnerMaintenanceRow[];
   refunds: OwnerRefundRow[];
   vehicles?: OwnerVehicleRef[];
+  people?: OwnerPerson[];
+  purchases?: OwnerPurchase[];
 };
 
 export type OwnerExpenseGroup = { category: string; label: string; cents: number };
@@ -185,7 +203,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const REFUND_SKIP = new Set(["pending", "failed", "canceled", "cancelled"]);
 const COLLECTED = new Set(["paid", "refunded"]);
 const REVENUE_TYPES = new Set(["rent", "late_fee", "other", "toll", "damage", "fee", "reservation"]);
-const STRIPE_METHODS = new Set(["stripe", "card", "credit", "credit_card", "debit", "debit_card", "visa", "mastercard", "amex", "american_express", "apple_pay"]);
+const STRIPE_METHODS = new Set(["stripe", "card", "credit", "credit_card", "debit", "debit_card", "visa", "mastercard", "amex", "american_express", "apple_pay", "link", "ach"]);
 const RECORDED_SOURCES: Record<string, OwnerIncomeSource> = {
   cash_app: "cash_app",
   cashapp: "cash_app",
@@ -207,12 +225,16 @@ function referenceText(value: string | null | undefined): string {
   return value?.trim() ?? "";
 }
 
-function paymentSource(payment: OwnerPaymentLink): OwnerIncomeSource {
+export function paymentSource(payment: OwnerPaymentLink): OwnerIncomeSource {
   const method = normalizeMethod(payment.paymentMethod);
+  const stripeRef = !!(referenceText(payment.paymentIntentId) || referenceText(payment.invoiceId));
+  // Staff Cash App has no Stripe id. Stripe's own Cash App charge does, and
+  // stays with that charge so the same dollars are not also recorded income.
+  if (method === "cash_app" && stripeRef) return "stripe";
   const named = RECORDED_SOURCES[method];
   if (named) return named;
   if (STRIPE_METHODS.has(method)) return "stripe";
-  if (!method && (referenceText(payment.paymentIntentId) || referenceText(payment.invoiceId))) return "stripe";
+  if (stripeRef) return "stripe";
   return "other";
 }
 
@@ -265,6 +287,10 @@ export function currentEtMonth(now: Date): string | null {
   return today ? today.slice(0, 7) : null;
 }
 
+export function shiftFinanceDate(ymd: string, days: number): string | null {
+  return addDays(ymd, days);
+}
+
 function addDays(ymd: string, days: number): string | null {
   if (!validFinanceDate(ymd) || !Number.isSafeInteger(days)) return null;
   const [year, month, day] = ymd.split("-").map(Number);
@@ -300,7 +326,19 @@ export function previousMonth(month: string): string | null {
   return mon === 1 ? `${year - 1}-12` : `${year}-${String(mon - 1).padStart(2, "0")}`;
 }
 
-export function monthWindow(month: string): { month: string; from: string; to: string; through: string; gte: number; lt: number } | null {
+export type OwnerPnlWindow = { month: string; from: string; to: string; through: string; gte: number; lt: number };
+
+/** Inclusive Eastern Time dates. `to` is the following midnight, exclusive. */
+export function spanWindow(from: string, through: string, month = `${from}:${through}`): OwnerPnlWindow | null {
+  if (!validFinanceDate(from) || !validFinanceDate(through) || from > through) return null;
+  const to = addDays(through, 1);
+  const gte = etMidnightUnix(from);
+  const lt = to ? etMidnightUnix(to) : null;
+  if (!to || gte === null || lt === null || lt <= gte) return null;
+  return { month, from, to, through, gte, lt };
+}
+
+export function monthWindow(month: string): OwnerPnlWindow | null {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return null;
   const from = `${month}-01`;
   if (!validFinanceDate(from)) return null;
@@ -335,7 +373,7 @@ function placed(candidates: (string | null | undefined)[]): { date: string | nul
 
 type ChargeDecision = { kind: "vehicle"; vehicleId: string } | { kind: "unattributed"; conflict: boolean } | { kind: "deposit" };
 
-function paymentVehicleId(payment: OwnerPaymentLink, rentals: OwnerRentalLink[]): string | null {
+export function paymentVehicleId(payment: OwnerPaymentLink, rentals: OwnerRentalLink[]): string | null {
   if (payment.rentalId) {
     const rental = rentals.find((row) => row.id === payment.rentalId);
     if (rental?.vehicleId) return rental.vehicleId;
@@ -343,7 +381,7 @@ function paymentVehicleId(payment: OwnerPaymentLink, rentals: OwnerRentalLink[])
   return payment.vehicleId ?? null;
 }
 
-function decideCharge(charge: OwnerCharge, payments: OwnerPaymentLink[], rentals: OwnerRentalLink[]): ChargeDecision {
+export function decideCharge(charge: OwnerCharge, payments: OwnerPaymentLink[], rentals: OwnerRentalLink[]): ChargeDecision {
   const namedIds = (charge.paymentIds ?? []).filter(Boolean);
   if (namedIds.length) {
     const named = namedIds.map((id) => payments.find((payment) => payment.id === id));
@@ -392,9 +430,24 @@ function delta(current: number | null, previous: number | null): number | null {
   return Number.isSafeInteger(value) ? value : null;
 }
 
-export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; charges: OwnerCharge[]; fees?: OwnerFeeRead }): OwnerPnlMonth | null {
-  const window = monthWindow(input.month);
+export function buildOwnerPnlMonth(input: OwnerPnlDirectory & {
+  month: string;
+  charges: OwnerCharge[];
+  fees?: OwnerFeeRead;
+  window?: OwnerPnlWindow;
+  /** When set, income and its refunds from other sources are left out. */
+  sources?: readonly OwnerIncomeSource[] | null;
+  /** When set, expenses in other categories are left out. */
+  categories?: readonly string[] | null;
+  /** False when the Stripe charge list did not finish. Revenue stays unknown. */
+  revenueKnown?: boolean;
+}): OwnerPnlMonth | null {
+  const window = input.window ?? monthWindow(input.month);
   if (!window) return null;
+  const sourceAllow = input.sources && input.sources.length ? new Set(input.sources) : null;
+  const categoryAllow = input.categories && input.categories.length
+    ? new Set(input.categories.map((category) => category.trim().toLowerCase() || "other"))
+    : null;
   const inWindow = (date: string) => date >= window.from && date < window.to;
   const categories = new Map<string, number>();
   const expenseByVehicle = new Map<string, number>();
@@ -402,6 +455,7 @@ export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; c
   let expensesComplete = true;
   const addExpense = (category: string | null, cents: number, vehicleId: string) => {
     const key = category?.trim() || "other";
+    if (categoryAllow && !categoryAllow.has(key.toLowerCase())) return;
     const next = (categories.get(key) ?? 0) + cents;
     const vehicleNext = (expenseByVehicle.get(vehicleId) ?? 0) + cents;
     if (!Number.isSafeInteger(next) || !Number.isSafeInteger(vehicleNext)) expensesComplete = false;
@@ -472,7 +526,7 @@ export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; c
   let conflicting = 0;
   let deposits = 0;
   let revenue = 0;
-  let revenueComplete = true;
+  let revenueComplete = input.revenueKnown !== false;
   let undatedPayments = 0;
   const sourceTotals = new Map<OwnerIncomeSource, number>(OWNER_INCOME_SOURCES.map((row) => [row.source, 0]));
   const incomeByVehicle = new Map<string, number>();
@@ -494,6 +548,7 @@ export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; c
     if (charge.currency !== "usd" || !Number.isSafeInteger(charge.amountCents) || charge.amountCents < 0) { revenueComplete = false; continue; }
     if (charge.created < window.gte || charge.created >= window.lt) continue;
     const decision = decideCharge(charge, input.payments, input.rentals);
+    if (sourceAllow && !sourceAllow.has("stripe")) continue;
     if (decision.kind === "deposit") {
       const next = deposits + charge.amountCents;
       if (!Number.isSafeInteger(next)) revenueComplete = false;
@@ -526,6 +581,7 @@ export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; c
       if (place.invalid) { revenueComplete = false; continue; }
       if (!place.date) { undatedPayments += 1; continue; }
       if (!inWindow(place.date)) continue;
+      if (sourceAllow && !sourceAllow.has(source)) continue;
       const amount = readCents(payment.amount);
       if (amount.blank || amount.invalid || amount.cents === null) { revenueComplete = false; continue; }
       const next = deposits + amount.cents;
@@ -536,11 +592,13 @@ export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; c
     if (!REVENUE_TYPES.has(type)) continue;
     if (place.invalid) { revenueComplete = false; continue; }
     if (!place.date) {
+      if (sourceAllow && !sourceAllow.has(source)) continue;
       if (source === "stripe" && !hasAuthoritativeReference(payment, verifiedCharges)) unmatched.push({ id: payment.id, method: payment.paymentMethod ?? null, reason: UNMATCHED_REASON });
       else undatedPayments += 1;
       continue;
     }
     if (!inWindow(place.date)) continue;
+    if (sourceAllow && !sourceAllow.has(source)) continue;
     if (matched) continue;
     if (source === "stripe") {
       if (!hasAuthoritativeReference(payment, verifiedCharges)) unmatched.push({ id: payment.id, method: payment.paymentMethod ?? null, reason: UNMATCHED_REASON });
@@ -589,6 +647,7 @@ export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; c
       else depositRefunds = next;
       continue;
     }
+    if (sourceAllow && linkedPayments.some((payment) => payment && !sourceAllow.has(paymentSource(payment)))) continue;
     const vehicles = new Set(linkedPayments.map((payment) => payment ? paymentVehicleId(payment, input.rentals) ?? "" : ""));
     for (const id of refund.paymentIds) countedRefundPayments.add(id);
     addRefund(cents, vehicles.size === 1 ? [...vehicles][0]! : "");

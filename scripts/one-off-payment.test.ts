@@ -152,7 +152,7 @@ describe("one-off payment helpers", () => {
     assert.equal(id.amountCents, 5000);
     assert.equal(id.paidAt, PAID_AT);
     assert.equal(id.purpose, "1-day rental Nov 16, return Nov 17");
-    assert.equal(id.cardPayment, true);
+    assert.equal(id.paymentMethod, "card");
   });
 
   it("maps types and picks exactly one rental", () => {
@@ -279,6 +279,7 @@ describe("payments webhook — one-off payments", () => {
     assert.equal(rows[0].due_date, "2026-11-20", "the Nov 20 link pays Nov 20 even when paid after midnight");
     assert.equal(rows[0].reason, "Rent for 2026-11-20");
     assert.match(rows[0].notes, /matched by plate/);
+    assert.equal(rows[0].payment_method, "link");
     assert.equal(unmatched(db).length, 0);
   });
 
