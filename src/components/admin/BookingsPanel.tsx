@@ -33,7 +33,15 @@ import {
 import { endedLengthDays, orderByLength, type RentalLengthOrder } from "@/lib/rental-length-order";
 import { RentalLengthSort } from "./RentalLengthSort";
 import { listKeptFeeCreditOffers } from "@/lib/forfeited-fee-credit.functions";
-import type { ForfeitedFeeCreditMode, KeptFeeOffer } from "@/lib/forfeited-fee-credit";
+import {
+  creditCountdownLabel,
+  creditDaysLeft,
+  creditExpired,
+  creditForCancelledRental,
+  type CancelledRentalCredit,
+  type ForfeitedFeeCreditMode,
+  type KeptFeeOffer,
+} from "@/lib/forfeited-fee-credit";
 import { convertReservationFeeToCredit } from "@/lib/rental-hold.functions";
 import { ROW_MENU_COLUMN } from "./open-column";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -90,6 +98,38 @@ function RentalLength({ label }: { label: string | null | undefined }) {
   );
 }
 
+function CancelledCreditNote({ credit, now }: { credit: CancelledRentalCredit; now: Date }) {
+  const applied = credit.status === "applied";
+  const expired = !applied && creditExpired(credit.expiresAt, now);
+  const state = applied ? "applied" : expired ? "expired" : "available";
+  const daysLeft = state === "available" ? creditDaysLeft(credit.expiresAt, now) : null;
+  const urgent = daysLeft != null && daysLeft <= 7;
+  const amount = Number.isFinite(credit.amount) ? `$${credit.amount.toFixed(2)}` : "";
+  const status = applied ? "Credit Applied" : expired ? "Expired" : "Available";
+  const when = credit.expiresAt
+    ? `${expired ? "Expired" : "Expires"} ${fmtDate(credit.expiresAt)}`
+    : null;
+  return (
+    <span className="mt-1 block text-[11px] leading-snug text-[#55555E]" data-testid="cancelled-credit" data-credit-state={state}>
+      <span className="block font-medium text-[#111114]">
+        {amount ? `${amount} · ` : ""}{status}
+      </span>
+      {state === "available" ? (
+        <span
+          className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${urgent ? "bg-[#FFF4D6] text-[#8A6A00]" : "bg-[#F4F4F6] text-[#55555E]"}`}
+          data-testid="credit-countdown"
+        >
+          {creditCountdownLabel(credit.expiresAt, now)}
+        </span>
+      ) : null}
+      {state === "expired" ? (
+        <span className="mt-1 inline-flex rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#55555E]">Expired</span>
+      ) : null}
+      {when ? <span className="mt-0.5 block text-[11px] text-muted-foreground">{when}</span> : null}
+    </span>
+  );
+}
+
 export function BookingsPanel({
   externalSearch = "",
   openId = null,
@@ -104,6 +144,8 @@ export function BookingsPanel({
   previewKeptFees,
   previewCreditMode = "case_by_case",
   previewMenuOpen = false,
+  previewCredits,
+  previewNow,
 }: {
   externalSearch?: string;
   openId?: string | null;
@@ -122,11 +164,17 @@ export function BookingsPanel({
   previewKeptFees?: KeptFeeOffer[];
   previewCreditMode?: ForfeitedFeeCreditMode;
   previewMenuOpen?: boolean;
+  /** Skip the credit lookup. Screenshots and tests pass these rows. */
+  previewCredits?: CancelledRentalCredit[];
+  /** Fixed clock for the days-left pill. */
+  previewNow?: Date;
 } = {}) {
   const navigate = useNavigate();
   const [lengthOrder, setLengthOrder] = useState<RentalLengthOrder>(initialLengthOrder);
   const [keptFees, setKeptFees] = useState<KeptFeeOffer[]>(previewKeptFees ?? []);
+  const [credits, setCredits] = useState<CancelledRentalCredit[]>(previewCredits ?? []);
   const [creditMode, setCreditMode] = useState<ForfeitedFeeCreditMode>(previewCreditMode);
+  const clock = previewNow ?? new Date();
   const loadOffers = useServerFn(listKeptFeeCreditOffers);
   const loadOffersRef = useRef(loadOffers);
   loadOffersRef.current = loadOffers;
@@ -242,25 +290,33 @@ export function BookingsPanel({
   const rows = result?.rows ?? [];
   const showFeeMenu = scope === "cancelled" && canManage;
   const rentalIdKey = rows.map((row) => row.id).join(",");
+  const applicationIdKey = rows.map((row) => row.applicationId ?? "").join(",");
   useEffect(() => {
-    if (previewKeptFees || scope !== "cancelled") return;
-    const ids = rentalIdKey.split(",").filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+    if (previewKeptFees || previewCredits || scope !== "cancelled") return;
+    const uuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const ids = rentalIdKey.split(",").filter(uuid);
+    const applicationIds = [...new Set(applicationIdKey.split(",").filter(uuid))];
     if (!ids.length) return;
     let alive = true;
-    loadOffersRef.current({ data: { rentalIds: ids } })
+    loadOffersRef.current({ data: { rentalIds: ids, applicationIds } })
       .then((found) => {
         if (!alive || !found?.offers || !found.mode) return;
         setKeptFees((current) => (JSON.stringify(current) === JSON.stringify(found.offers) ? current : found.offers));
         setCreditMode(found.mode);
+        setCredits(found.credits ?? []);
       })
       .catch(() => {
-        if (alive) setKeptFees([]);
+        if (!alive) return;
+        setKeptFees([]);
+        setCredits([]);
       });
     return () => {
       alive = false;
     };
-  }, [previewKeptFees, scope, rentalIdKey]);
+  }, [previewKeptFees, previewCredits, scope, rentalIdKey, applicationIdKey]);
   const offerFor = (id: string) => keptFees.find((offer) => offer.rentalId.toLowerCase() === id.toLowerCase()) ?? null;
+  const creditFor = (row: BookingRow) =>
+    scope === "cancelled" ? creditForCancelledRental({ id: row.id, applicationId: row.applicationId }, credits, clock) : null;
   const onKeepFee = async (offer: KeptFeeOffer, name: string | null) => {
     if (!window.confirm(`Keep ${name ?? "This Renter"}'s Reservation Fee As A Credit Toward Their Next Rental?`)) return;
     try {
@@ -342,8 +398,8 @@ export function BookingsPanel({
               <tr>
                 <th className="w-[22%] px-2 py-2 font-medium">Driver</th>
                 <th className="w-[20%] px-2 py-2 font-medium">Vehicle</th>
-                <th className="w-[24%] px-2 py-2 font-medium">Dates</th>
-                <th className="w-[12%] px-2 py-2 font-medium">Status</th>
+                <th className="w-[20%] px-2 py-2 font-medium">Dates</th>
+                <th className="w-[16%] px-2 py-2 font-medium">Status</th>
                 {money ? <th className="w-[14%] px-2 py-2 font-medium">Rent</th> : null}
                 <th className={`${OPEN_COLUMN} py-2 font-medium`}>Open</th>
                 {showFeeMenu ? <th className={`${ROW_MENU_COLUMN} py-2 font-medium`} /> : null}
@@ -374,7 +430,9 @@ export function BookingsPanel({
                     <StatusPill status={b.phase} tone={PHASE_TONE[b.phase]}>
                       {BOOKING_PHASE_LABEL[b.phase]}
                     </StatusPill>
-                    {creditMode === "case_by_case" && offerFor(b.id) ? (
+                    {creditFor(b) ? (
+                      <CancelledCreditNote credit={creditFor(b)!} now={clock} />
+                    ) : creditMode === "case_by_case" && offerFor(b.id) ? (
                       <span className="mt-1 block text-[11px] font-medium leading-snug text-[#8A6A00]" data-testid="fee-kept-undecided">
                         Fee Kept, Credit Not Decided
                       </span>
@@ -481,7 +539,9 @@ export function BookingsPanel({
                   )}
                 </div>
               )}
-              {creditMode === "case_by_case" && offerFor(b.id) ? (
+              {creditFor(b) ? (
+                <CancelledCreditNote credit={creditFor(b)!} now={clock} />
+              ) : creditMode === "case_by_case" && offerFor(b.id) ? (
                 <p className="mt-2 text-[12px] font-medium text-[#8A6A00]" data-testid="fee-kept-undecided">Fee Kept, Credit Not Decided</p>
               ) : null}
               {showFeeMenu && offerFor(b.id) ? (
