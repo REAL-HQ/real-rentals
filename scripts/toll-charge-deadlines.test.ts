@@ -401,7 +401,7 @@ function tollIdentity(): OneOffIdentity {
     reason: "school_zone_ticket",
     notice: "NZ-44",
     receiptUrl: null,
-    cardPayment: true,
+    paymentMethod: "card",
   };
 }
 
