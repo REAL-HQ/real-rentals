@@ -11,6 +11,7 @@
  * distinct token per signer so a shared token can no longer wipe signer 2.
  */
 import { withinTextingHours } from "@/lib/failed-payment-link";
+import { resendSkipsRentalMerge } from "@/lib/standalone-doc";
 import type { Actor } from "@/lib/roles.server";
 import type { ChannelStatus } from "@/lib/esign.server";
 
@@ -235,7 +236,7 @@ export async function resendAgreementSigners(admin: any, args: ResendArgs): Prom
   const channels: ResendChannels = args.channels ?? "email_and_sms";
   const now = args.now ?? new Date();
   const { data: ag, error: agErr } = await admin.from("agreements")
-    .select("id,application_id,status,sent_at,signer_email,signer_name,merge_data,voided_at,token_hash,token_expires_at,signed_at")
+    .select("id,application_id,status,sent_at,signer_email,signer_name,merge_data,voided_at,token_hash,token_expires_at,signed_at,source")
     .eq("id", args.agreementId)
     .maybeSingle();
   if (agErr) throw new SignerResendError(503, "Could not read agreements.");
@@ -245,7 +246,7 @@ export async function resendAgreementSigners(admin: any, args: ResendArgs): Prom
   }
 
   const merge = (ag.merge_data ?? {}) as Record<string, any>;
-  const gaps = RESEND_REQUIRED_KEYS.filter((k) => !String(merge[k] ?? "").trim());
+  const gaps = resendSkipsRentalMerge(ag.source) ? [] : RESEND_REQUIRED_KEYS.filter((k) => !String(merge[k] ?? "").trim());
   if (gaps.length) {
     const pretty = gaps.join(", ").replace(/_/g, " ");
     if (args.source === "fleet") {

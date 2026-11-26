@@ -127,12 +127,14 @@ function MarkPicker({ kind, text, onAdopt }: { kind: "signature" | "initials"; t
   );
 }
 
-export function SigningPanel({ body, defaultName, companySigner, busy, error, onSubmit }: {
+export function SigningPanel({ body, defaultName, companySigner, busy, error, onSubmit, document = false }: {
   body: string;
   defaultName: string;
   companySigner?: string;
   busy: boolean;
   error?: string | null;
+  /** A third-party PDF. The signature is still required; the wording is not a rental agreement. */
+  document?: boolean;
   onSubmit: (v: { signerName: string; adoption: Adoption }) => void;
 }) {
   useSignatureFonts();
@@ -218,16 +220,19 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
         <label className="mt-3 flex cursor-pointer items-start gap-3 text-[14px] text-[#28282E]">
           <CheckboxInput checked={agree} onChange={(e) => setAgree(e.target.checked)} boxClassName="mt-0.5" />
           <span>
-            I have read and agree to this rental agreement. I adopt the signature and initials shown above as my legal electronic signature and initials, equivalent to handwritten ones.
-            {isStructured(body) ? " I initialed each Renter Acknowledgment individually." : null}
+            {document
+              ? "I have reviewed this document. I adopt the signature and initials shown above as my legal electronic signature, equivalent to a handwritten one."
+              : "I have read and agree to this rental agreement. I adopt the signature and initials shown above as my legal electronic signature and initials, equivalent to handwritten ones."}
+            {!document && isStructured(body) ? " I initialed each Renter Acknowledgment individually." : null}
           </span>
         </label>
-        {companySigner && <p className="mt-3 text-[12px] text-[#8A8A93]">Countersigned by {companySigner}. Your name, date, IP address, browser and signature method are recorded for the audit trail.</p>}
+        {companySigner && !document && <p className="mt-3 text-[12px] text-[#8A8A93]">Countersigned by {companySigner}. Your name, date, IP address, browser and signature method are recorded for the audit trail.</p>}
+        {document && <p className="mt-3 text-[12px] text-[#8A8A93]">Your name, date, IP address, browser and signature method are recorded for the audit trail.</p>}
         {error && <p className="mt-3 text-[14px] text-[#D03020]">{error}</p>}
         <button type="button" disabled={!ready}
           onClick={() => sig && ini && onSubmit({ signerName: name.trim(), adoption: { signature: sig, initials: ini, acks } })}
           className="mt-4 min-h-12 w-full rounded-lg bg-[#D03020] px-6 text-[16px] font-semibold text-white disabled:opacity-40 sm:w-auto">
-          {busy ? "Signing…" : "Sign Agreement"}
+          {busy ? "Signing…" : document ? "Sign Document" : "Sign Agreement"}
         </button>
         {!ready && !busy && (
           <p className="mt-2 text-[12px] text-[#77777F]">

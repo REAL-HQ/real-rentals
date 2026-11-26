@@ -27,6 +27,8 @@ export function resolvedEmailFrom(): string {
 
 type SendArgs = {
   to: string | string[];
+  /** Copied recipients. Omitted by every existing caller, so their Resend body is unchanged. */
+  cc?: string[];
   subject: string;
   html: string;
   from?: string;
@@ -169,7 +171,37 @@ function noticeFetchSignal(noticeTimeout: boolean | undefined, signal: AbortSign
   return signal ? AbortSignal.any([timeout, signal]) : timeout;
 }
 
-export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout, signal, attachments }: SendArgs): Promise<SendResult> {
+/** Every address a send will touch. Cc is included so blacklist and suppression see it. */
+export function emailRecipients(to: string | string[], cc?: string[]): string[] {
+  return [...(Array.isArray(to) ? to : [to]), ...(cc ?? [])].map((s) => String(s ?? "").trim()).filter(Boolean);
+}
+
+/** The JSON Resend receives. No `cc` key unless a copy was asked for. */
+export function buildResendPayload(args: {
+  from: string;
+  to: string[];
+  cc?: string[];
+  subject: string;
+  html: string;
+  text: string;
+  replyTo: string;
+  attachments?: EmailAttachment[];
+}): Record<string, unknown> {
+  return {
+    from: args.from,
+    to: args.to,
+    subject: args.subject,
+    html: args.html,
+    text: args.text,
+    reply_to: args.replyTo,
+    ...(args.cc && args.cc.length ? { cc: args.cc } : {}),
+    ...(args.attachments?.length
+      ? { attachments: args.attachments.map((f) => ({ filename: f.filename, content: f.content, ...(f.contentType ? { content_type: f.contentType } : {}) })) }
+      : {}),
+  };
+}
+
+export async function sendEmail({ to, cc, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout, signal, attachments }: SendArgs): Promise<SendResult> {
   // Company phone in templates resolves from Settings → Business Phone.
   let html = rawHtml;
   if (html.includes("{{company_phone}}")) {
@@ -203,7 +235,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
   {
     const wf = track?.workflow ?? "";
     if (wf !== "staff_message" && !STAFF_WORKFLOWS.has(wf)) {
-      const recipients = Array.isArray(to) ? to : [to];
+      const recipients = emailRecipients(to, cc);
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { isBlacklistSuppressed, BLACKLIST_SUPPRESSED_ERROR } = await import("@/lib/blacklist.server");
       for (const r of recipients) {
@@ -222,7 +254,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     const wf = track?.workflow ?? "";
     const { BAD_EMAIL_EXEMPT_WORKFLOWS, BAD_EMAIL_SUPPRESSED_ERROR } = await import("@/lib/email-suppression");
     if (!STAFF_WORKFLOWS.has(wf) && !BAD_EMAIL_EXEMPT_WORKFLOWS.has(wf)) {
-      const recipients = Array.isArray(to) ? to : [to];
+      const recipients = emailRecipients(to, cc);
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { badEmailForAddress } = await import("@/lib/email-suppression.server");
       for (const r of recipients) {
@@ -264,17 +296,16 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
         "Content-Type": "application/json",
         ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
-      body: JSON.stringify({
+      body: JSON.stringify(buildResendPayload({
         from: from ?? resolvedEmailFrom(),
         to: Array.isArray(to) ? to : [to],
+        cc,
         subject,
         html,
         text,
-        reply_to: replyTo ?? EMAIL_REPLY_TO,
-        ...(attachments?.length
-          ? { attachments: attachments.map((f) => ({ filename: f.filename, content: f.content, ...(f.contentType ? { content_type: f.contentType } : {}) })) }
-          : {}),
-      }),
+        replyTo: replyTo ?? EMAIL_REPLY_TO,
+        attachments,
+      })),
       ...(noticeSignal ? { signal: noticeSignal } : {}),
     });
     if (!res.ok) {
@@ -307,6 +338,7 @@ export function emailReason(workflow: string | undefined): string {
   if (workflow === "approval_confirmation") return "You received this because your REAL RENTALS driver application was approved.";
   if (workflow === "signup_confirm") return "You received this because you created a REAL RENTALS account.";
   if (workflow.startsWith("application")) return "You received this because you started a driver application with REAL RENTALS.";
+  if (workflow === "esign_standalone_delivered") return "You received this because a document was signed with REAL RENTALS.";
   if (workflow.startsWith("esign")) return "You received this because a REAL RENTALS rental agreement was prepared for you.";
   if (workflow.startsWith("payment") || workflow.startsWith("rent_reminder") || workflow === "card_expiring") return "You received this because you have a rental account with REAL RENTALS.";
   return "You received this email from REAL RENTALS about your application, account or rental.";
@@ -1263,7 +1295,7 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<S
 // Rental agreements (e-signature)
 // -----------------------------------------------------------------------------
 
-type AgreementSendArgs = { to: string; firstName: string | null; url: string; vehicle: string | null };
+type AgreementSendArgs = { to: string; firstName: string | null; url: string; vehicle: string | null; document?: boolean };
 
 /**
  * "Your pickup is booked." Sent once, when Reserved saves the confirmed
@@ -1356,6 +1388,14 @@ export async function sendPortalWelcomeEmail(args: {
 
 export async function sendAgreementEmail(args: AgreementSendArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  if (args.document) {
+    const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Document Is Ready To Sign</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Hi ${escapeHtml(name)}, a document is ready for your signature. Please review it and sign electronically.</p>
+      <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Review And Sign</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span><br>This secure link expires in 30 days.</p>`);
+    return sendEmail({ to: args.to, subject: "Your Document Is Ready To Sign", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
+  }
   const vehicleLine = args.vehicle
     ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Vehicle: <strong>${escapeHtml(args.vehicle)}</strong></p>`
     : "";
@@ -1366,6 +1406,30 @@ export async function sendAgreementEmail(args: AgreementSendArgs): Promise<SendR
       <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Review &amp; Sign Agreement</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span><br>This secure link expires in 30 days.</p>`);
   return sendEmail({ to: args.to, subject: "Your REAL RENTALS Rental Agreement Is Ready To Sign", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
+}
+
+/** Signed third-party PDF. Insurer is To; team@ and any other copies are Cc. */
+export async function sendSignedDocumentEmail(args: {
+  to: string;
+  cc?: string[];
+  title: string;
+  signerName: string;
+  copyFor: "insurer" | "renter";
+  attachment?: EmailAttachment | null;
+}): Promise<SendResult> {
+  const who = args.copyFor === "renter" ? "You signed" : `${escapeHtml(args.signerName)} signed`;
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Signed Document</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${who} <strong>${escapeHtml(args.title)}</strong>. The signed PDF is attached.</p>`);
+  return sendEmail({
+    to: args.to,
+    cc: args.cc,
+    subject: `Signed Document — ${args.title}`,
+    html,
+    replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "esign_standalone_delivered", meta: { copy: args.copyFor } },
+    ...(args.attachment ? { attachments: [args.attachment] } : {}),
+  });
 }
 
 export async function sendAgreementSignedEmail(args: {

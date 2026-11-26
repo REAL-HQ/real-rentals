@@ -3133,7 +3133,7 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="documents" className="mt-0 space-y-4">
-                <div id="profile-agreements" className="scroll-mt-48"><AgreementsCard applicationId={driver.id} applicationStatus={driver.status ?? null} onOpenTab={(t) => setTab(t)} /></div>
+                <div id="profile-agreements" className="scroll-mt-48"><AgreementsCard applicationId={driver.id} applicationStatus={driver.status ?? null} renterName={driver.full_name ?? null} renterEmail={driver.email ?? null} onOpenTab={(t) => setTab(t)} /></div>
                 <SectionCard
                   title="Documents"
                   subtitle="Everything this applicant sent us. Shared with the driver unless marked team only."
