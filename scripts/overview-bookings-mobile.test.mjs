@@ -183,7 +183,6 @@ const pairs = [
     "w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm lg:w-auto lg:min-w-[200px] lg:flex-1",
     "bookings search at lg",
   ],
-  ["inline-flex items-center gap-2", "inline-flex max-lg:shrink-0 items-center gap-2", "phase chips at lg"],
   ["h-9 w-[150px] bg-white text-foreground text-sm", "h-9 w-[150px] max-lg:shrink-0 bg-white text-foreground text-sm", "bookings sort at lg"],
   [
     "text-sm text-muted-foreground hover:text-foreground px-2",
@@ -244,7 +243,8 @@ check(!overview.includes("text-transform"), "overview does not add a text-transf
 check(bookings.includes('aria-label="Search rentals"'), "the bookings search stays");
 check(bookings.includes("max-lg:w-full") && !bookings.includes("flex w-full max-lg:min-w-0"), "the bookings filter group is full width only below lg");
 check(bookings.includes("lg:flex-row lg:items-center lg:gap-3"), "the bookings toolbar stacks only below lg");
-check(bookings.includes('data-testid="booking-phases"'), "the phase chips stay");
+check(!bookings.includes('data-testid="booking-phases"'), "the phase chips are gone; the tabs replace them");
+check(bookings.includes('data-testid="booking-count"'), "completed and cancelled rows keep a count");
 check(bookings.includes("hidden md:block") && bookings.includes("md:hidden grid grid-cols-1"), "the table and the phone cards both remain");
 const cards = bookings.slice(bookings.indexOf("md:hidden grid grid-cols-1"), bookings.indexOf("data-booking-card") + 400);
 check(cards.includes('className="shrink-0"') || bookings.includes('StatusPill className="shrink-0"'), "a phone card keeps the status from shrinking");

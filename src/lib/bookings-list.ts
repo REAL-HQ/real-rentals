@@ -84,10 +84,15 @@ export const PAST_STATUS_VALUES: readonly string[] = [
  * Returns null when every non-reserved rental is in scope (legacy "all").
  * Past scope never includes active or reserved rows.
  */
+export type BookingListScope = "past" | "all" | "completed" | "cancelled";
+
 export function statusesForBookingList(input: {
-  scope?: "past" | "all" | null;
+  scope?: BookingListScope | null;
   phase: BookingPhaseFilter;
 }): readonly string[] | null {
+  if (input.scope === "completed") return PHASE_STATUSES.completed;
+  // Cancelled includes swap-ended rows: they are cancelled statuses, not completed ones.
+  if (input.scope === "cancelled") return PHASE_STATUSES.cancelled;
   const scope = input.scope === "past" ? "past" : "all";
   if (scope === "past") {
     if (input.phase === "completed") return PHASE_STATUSES.completed;

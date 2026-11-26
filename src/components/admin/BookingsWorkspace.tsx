@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ActiveRentalsPanel } from "./ActiveRentalsPanel";
 import { BookingsPanel } from "./BookingsPanel";
@@ -7,10 +8,11 @@ import { BOOKINGS_VIEWS, parseBookingsView, type BookingsView } from "@/lib/book
 export { BOOKINGS_VIEWS, parseBookingsView } from "@/lib/bookings-workspace";
 
 /**
- * One Bookings page under Rentals: Reserved, Active, and Past.
- * Default tab is Active. Old ?tab=active_rentals links land here via LEGACY_TABS.
+ * One Bookings page under Rentals: Reserved, Active, Completed, and Cancelled.
+ * Default tab is Active. Old ?view=past links open Completed.
  */
 type ListState = { q?: string; phase?: string; sort?: string; page?: string; vehicle?: string };
+type EndedCounts = { completed: number; cancelled: number; swap: number };
 
 export function BookingsWorkspace({
   openId = null,
@@ -29,18 +31,34 @@ export function BookingsWorkspace({
   listState?: ListState;
 }) {
   const navigate = useNavigate();
-  const effective = parseBookingsView(view, { canViewBoard, openId });
+  const parsed = parseBookingsView(view, { canViewBoard, openId });
+  const phaseHint = String(listState.phase ?? "").toLowerCase();
+  // Old Past chip links (?view=past&phase=cancelled or phase=swap) open Cancelled.
+  const effective: BookingsView =
+    parsed === "completed" && (phaseHint === "cancelled" || phaseHint === "canceled" || phaseHint === "swap")
+      ? "cancelled"
+      : parsed;
+  const [endedCounts, setEndedCounts] = useState<EndedCounts | null>(null);
 
   const setView = (next: BookingsView) => {
+    const filters = { ...listState };
+    delete filters.phase;
     void navigate({
       to: "/admin",
       search: {
         tab: "bookings",
         view: next === "active" ? undefined : next,
-        ...(next === "past" ? listState : {}),
+        ...(next === "completed" || next === "cancelled" ? filters : {}),
       } as never,
       replace: true,
     });
+  };
+
+  const tabCount = (id: BookingsView): number | null => {
+    if (!endedCounts) return null;
+    if (id === "completed") return endedCounts.completed;
+    if (id === "cancelled") return endedCounts.cancelled + endedCounts.swap;
+    return null;
   };
 
   return (
@@ -62,6 +80,9 @@ export function BookingsWorkspace({
               }`}
             >
               {item.label}
+              {tabCount(item.id) != null && (
+                <span className="ml-1.5 font-medium tabular-nums text-muted-foreground">{tabCount(item.id)}</span>
+              )}
             </button>
           );
         })}
@@ -72,7 +93,13 @@ export function BookingsWorkspace({
       ) : effective === "active" ? (
         <ActiveRentalsPanel />
       ) : (
-        <BookingsPanel openId={openId} canViewConversion={canViewConversion} listState={listState} scope="past" />
+        <BookingsPanel
+          openId={openId}
+          canViewConversion={canViewConversion}
+          listState={listState}
+          scope={effective}
+          onCounts={setEndedCounts}
+        />
       )}
     </div>
   );

@@ -39,10 +39,8 @@ import {
 // Coordinator (`canSeeMoney`), so the columns below are absent rather than
 // hidden — the rule this codebase keeps: UI hiding is not a boundary.
 //
-// The three phase chips are the filter, the way the Vehicles list's readiness
-// chips are, and they count the filtered scope rather than the page. There is
-// deliberately no "Upcoming" chip: advance reservations do not exist yet, and
-// an empty tab promising them would be a claim about inventory nobody holds.
+// Completed and Cancelled are their own tabs. This list keeps search and sort.
+// There is deliberately no phase chip: the tab already says which rows these are.
 
 type ListState = { q?: string; phase?: string; sort?: string; page?: string; vehicle?: string };
 
@@ -87,22 +85,26 @@ export function BookingsPanel({
   openId = null,
   listState = {},
   canViewConversion = false,
-  /** Past tab: only completed / cancelled rentals. */
+  /** Which rental statuses this list is allowed to show. */
   scope = "all",
+  onCounts,
 }: {
   externalSearch?: string;
   openId?: string | null;
   listState?: ListState;
   /** Owner and Manager. The conversion server function requires a manager, and the flag still has to be on. */
   canViewConversion?: boolean;
-  scope?: "past" | "all";
+  scope?: "past" | "all" | "completed" | "cancelled";
+  /** Completed and Cancelled totals, including swap rows counted with Cancelled. */
+  onCounts?: (counts: { completed: number; cancelled: number; swap: number }) => void;
 } = {}) {
   const navigate = useNavigate();
 
   // List state lives in the URL so refresh, back and shared links keep it.
   const q = listState.q ?? "";
+  const endedScope = scope === "completed" || scope === "cancelled";
   const rawPhase = isBookingPhaseFilter(listState.phase) ? listState.phase : "all";
-  const phase = scope === "past" && rawPhase === "active" ? "all" : rawPhase;
+  const phase = endedScope || (scope === "past" && rawPhase === "active") ? "all" : rawPhase;
   const sort = listState.sort ?? "recent";
   const page = Math.max(1, Number(listState.page) || 1);
   const vehicleFilter = listState.vehicle ?? "";
@@ -117,15 +119,16 @@ export function BookingsPanel({
         vehicle: vehicleFilter,
         ...over,
       };
-      const out: Record<string, string> = { tab: "bookings", view: "past" };
+      const view = scope === "cancelled" ? "cancelled" : scope === "completed" ? "completed" : "past";
+      const out: Record<string, string> = { tab: "bookings", view };
       if (next.q) out.q = next.q;
-      if (next.phase && next.phase !== "all") out.phase = next.phase;
+      if (!endedScope && next.phase && next.phase !== "all") out.phase = next.phase;
       if (next.sort && next.sort !== "recent") out.sort = next.sort;
       if (next.page && next.page !== "1") out.page = next.page;
       if (next.vehicle) out.vehicle = next.vehicle;
       return out;
     },
-    [q, phase, sort, page, vehicleFilter],
+    [q, phase, sort, page, vehicleFilter, scope, endedScope],
   );
   const setList = useCallback(
     (over: Partial<ListState>) =>
@@ -171,13 +174,22 @@ export function BookingsPanel({
     placeholderData: keepPreviousData,
   });
   const result = listQuery.data;
+  useEffect(() => {
+    if (!result?.counts || !onCounts) return;
+    onCounts({
+      completed: result.counts.completed ?? 0,
+      cancelled: result.counts.cancelled ?? 0,
+      swap: result.counts.swap ?? 0,
+    });
+  }, [result, onCounts]);
   const rows = result?.rows ?? [];
   const total = result?.total ?? 0;
   const money = !!result?.canSeeMoney;
   const pages = Math.max(1, Math.ceil(total / BOOKING_LIST_PAGE_SIZE));
   const firstShown = total === 0 ? 0 : (page - 1) * BOOKING_LIST_PAGE_SIZE + 1;
   const lastShown = Math.min(total, page * BOOKING_LIST_PAGE_SIZE);
-  const hasActiveFilters = q !== "" || phase !== "all" || !!vehicleFilter;
+  const hasActiveFilters = q !== "" || (!endedScope && phase !== "all") || !!vehicleFilter;
+  const swapCount = result?.counts?.swap ?? 0;
 
   return (
     <div>
@@ -191,35 +203,10 @@ export function BookingsPanel({
           className="w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm lg:w-auto lg:min-w-[200px] lg:flex-1"
         />
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 lg:contents">
-          {/* The phase chips ARE the filter, and they count the scope the
-              current search covers — not the page, which would change the
-              numbers as you paged. */}
-          {result && (
-            <span className="inline-flex max-lg:shrink-0 items-center gap-2" data-testid="booking-phases">
-              {(scope === "past"
-                ? (["completed", "cancelled", "swap"] as const)
-                : (["active", "completed", "cancelled"] as const)
-              ).map((p) => {
-                const n = result.counts?.[p] ?? 0;
-                const on = phase === p;
-                return (
-                  <button
-                    key={p}
-                    onClick={() => setList({ phase: on ? "all" : p })}
-                    aria-pressed={on}
-                    data-phase={p}
-                    data-count={n}
-                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-white px-2.5 py-1 text-xs transition-colors ${
-                      on
-                        ? "border-[#D03020] font-medium text-[#111114]"
-                        : "border-[#EDEDF0] text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {BOOKING_PHASE_LABEL[p]}
-                    <span className="font-medium text-foreground">{n}</span>
-                  </button>
-                );
-              })}
+          {endedScope && result && (
+            <span className="whitespace-nowrap text-sm text-muted-foreground" data-testid="booking-count">
+              {total} {scope === "cancelled" ? "Cancelled" : "Completed"} Rental{total === 1 ? "" : "s"}
+              {scope === "cancelled" && swapCount > 0 ? ` · ${swapCount} Swap` : ""}
             </span>
           )}
           <Select value={sort} onValueChange={(v) => setList({ sort: v })}>
@@ -393,11 +380,23 @@ export function BookingsPanel({
         <EmptyState
           className="mt-6"
           icon={<CalendarCheck className="w-6 h-6" strokeWidth={1.75} />}
-          title={scope === "past" ? "No Past Rentals" : "No Rentals Yet"}
+          title={
+            scope === "completed"
+              ? "No Completed Rentals"
+              : scope === "cancelled"
+                ? "No Cancelled Rentals"
+                : scope === "past"
+                  ? "No Past Rentals"
+                  : "No Rentals Yet"
+          }
           hint={
-            scope === "past"
-              ? "Completed and canceled rentals will show up here after they end."
-              : "A rental appears here when it is activated from an approved driver's record."
+            scope === "completed"
+              ? "Completed rentals show up here after they end."
+              : scope === "cancelled"
+                ? "Cancelled rentals show up here. A row ended by a vehicle swap is included and labeled Swap."
+                : scope === "past"
+                  ? "Completed and canceled rentals will show up here after they end."
+                  : "A rental appears here when it is activated from an approved driver's record."
           }
         />
       )}

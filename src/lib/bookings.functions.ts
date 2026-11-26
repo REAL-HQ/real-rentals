@@ -90,7 +90,7 @@ const listInput = (d: unknown) =>
     .object({
       q: z.string().max(100).optional().default(""),
       phase: z.string().max(20).optional().default("all"),
-      scope: z.enum(["past", "all"]).optional().default("all"),
+      scope: z.enum(["past", "all", "completed", "cancelled"]).optional().default("all"),
       vehicleId: z.string().uuid().optional(),
       sort: z.string().max(20).optional().default("recent"),
       page: z.number().int().min(1).max(100000).optional().default(1),
@@ -177,7 +177,11 @@ export const listBookings = createServerFn({ method: "POST" })
     const canSeeMoney = tierAllows(actor.tier, "manager");
     const sb = await admin();
     const phase = isBookingPhaseFilter(data.phase) ? data.phase : "all";
-    const scope = data.scope === "past" ? "past" : "all";
+    const scope =
+      data.scope === "past" || data.scope === "completed" || data.scope === "cancelled"
+        ? data.scope
+        : "all";
+    const showsEnded = scope !== "all";
     const statusFilter = statusesForBookingList({ scope, phase });
     const sort = (BOOKING_SORTS as readonly string[]).includes(data.sort) ? data.sort : "recent";
 
@@ -256,16 +260,16 @@ export const listBookings = createServerFn({ method: "POST" })
     const { data: statusRows } = await scoped(
       sb.from("rentals").select("id,status,vehicle_id,application_id,start_date,end_date"),
     ).limit(5000);
-    const classifySwaps = scope === "past" || phase === "swap";
+    const classifySwaps = showsEnded || phase === "swap";
     const swaps = classifySwaps ? await loadCompletedSwaps(sb) : [];
     const spans = ((statusRows ?? []) as Array<Record<string, unknown>>).map(spanOf);
     const swapById = classifySwaps ? swapEndsByRentalId(spans, swaps) : new Map<string, SwapRecord>();
     const counts: BookingCounts = { ...empty };
     for (const span of spans) {
       const swap = swapById.get(span.id) ?? null;
-      const p = scope === "past" || phase === "swap" ? presentRentalSpan(span, swap).phase : bookingPhase(span.status);
+      const p = classifySwaps ? presentRentalSpan(span, swap).phase : bookingPhase(span.status);
       if (p === "reserved") continue; // Phase A never claims an upcoming booking.
-      if (scope === "past" && !isPastPhase(p)) continue;
+      if (showsEnded && !isPastPhase(p)) continue;
       counts[p] += 1;
     }
     const swapIds = [...swapById.keys()];
@@ -345,7 +349,7 @@ export const listBookings = createServerFn({ method: "POST" })
         startDate: span.startDate,
         endDate,
         openEnded: !endDate && phaseOf === "active",
-        ...(scope === "past" && presented.lengthLabel ? { lengthLabel: presented.lengthLabel } : {}),
+        ...(showsEnded && presented.lengthLabel ? { lengthLabel: presented.lengthLabel } : {}),
         driverName: (app?.full_name as string | null) ?? null,
         driverEmail: (app?.email as string | null) ?? null,
         applicationId: (r.application_id as string | null) ?? null,
