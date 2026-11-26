@@ -8,18 +8,34 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useServerFn } from "@tanstack/react-start";
 import { linkPartnerLogin } from "@/lib/partner.functions";
 import { EmptyState } from "./ui";
+import { fmtDateTime } from "@/lib/date-format";
+import { OwnerVehiclePhotoGrid, OwnerVehiclePhotoThumb } from "./owner-vehicle-photos";
 
 const PARTNER_TYPES = ["vehicle_owner","capital_partner","private_lender","jv_partner","other"] as const;
 const PARTNER_STATUSES = ["prospect","active","paused","closed"] as const;
 
-export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
+export function PartnersPanel({
+  externalSearch = "",
+  preview,
+}: {
+  externalSearch?: string;
+  /** Skip the server read and render these legacy rows. The detail test uses this. */
+  preview?: {
+    owners?: FleetOwner[];
+    investors?: InvestorLead[];
+    photoUrls?: Record<string, string>;
+    expandedOwnerId?: string | null;
+  };
+} = {}) {
   const [partners, setPartners] = useState<Partner[]>([]);
-  const [legacyOwners, setLegacyOwners] = useState<FleetOwner[]>([]);
-  const [legacyInvestors, setLegacyInvestors] = useState<InvestorLead[]>([]);
+  const [legacyOwners, setLegacyOwners] = useState<FleetOwner[]>(preview?.owners ?? []);
+  const [legacyInvestors, setLegacyInvestors] = useState<InvestorLead[]>(preview?.investors ?? []);
+  const [openOwnerId, setOpenOwnerId] = useState<string | null>(preview?.expandedOwnerId ?? null);
   const [filter, setFilter] = useState<string>("all");
   const [showAdd, setShowAdd] = useState(false);
 
   useEffect(() => {
+    if (preview) return;
     refresh();
     supabase.from("fleet_owner_submissions").select("*").order("created_at", { ascending: false })
       .then(({ data }) => setLegacyOwners(data || []));
@@ -118,13 +134,14 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
         <h3 className="text-sm font-semibold tracking-wider text-muted-foreground mb-3">Legacy Submissions</h3>
         <div className="space-y-2">
           {legacyOwners.map(o => (
-            <div key={o.id} className="rounded-lg bg-white border border-border p-3 flex flex-wrap items-center gap-3 text-sm">
-              <div className="flex-1 min-w-[200px]">
-                <div className="font-medium">{o.full_name} <span className="text-xs text-muted-foreground">· Fleet owner</span></div>
-                <div className="text-xs text-muted-foreground">{o.email} · {o.year} {o.make} {o.model}</div>
-              </div>
-              <button onClick={() => convertOwner(o)} className="rounded-md bg-black text-white px-3 py-1.5 text-xs">Convert To Partner</button>
-            </div>
+            <LegacyOwnerRow
+              key={o.id}
+              owner={o}
+              open={openOwnerId === o.id}
+              photoUrls={preview?.photoUrls}
+              onToggle={() => setOpenOwnerId((current) => current === o.id ? null : o.id)}
+              onConvert={() => convertOwner(o)}
+            />
           ))}
           {legacyInvestors.map(l => (
             <div key={l.id} className="rounded-lg bg-white border border-border p-3 flex flex-wrap items-center gap-3 text-sm">
@@ -136,12 +153,89 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
             </div>
           ))}
           {legacyOwners.length === 0 && legacyInvestors.length === 0 && (
-            <div className="text-xs text-muted-foreground">No legacy submissions.</div>
+            <div className="text-xs text-muted-foreground">No Legacy Submissions</div>
           )}
         </div>
       </div>
 
       {showAdd && <AddPartner onClose={() => setShowAdd(false)} onSave={add} />}
+    </div>
+  );
+}
+
+function LegacyOwnerRow({
+  owner,
+  open,
+  photoUrls,
+  onToggle,
+  onConvert,
+}: {
+  owner: FleetOwner;
+  open: boolean;
+  photoUrls?: Record<string, string>;
+  onToggle: () => void;
+  onConvert: () => void;
+}) {
+  const photos = owner.photo_urls ?? [];
+  const first = photos[0] ?? null;
+  return (
+    <div className="rounded-lg border border-border bg-white p-3 text-sm" data-testid="legacy-owner-row">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <OwnerVehiclePhotoThumb path={first} previewUrl={first ? photoUrls?.[first] : null} />
+          <div className="min-w-[200px] flex-1">
+            <div className="font-medium">{owner.full_name} <span className="text-xs text-muted-foreground">· Fleet Owner</span></div>
+            <div className="text-xs text-muted-foreground">{owner.email} · {owner.year} {owner.make} {owner.model}</div>
+          </div>
+        </button>
+        <button type="button" onClick={onConvert} className="rounded-md bg-black px-3 py-1.5 text-xs text-white">Convert To Partner</button>
+      </div>
+      {open && (
+        <div className="mt-3 border-t border-[#EDEDF0] pt-3" data-testid="legacy-owner-details">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-3">
+            <Detail label="Phone" value={owner.phone || "—"} />
+            <Detail label="VIN" value={owner.vin || "—"} />
+            <Detail label="Year" value={owner.year ? String(owner.year) : "—"} />
+            <Detail label="Make" value={owner.make || "—"} />
+            <Detail label="Model" value={owner.model || "—"} />
+            <Detail label="Trim" value={owner.trim || "—"} />
+            <Detail label="Mileage" value={owner.mileage == null ? "—" : `${owner.mileage.toLocaleString("en-US")} mi`} />
+            <Detail label="Title Status" value={owner.title_status || "—"} />
+            <Detail label="Lien Status" value={owner.lien_status || "—"} />
+            <Detail label="Registration State" value={owner.registration_state || "—"} />
+            <Detail label="Currently Insured" value={owner.currently_insured == null ? "—" : owner.currently_insured ? "Yes" : "No"} />
+            <Detail label="Condition" value={owner.condition || "—"} />
+            <Detail label="Status" value={formatStatusLabel(owner.status)} />
+            <Detail label="Created" value={fmtDateTime(owner.created_at) || "—"} />
+          </div>
+          <div className="mt-3">
+            <div className="text-[11px] font-semibold text-[#55555E]">Message</div>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-[#111114]">{owner.message || "—"}</p>
+          </div>
+          <div className="mt-3">
+            <div className="mb-2 text-[11px] font-semibold text-[#55555E]">Photos</div>
+            {photos.length > 0 ? (
+              <OwnerVehiclePhotoGrid paths={photos} previewUrls={photoUrls} />
+            ) : (
+              <p className="text-xs text-muted-foreground">No Photos</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[11px] font-semibold text-[#55555E]">{label}</div>
+      <div className="mt-0.5 break-words text-sm text-[#111114]">{value}</div>
     </div>
   );
 }
