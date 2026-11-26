@@ -43,23 +43,28 @@ function relDays(iso: string): string | null {
  * Key timing only, at most two items: the due date when one exists (else when
  * they applied), then last contact (or "No contact logged" past the New stage).
  */
+function followUpShown(lead: {
+  contact_follow_up_on: string | null;
+  effective_follow_up_on?: string | null;
+}): string | null {
+  return lead.effective_follow_up_on ?? lead.contact_follow_up_on;
+}
+
 export function leadTiming(
   lead: {
     bucket: LeadBucket;
     created_at: string | null;
     contact_status_at: string | null;
     contact_follow_up_on: string | null;
+    effective_follow_up_on?: string | null;
   },
   today: string,
 ): string[] {
   const out: string[] = [];
-  if (lead.contact_follow_up_on) {
-    const age = lead.bucket === "overdue" ? overdueAge(lead.contact_follow_up_on, today) : null;
-    out.push(
-      age
-        ? `Due ${fmtDate(lead.contact_follow_up_on)} (${age})`
-        : `Due ${fmtDate(lead.contact_follow_up_on)}`,
-    );
+  const due = followUpShown(lead);
+  if (due) {
+    const age = lead.bucket === "overdue" ? overdueAge(due, today) : null;
+    out.push(age ? `Due ${fmtDate(due)} (${age})` : `Due ${fmtDate(due)}`);
   } else {
     const applied = lead.created_at ? relDays(lead.created_at) : null;
     out.push(applied ? `Applied ${applied}` : "Applied date unknown");
@@ -151,10 +156,14 @@ function overdueDays(due: string, today: string): number | null {
  * stays on the title so the card does not also print the red sentence.
  */
 export function leadUrgency(
-  lead: { bucket: LeadBucket; contact_follow_up_on: string | null },
+  lead: {
+    bucket: LeadBucket;
+    contact_follow_up_on: string | null;
+    effective_follow_up_on?: string | null;
+  },
   today: string,
 ): { label: string; title: string; prominent: boolean } | null {
-  const due = lead.contact_follow_up_on;
+  const due = followUpShown(lead);
   if (lead.bucket === "overdue") {
     const days = due ? overdueDays(due, today) : null;
     const age = due ? overdueAge(due, today) : null;
@@ -226,12 +235,24 @@ export type LeadActivity = {
  * timestamp; a new lead with no contact shows when they applied. No timestamp
  * at all keeps the phrase by itself.
  */
+function laterContactStamp(lead: { contact_status_at?: string | null; contacted_at?: string | null }): string | null {
+  const stamps = [lead.contact_status_at, lead.contacted_at].filter((value): value is string => !!value && !Number.isNaN(Date.parse(value)));
+  if (!stamps.length) return null;
+  return stamps.sort((a, b) => Date.parse(a) - Date.parse(b))[stamps.length - 1];
+}
+
 export function leadActivity(
-  lead: { bucket: LeadBucket; created_at: string | null; contact_status_at: string | null },
+  lead: {
+    bucket: LeadBucket;
+    created_at: string | null;
+    contact_status_at: string | null;
+    contacted_at?: string | null;
+  },
   now = new Date(),
 ): LeadActivity {
   const today = etYmd(now);
-  const contacted = lead.contact_status_at ? leadEventStamp(lead.contact_status_at) : null;
+  const contactedAt = laterContactStamp(lead);
+  const contacted = contactedAt ? leadEventStamp(contactedAt) : null;
   if (contacted) {
     return {
       label: contacted.ymd === today ? "Last Contact Today" : "Last Contact",

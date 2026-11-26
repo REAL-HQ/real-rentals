@@ -1,4 +1,4 @@
-import { addCalendarDays, contactStatusLabel, contactToday } from "./contact-status";
+import { addCalendarDays, contactStatusLabel, contactToday, nextBusinessDay } from "./contact-status";
 
 export const LEAD_TIME_ZONE = "America/New_York";
 export const LEAD_PREVIEW_LIMIT = 6;
@@ -46,7 +46,7 @@ export const LEAD_ALL_PAGE_ORDER: LeadBucket[] = [
 
 export const ACTIVE_LEAD_STATUSES = ["new", "reviewing", "approved"];
 export const LEAD_SELECT =
-  "id,full_name,phone,email,status,created_at,contact_status,contact_status_note,contact_follow_up_on,contact_status_at,contact_status_by";
+  "id,full_name,phone,email,status,created_at,contact_status,contact_status_note,contact_follow_up_on,contact_status_at,contact_status_by,contacted_at";
 export type LeadRow = {
   id: string;
   full_name: string | null;
@@ -59,7 +59,52 @@ export type LeadRow = {
   contact_follow_up_on: string | null;
   contact_status_at: string | null;
   contact_status_by: string | null;
+  /** Staff "Mark Contacted", or a two-way exchange. Optional on older rows. */
+  contacted_at?: string | null;
 };
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Eastern calendar day for a date-only value or a timestamp. */
+export function contactCalendarDay(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  if (DATE_ONLY.test(trimmed)) return trimmed;
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return contactToday(parsed);
+}
+
+/** Later of contacted_at and the contact-status timestamp, as a calendar day. */
+export function lastContactDay(row: {
+  contacted_at?: string | null;
+  contact_status_at?: string | null;
+}): string | null {
+  const days = [contactCalendarDay(row.contacted_at), contactCalendarDay(row.contact_status_at)].filter(
+    (day): day is string => !!day,
+  );
+  if (!days.length) return null;
+  return days.sort()[days.length - 1];
+}
+
+/**
+ * Date used for the queue and the "Nd overdue" count.
+ * A follow-up earlier than the last contact is stale: the clock starts again
+ * the next business day after that contact. A follow-up on or after the last
+ * contact stays as stored, including when that day is already past.
+ */
+export function effectiveFollowUpOn(row: {
+  contact_follow_up_on?: string | null;
+  contacted_at?: string | null;
+  contact_status_at?: string | null;
+}): string | null {
+  const due = contactCalendarDay(row.contact_follow_up_on);
+  if (!due) return null;
+  const contact = lastContactDay(row);
+  if (contact && due < contact) return nextBusinessDay(contact);
+  return due;
+}
 export function leadToday(now = new Date()): string {
   return contactToday(now);
 }
@@ -78,7 +123,7 @@ export function leadBucket(row: LeadRow, today: string): LeadBucket | null {
   if (row.contact_status === "unqualified" || row.contact_status === "declined") return null;
   if (row.status === "partial") return "incomplete";
   if (!ACTIVE_LEAD_STATUSES.includes(row.status)) return null;
-  const due = row.contact_follow_up_on;
+  const due = effectiveFollowUpOn(row);
   const grace = overdueCutoff(today);
   if (due && due < grace) return "overdue";
   if (row.contact_status === "new") return "new";
@@ -158,6 +203,9 @@ export function projectLead(raw: LeadRow, bucket: LeadBucket) {
     contact_status: raw.contact_status,
     contact_status_note: raw.contact_status_note,
     contact_follow_up_on: raw.contact_follow_up_on,
+    contacted_at: raw.contacted_at ?? null,
+    /** Follow-up the queue and the overdue count use. The stored date stays above. */
+    effective_follow_up_on: effectiveFollowUpOn(raw),
     contact_status_at: raw.contact_status_at,
     contact_status_by: raw.contact_status_by,
     bucket,
