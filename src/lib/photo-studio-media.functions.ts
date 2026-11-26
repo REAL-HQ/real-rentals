@@ -10,6 +10,7 @@ import { z } from "zod";
 import { requireManager, requireStaff } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
 import { ORIGINALS_BUCKET, isMissingPhotoClassColumn, type PhotoClass } from "@/lib/photo-studio";
+import { isMissingDbColumn } from "@/lib/photo-class-label";
 
 const SIGNED_URL_SECONDS = 300;
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
@@ -57,7 +58,9 @@ export const attachInboxPhotoAsOriginal = createServerFn({ method: "POST" })
     const { data: file, error: dlErr } = await sb.storage.from(doc.storage_bucket as string).download(doc.storage_path as string);
     if (dlErr || !file) return { ok: false as const, error: "Could not read the file." };
 
-    const photoClass = data.photoClass ?? studioClassFromInbox(item.doc_class as string, (item.extraction as any)?.photoAngle ?? null);
+    // A class passed in was chosen by a person. Otherwise leave it unknown and
+    // let the vision labeler fill it after the row exists.
+    const photoClass = data.photoClass ?? "unknown";
     const path = `${data.vehicleId}/${crypto.randomUUID()}-${(doc.file_name as string | null)?.replace(/[^\w.-]/g, "_") ?? "photo.jpg"}`;
     const up = await sb.storage.from(ORIGINALS_BUCKET).upload(path, file, { contentType: (doc.mime_type as string) ?? "image/jpeg", upsert: false });
     if (up.error) return { ok: false as const, error: "Upload to originals failed." };
@@ -68,6 +71,13 @@ export const attachInboxPhotoAsOriginal = createServerFn({ method: "POST" })
       fleet_inbox_item_id: data.itemId, photo_class: photoClass, uploaded_by: actor.userId,
     } as any).select("id").single();
     if (error) { await sb.storage.from(ORIGINALS_BUCKET).remove([path]); return { ok: false as const, error: "Could not record the original." }; }
+    if (data.photoClass) {
+      const { markPhotoClassManual } = await import("@/lib/photo-class-label.server");
+      await markPhotoClassManual(row.id as string);
+    } else {
+      const { enqueuePhotoLabels } = await import("@/lib/photo-class-label.server");
+      enqueuePhotoLabels([row.id as string], actor);
+    }
     await logAudit(actor, { action: "photo_studio.original_attached", summary: `Original photo attached (${photoClass})`, entityType: "vehicle", entityId: data.vehicleId, metadata: { itemId: data.itemId, mediaId: row.id } });
     return { ok: true as const, mediaId: row.id as string, duplicate: false };
   });
@@ -79,7 +89,11 @@ export const setOriginalPhotoClass = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await requireManager(context.userId);
     const sb = await admin();
-    const { error } = await sb.from("vehicle_media").update({ photo_class: data.photoClass } as any).eq("id", data.mediaId).eq("kind", "original");
+    let { error } = await sb.from("vehicle_media").update({ photo_class: data.photoClass, photo_class_source: "manual" } as any).eq("id", data.mediaId).eq("kind", "original");
+    if (error && isMissingDbColumn(error.message, "photo_class_source")) {
+      const again = await sb.from("vehicle_media").update({ photo_class: data.photoClass } as any).eq("id", data.mediaId).eq("kind", "original");
+      error = again.error;
+    }
     if (!error) return { ok: true as const };
     if (isMissingPhotoClassColumn(error.message)) return { ok: false as const, error: "Photo classes are not on this database yet.", unavailable: true as const };
     return { ok: false as const, error: "Could not update." };

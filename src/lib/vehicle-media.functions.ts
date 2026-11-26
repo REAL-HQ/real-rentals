@@ -217,6 +217,11 @@ export const registerVehicleMedia = createServerFn({ method: "POST" })
       metadata: { media_id: row.id, file_name: data.fileName ?? null },
     });
 
+    // Angle labeling runs after the row is saved and does not delay the upload.
+    void import("@/lib/photo-class-label.server")
+      .then((m) => m.enqueuePhotoLabels([row.id], actor))
+      .catch((e) => console.error("[photo-label] schedule failed", e));
+
     return { ok: true, id: row.id };
   });
 
