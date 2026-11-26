@@ -743,7 +743,7 @@ function selfTest() {
       ],
       "the env allowlist is the live env-gated names on 7e3e6eb",
     );
-    assert.deepEqual([...LIVE_TRUE_FLAGS], ["STRIPE_COLLECTIONS_ENABLED"]);
+    assert.deepEqual([...LIVE_TRUE_FLAGS], ["SEND_DOCUMENT_FOR_SIGNATURE_ENABLED", "STRIPE_COLLECTIONS_ENABLED"]);
     const shorthandUse = join(root, "shorthand-use");
     mkdirSync(shorthandUse);
     writeFileSync(

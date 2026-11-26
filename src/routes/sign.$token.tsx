@@ -6,9 +6,10 @@ import { recordReservationFeeSmsConsent } from "@/lib/sms-consent-signing.functi
 import { Logo } from "@/components/site/Logo";
 import { layoutToText } from "@/lib/agreement-layout";
 import { SigningPanel } from "@/components/esign/SigningPanel";
-import type { Adoption } from "@/lib/signature-adoption";
+import type { SigningAdoption } from "@/lib/signature-adoption";
 import { CheckCircle2, ShieldCheck, Loader2 } from "lucide-react";
 import { ReservationFeeNextStep } from "@/components/esign/ReservationFeeNextStep";
+import { StandaloneDocumentView } from "@/components/esign/StandaloneDocumentView";
 import type { ReservationFeeSigningStep } from "@/lib/reservation-fee";
 
 export const Route = createFileRoute("/sign/$token")({
@@ -63,7 +64,7 @@ function SignPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  async function onSign(v: { signerName: string; adoption: Adoption }) {
+  async function onSign(v: { signerName: string; adoption: SigningAdoption }) {
     setError(null);
     setBusy(true);
     try {
@@ -73,7 +74,7 @@ function SignPage() {
           signerName: v.signerName,
           agree: true,
           adoption: v.adoption,
-          ...(agreement?.sms_consent_needed ? { smsConsent: smsChecked } : {}),
+          ...(agreement?.source !== "standalone" && agreement?.sms_consent_needed ? { smsConsent: smsChecked } : {}),
         },
       });
       setAwaitingOthers((res as { awaitingOthers?: boolean })?.awaitingOthers === true);
@@ -146,7 +147,7 @@ function SignPage() {
         ) : done ? (
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
             <CheckCircle2 className="w-10 h-10 text-[#4CD964] mx-auto" />
-            <h1 className="mt-3 text-xl font-semibold text-[#111114]">{awaitingOthers ? "Your Signature Is Saved" : "Agreement Signed"}</h1>
+            <h1 className="mt-3 text-xl font-semibold text-[#111114]">{awaitingOthers ? "Your Signature Is Saved" : agreement?.source === "standalone" ? "Document Signed" : "Agreement Signed"}</h1>
             {awaitingOthers ? (
               <p className="mt-2 text-sm text-[#55555E]">The agreement is signed once every driver has signed. The reservation fee comes after that, and insurance is added after the fee is paid.</p>
             ) : null}
@@ -174,6 +175,10 @@ function SignPage() {
                   Go To Your Portal
                 </a>
               </>
+            ) : agreement?.source === "standalone" ? (
+              <p className="mt-2 text-sm text-[#55555E]">
+                Thank you. Your signed copy is saved, and it is being emailed to the insurer with you copied.
+              </p>
             ) : (
               <>
                 <p className="mt-2 text-sm text-[#55555E]">
@@ -188,11 +193,19 @@ function SignPage() {
         ) : (
           <>
             <h1 className="text-2xl font-semibold text-[#111114]">{agreement.title}</h1>
-            <p className="mt-1 text-sm text-[#55555E]">Please read the agreement carefully, then adopt your signature and initials below.</p>
+            <p className="mt-1 text-sm text-[#55555E]">
+              {agreement.source === "standalone"
+                ? "Review the document, then adopt your signature below."
+                : "Please read the agreement carefully, then adopt your signature and initials below."}
+            </p>
 
-            <div className="mt-5 rounded-xl border border-[#EDEDF0] bg-white p-6 max-h-[60vh] overflow-y-auto">
-              <pre className="whitespace-pre-wrap font-sans text-[13.5px] leading-6 text-[#28282E]">{layoutToText(agreement.body)}</pre>
-            </div>
+            {agreement.source === "standalone" && agreement.source_pdf ? (
+              <StandaloneDocumentView source={agreement.source_pdf} />
+            ) : (
+              <div className="mt-5 rounded-xl border border-[#EDEDF0] bg-white p-6 max-h-[60vh] overflow-y-auto">
+                <pre className="whitespace-pre-wrap font-sans text-[13.5px] leading-6 text-[#28282E]">{layoutToText(agreement.body)}</pre>
+              </div>
+            )}
 
             <div className="mt-5">
               <SigningPanel
@@ -201,7 +214,8 @@ function SignPage() {
                 companySigner={agreement.company_signer_name}
                 busy={busy}
                 error={error}
-                smsConsent={agreement.sms_consent_needed ? { checked: smsChecked, onChange: setSmsChecked } : null}
+                document={agreement.source === "standalone"}
+                smsConsent={agreement.source !== "standalone" && agreement.sms_consent_needed ? { checked: smsChecked, onChange: setSmsChecked } : null}
                 onSubmit={onSign}
               />
             </div>

@@ -10,7 +10,9 @@ import {
   PrepSchema,
   includedDriverCount,
   paymentRows,
+  prepareBaseRent,
   storedWeeklyAmount,
+  weeklyFeeOnAgreement,
   weeklyRateFromAgreementOrVehicle,
   type AgreementPrep,
 } from "../src/lib/agreement-prep";
@@ -179,6 +181,107 @@ describe("stored agreements are read as stored", () => {
       [BILLING_MERGE_KEY]: JSON.stringify({ weeklyAmount: 450, driverFeeEach: 100, driverCount: 1, driverFeesIncluded: 100, source: "added" }),
     };
     expect(includedDriverCount({ merge, rentalWeekly: 450, vehicleWeekly: 350, approvedCount: 2, feeEach: 100 })).toBe(1);
+  });
+
+  test("a void and re-prepare starts from base rent, so the Damage Waiver is not added twice", () => {
+    const first = rows(0, { damageWaiver: "accepted", damageWaiverFee: 25 });
+    expect(first.payment_amount).toBe("$375.00 weekly ($350.00 rent + $25.00 Damage Waiver)");
+    expect(first.billing?.baseRent).toBe(350);
+    expect(first.billing?.weeklyAmount).toBe(375);
+    const again = prepareBaseRent({
+      entered: 375,
+      vehicleWeekly: 350,
+      vehicleChanged: false,
+      previous: { weeklyAmount: 375, baseRent: 350, vehicleWeekly: 350 },
+    });
+    expect(again).toBe(350);
+    const second = paymentRows(prep(0, { damageWaiver: "accepted", damageWaiverFee: 25 }), {
+      weeklyRate: again,
+      waiverFee: 25,
+      additionalDriverWeeklyFee: FEE,
+      catalogWeeklyRate: 350,
+    });
+    expect(second.billing?.weeklyAmount).toBe(375);
+    expect(second.payment_amount).not.toContain("400");
+  });
+
+  test("a different car does not add the driver fee on top of the old total", () => {
+    const start = prepareBaseRent({
+      entered: 450,
+      vehicleWeekly: 400,
+      vehicleChanged: true,
+      previous: { weeklyAmount: 450, baseRent: 350, vehicleWeekly: 350 },
+    });
+    expect(start).toBe(400);
+    const next = paymentRows(prep(1), {
+      weeklyRate: start,
+      waiverFee: WAIVER,
+      additionalDriverWeeklyFee: FEE,
+      catalogWeeklyRate: 400,
+    });
+    expect(next.billing?.weeklyAmount).toBe(500);
+    expect(next.payment_amount).toBe("$500.00 weekly ($400.00 rent + $100.00 Additional Driver)");
+    expect(next.payment_amount).not.toContain("550");
+  });
+
+  test("the $450 typed Weekly Rent stays $450 on the next prepare", () => {
+    const start = prepareBaseRent({
+      entered: 450,
+      vehicleWeekly: 350,
+      vehicleChanged: false,
+      previous: { weeklyAmount: 450, baseRent: 450, vehicleWeekly: 350 },
+    });
+    expect(start).toBe(450);
+    const next = paymentRows(prep(1), {
+      weeklyRate: start,
+      waiverFee: WAIVER,
+      additionalDriverWeeklyFee: FEE,
+      catalogWeeklyRate: 350,
+    });
+    expect(next.billing?.weeklyAmount).toBe(450);
+    expect(next.billing?.baseRent).toBe(450);
+  });
+
+  test("staff can set an Additional Driver fee to $0 and edit the Damage Waiver", () => {
+    const free = paymentRows(prep(1, { drivers: { mode: "listed", list: [{ ...prep(1).drivers.list[0], weeklyFee: 0 }] } }), {
+      weeklyRate: 350,
+      waiverFee: WAIVER,
+      additionalDriverWeeklyFee: FEE,
+      catalogWeeklyRate: 350,
+    });
+    expect(free.payment_amount).toBe("$350.00 weekly");
+    expect(free.billing?.drivers?.[0].weeklyFee).toBe(0);
+    expect(free.billing?.laterDriverFee).toBe(0);
+    expect(free.billing?.weeklyAmount).toBe(350);
+    const waiver = rows(0, { damageWaiver: "accepted", damageWaiverFee: 10 });
+    expect(waiver.payment_amount).toBe("$360.00 weekly ($350.00 rent + $10.00 Damage Waiver)");
+    expect(waiver.billing?.waiverWeekly).toBe(10);
+    expect(waiver.billing?.priceNote).toBeUndefined();
+  });
+
+  test("a Price Change Note is stored and is not part of the printed amount", () => {
+    const noted = rows(0, { damageWaiver: "accepted", damageWaiverFee: 10, priceNote: "Promo week for this renter" });
+    expect(noted.billing?.priceNote).toBe("Promo week for this renter");
+    expect(noted.payment_amount).not.toContain("Promo");
+    expect(noted.payment_amount).not.toMatch(/deposit/i);
+  });
+
+  test("a later driver is billed at the edited fee, including $0", () => {
+    const merge = {
+      [BILLING_MERGE_KEY]: JSON.stringify({
+        weeklyAmount: 350,
+        baseRent: 350,
+        driverFeeEach: 0,
+        driverCount: 1,
+        driverFeesIncluded: 0,
+        source: "none",
+        drivers: [{ name: "Extra Driver1", weeklyFee: 0 }],
+        laterDriverFee: 0,
+      }),
+    };
+    expect(weeklyFeeOnAgreement(merge, "Extra Driver1")).toBe(0);
+    expect(weeklyFeeOnAgreement(merge, "Someone New")).toBe(0);
+    expect(weeklyFeeOnAgreement({ weekly_rate: "$350.00" }, "Someone New")).toBeNull();
   });
 
   test("resend does not recompute totals, and a new send does not rewrite agreement rows", () => {

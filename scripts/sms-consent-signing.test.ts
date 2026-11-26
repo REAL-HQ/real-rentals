@@ -125,6 +125,27 @@ describe("when the checkbox is shown", () => {
     }
   });
 
+  test("a standalone document does not show the rental SMS box", () => {
+    const html = renderToStaticMarkup(createElement(SigningPanel, {
+      body: "Insurance cancellation",
+      defaultName: "Ada Lovelace",
+      companySigner: "REAL RENTALS",
+      busy: false,
+      onSubmit: () => {},
+      document: true,
+      smsConsent: { checked: false, onChange: () => {} },
+    }));
+    expect(html).not.toContain("signing-sms-consent");
+    expect(html).not.toContain(TEXT);
+    expect(html).toContain("I have reviewed this document");
+    const sign = readFileSync("src/routes/sign.$token.tsx", "utf8");
+    const portal = readFileSync("src/routes/portal.tsx", "utf8");
+    const fn = readFileSync("src/lib/agreements.functions.ts", "utf8");
+    expect(sign).toContain('agreement.source !== "standalone" && agreement.sms_consent_needed');
+    expect(portal).toContain('a.source !== "standalone" && a.smsConsentNeeded');
+    expect(fn).toContain("const sms = standalone\n      ? { smsConsentNeeded: false, smsConsentTicket: null }");
+  });
+
   test("Reservation Fee page shows the same wording only when still needed", () => {
     const plain = renderToStaticMarkup(createElement(ReservationFeeNextStep, {
       step: { state: "pay", amount: 50, url: "https://checkout.stripe.com/c/pay/cs_1" },

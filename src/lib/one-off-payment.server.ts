@@ -285,6 +285,25 @@ export async function insertMatchedOneOff(
   }).select("id"));
   const paymentId = ins.data?.[0]?.id ?? null;
   const inserted = !!paymentId;
+  if (inserted && paymentId) {
+    try {
+      const { shouldLinkPaidTollCharge } = await import("@/lib/toll-charge-deadlines");
+      if (shouldLinkPaidTollCharge(id.reason, id.notice)) {
+        const { linkPaidTollCharge } = await import("@/lib/toll-charge-sync.server");
+        await linkPaidTollCharge(admin, {
+          paymentId,
+          paymentLinkId: id.paymentLinkId,
+          notice: id.notice ?? null,
+          rentalId: r.id,
+          reason: id.reason,
+        });
+      }
+    } catch (err) {
+      // The payment row is already written. A charge lookup must not fail the
+      // webhook, or Stripe would retry and the unique intent index would no-op.
+      console.error("[one-off-payment] toll charge link failed", err);
+    }
+  }
   if (inserted) {
     await admin.from("notifications").insert({
       driver_id: null, title: "Payment Received", kind: "payment", read: false,

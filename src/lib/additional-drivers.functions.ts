@@ -51,20 +51,28 @@ export const saveApplicantAdditionalDrivers = createServerFn({ method: "POST" })
 export const listStaffAdditionalDrivers = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid().optional(), rentalId: z.string().uuid().optional() }).parse(d))
-  .handler(async ({ data, context }): Promise<{ rows: AdditionalDriverRow[]; reservationFeeSettled: boolean; includedDriverCount: number }> => {
+  .handler(async ({ data, context }): Promise<{ rows: AdditionalDriverRow[]; reservationFeeSettled: boolean; includedDriverCount: number; weeklyFees: Record<string, number> }> => {
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { includedAdditionalDriverCount, listAdditionalDrivers, reservationFeeSettled } = await import("@/lib/additional-drivers.server");
+    const { weeklyFeeOnAgreement } = await import("@/lib/agreement-prep");
+    const { currentAgreementMerge } = await import("@/lib/agreement-weekly.server");
     const rows = await listAdditionalDrivers(supabaseAdmin, data);
     const applicationId = data.applicationId ?? rows.find((r) => r.applicationId)?.applicationId ?? null;
     let included = 0;
+    let weeklyFees: Record<string, number> = {};
     try {
       included = await includedAdditionalDriverCount(supabaseAdmin, { applicationId, rentalId: data.rentalId ?? rows.find((r) => r.rentalId)?.rentalId ?? null });
+      const merge = await currentAgreementMerge(supabaseAdmin, applicationId);
+      weeklyFees = Object.fromEntries(rows.flatMap((row) => {
+        const fee = weeklyFeeOnAgreement(merge, row.name);
+        return fee == null ? [] : [[row.id, fee]];
+      }));
     } catch {
       included = 0;
     }
-    return { rows, reservationFeeSettled: await reservationFeeSettled(supabaseAdmin, applicationId), includedDriverCount: included };
+    return { rows, reservationFeeSettled: await reservationFeeSettled(supabaseAdmin, applicationId), includedDriverCount: included, weeklyFees };
   });
 
 export const addStaffAdditionalDriver = createServerFn({ method: "POST" })
