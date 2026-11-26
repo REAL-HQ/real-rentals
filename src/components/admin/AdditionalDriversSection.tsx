@@ -35,11 +35,13 @@ export function AdditionalDriversPanel({
   rows,
   reservationFeeSettled,
   includedDriverCount = 0,
+  weeklyFees = {},
   onChanged,
 }: {
   rows: AdditionalDriverRow[];
   reservationFeeSettled: boolean;
   includedDriverCount?: number;
+  weeklyFees?: Record<string, number>;
   onChanged: () => void;
 }) {
   const approve = useServerFn(approveAdditionalDriver);
@@ -69,6 +71,8 @@ export function AdditionalDriversPanel({
       {rows.map((row) => {
         const mayDrive = additionalDriverMayDrive({ ...row, reservationFeeSettled });
         const included = feeIncluded(row, rows, includedDriverCount);
+        const weeklyFee = weeklyFees[row.id];
+        const feeLabel = weeklyFee === 0 ? "No Weekly Fee" : `Add $${weeklyFee ?? 100}/Week`;
         return (
           <li key={row.id} className="space-y-2 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -94,7 +98,8 @@ export function AdditionalDriversPanel({
                 {row.status === "pending" ? <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => decline({ data: { id: row.id } }))}>Decline</button> : null}
                 {row.status === "approved" && !row.insuranceAddedAt ? <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => insure({ data: { id: row.id } }))}>Mark Insurance Added</button> : null}
                 {row.status === "approved" && !row.stripeSubscriptionItemId && included ? <button type="button" className={btn} disabled>Included In Weekly Rate</button> : null}
-                {row.status === "approved" && !row.stripeSubscriptionItemId && !included ? <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => bill({ data: { id: row.id } }))}>Add $100/Week</button> : null}
+                {row.status === "approved" && !row.stripeSubscriptionItemId && !included && weeklyFee === 0 ? <button type="button" className={btn} disabled>No Weekly Fee</button> : null}
+                {row.status === "approved" && !row.stripeSubscriptionItemId && !included && weeklyFee !== 0 ? <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => bill({ data: { id: row.id } }))}>{feeLabel}</button> : null}
                 <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => remove({ data: { id: row.id } }))}>Remove</button>
               </div>
             ) : null}
@@ -196,6 +201,7 @@ export function AdditionalDriversSection({ applicationId, rentalId }: { applicat
   const [rows, setRows] = useState<AdditionalDriverRow[]>([]);
   const [fee, setFee] = useState(false);
   const [includedDriverCount, setIncludedDriverCount] = useState(0);
+  const [weeklyFees, setWeeklyFees] = useState<Record<string, number>>({});
   const [hidden, setHidden] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -205,7 +211,7 @@ export function AdditionalDriversSection({ applicationId, rentalId }: { applicat
     if (!applicationId && !rentalId) return;
     let live = true;
     void load({ data: { applicationId: applicationId ?? undefined, rentalId: rentalId ?? undefined } })
-      .then((res) => { if (live) { setHidden(false); setRows(res.rows); setFee(res.reservationFeeSettled); setIncludedDriverCount(res.includedDriverCount ?? 0); } })
+      .then((res) => { if (live) { setHidden(false); setRows(res.rows); setFee(res.reservationFeeSettled); setIncludedDriverCount(res.includedDriverCount ?? 0); setWeeklyFees(res.weeklyFees ?? {}); } })
       .catch(() => { if (live) setHidden(true); });
     return () => { live = false; };
   }, [applicationId, rentalId, nonce, load]);
@@ -240,7 +246,7 @@ export function AdditionalDriversSection({ applicationId, rentalId }: { applicat
           }}
         />
       ) : null}
-      <AdditionalDriversPanel rows={rows} reservationFeeSettled={fee} includedDriverCount={includedDriverCount} onChanged={() => setNonce((n) => n + 1)} />
+      <AdditionalDriversPanel rows={rows} reservationFeeSettled={fee} includedDriverCount={includedDriverCount} weeklyFees={weeklyFees} onChanged={() => setNonce((n) => n + 1)} />
     </section>
   );
 }

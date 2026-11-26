@@ -9,7 +9,7 @@
  * Autopay charges rentals.weekly_rate once. Driver fees inside this amount
  * are not also a Stripe subscription item.
  */
-import { moneyNumber, storedWeeklyAmount, weeklyRateFromAgreementOrVehicle } from "@/lib/agreement-prep";
+import { baseRentFromMerge, moneyNumber, savedPricesFromMerge, storedWeeklyAmount, weeklyRateFromAgreementOrVehicle, type SavedAgreementPrices } from "@/lib/agreement-prep";
 
 const OPEN = ["signed", "sent", "viewed"] as const;
 
@@ -43,6 +43,53 @@ export async function currentAgreementMerge(admin: any, applicationId: string | 
 
 export async function currentAgreementWeeklyAmount(admin: any, applicationId: string | null | undefined): Promise<number | null> {
   return storedWeeklyAmount(await currentAgreementMerge(admin, applicationId));
+}
+
+export type PreviousPrepareBase = {
+  weeklyAmount: number;
+  baseRent: number;
+  vehicleId: string | null;
+  vehicleWeekly: number | null;
+  saved: SavedAgreementPrices | null;
+};
+
+/**
+ * The newest agreement's base rent and charge total, including a voided one.
+ * Used only so the next prepare does not start from the charge total. The
+ * stored agreement text is not changed.
+ */
+export async function previousPrepareBase(admin: any, applicationId: string | null | undefined): Promise<PreviousPrepareBase | null> {
+  if (!applicationId || !admin?.from) return null;
+  try {
+    let q = admin.from("agreements").select("id,vehicle_id,merge_data,created_at");
+    if (!q || typeof q.eq !== "function") return null;
+    q = q.eq("application_id", applicationId);
+    if (typeof q.order === "function") q = q.order("created_at", { ascending: false });
+    if (typeof q.limit === "function") q = q.limit(8);
+    const res = await q;
+    const rows = ((res?.data ?? []) as any[]).slice().sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+    for (const row of rows) {
+      const merge = row.merge_data;
+      if (!merge || typeof merge !== "object") continue;
+      const weeklyAmount = storedWeeklyAmount(merge);
+      const baseRent = baseRentFromMerge(merge);
+      if (!(weeklyAmount != null && weeklyAmount > 0) || !(baseRent != null && baseRent > 0)) continue;
+      let vehicleWeekly: number | null = null;
+      const vehicleId = (row.vehicle_id as string | null) ?? null;
+      if (vehicleId) {
+        try {
+          const vehicle = await admin.from("vehicles").select("weekly_rate").eq("id", vehicleId).maybeSingle();
+          vehicleWeekly = moneyNumber(vehicle?.data?.weekly_rate);
+        } catch {
+          vehicleWeekly = null;
+        }
+      }
+      return { weeklyAmount, baseRent, vehicleId, vehicleWeekly, saved: savedPricesFromMerge(merge) };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**

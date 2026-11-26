@@ -357,6 +357,20 @@ async function buildMergeData(
       blockers.push({ field: "vehicle_color", label: "Vehicle colour", why: "The agreement prints the vehicle's colour.", fix: vfix });
   }
 
+  // weekly_rent may be the last agreement's charge total (rent + drivers +
+  // Damage Waiver). Start this prepare from the stored base instead, so those
+  // amounts are added once. A sent agreement is not rewritten.
+  const { prepareBaseRent, moneyNumber: asMoney } = await import("@/lib/agreement-prep");
+  const { previousPrepareBase } = await import("@/lib/agreement-weekly.server");
+  const previous = await previousPrepareBase(admin, applicationId);
+  const starting = prepareBaseRent({
+    entered: asMoney(app.weekly_rent),
+    vehicleWeekly: asMoney(vehicle?.weekly_rate),
+    vehicleChanged: !!(previous?.vehicleId && namedVehicleId && previous.vehicleId !== namedVehicleId),
+    previous,
+  });
+  if (starting != null && starting > 0) app.weekly_rent = starting;
+
   const weekly = app.weekly_rent ?? vehicle?.weekly_rate;
   if (!(Number(weekly) > 0))
     blockers.push({ field: "weekly_rate", label: "Weekly rate", why: "The agreement states the weekly rent.", fix: pay });
@@ -806,19 +820,38 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     // A saved template that prints Balance Due (v1.14) uses the same style.
     const amountStyle = lib?.reservationStyle === "amount" || usesField(tpl.body, "balance_due");
     // v1.14 money rows: amount due each payment and the balance due at pickup.
+    let priceTerms: Record<string, string> = {};
     if (usesField(tpl.body, "balance_due") || usesField(tpl.body, "payment_amount")) {
-      const { paymentRows, parseUsd, moneyNumber, BILLING_MERGE_KEY } = await import("@/lib/agreement-prep");
+      const { paymentRows, parseUsd, moneyNumber, BILLING_MERGE_KEY, DEFAULT_DRIVER_WEEKLY_FEE, DEFAULT_RESERVATION_FEE, driverFeeScheduleLine, usdText } = await import("@/lib/agreement-prep");
+      let reservationDefault = DEFAULT_RESERVATION_FEE;
+      try {
+        const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
+        const fee = await loadReservationFeeSettings(admin);
+        if (fee.enabled && fee.amount > 0) reservationDefault = fee.amount;
+      } catch { /* the $50 default */ }
+      const templateDriver = parseUsd(terms?.fee_additional_driver);
       const rows = paymentRows(prep, {
         weeklyRate: parseUsd(built.data.weekly_rate),
         waiverFee: parseUsd(terms?.damage_waiver_fee),
-        additionalDriverWeeklyFee: parseUsd(terms?.fee_additional_driver),
+        additionalDriverWeeklyFee: templateDriver != null && templateDriver >= 0 ? templateDriver : DEFAULT_DRIVER_WEEKLY_FEE,
         catalogWeeklyRate: moneyNumber(built.vehicle?.weekly_rate),
+        defaults: {
+          weekly: moneyNumber(built.vehicle?.weekly_rate),
+          driverFee: templateDriver != null && templateDriver >= 0 ? templateDriver : DEFAULT_DRIVER_WEEKLY_FEE,
+          waiver: parseUsd(terms?.damage_waiver_fee),
+          reservation: reservationDefault,
+        },
       });
       built.data.payment_amount = rows.payment_amount;
       built.data.balance_due = rows.balance_due;
       if (rows.billing) (built.data as Record<string, string>)[BILLING_MERGE_KEY] = JSON.stringify(rows.billing);
       if (rows.driverFeeNote) (built.data as Record<string, string>)._driver_fee_note = rows.driverFeeNote;
       built.blockers.push(...rows.blockers);
+      if (rows.billing?.drivers?.length) {
+        const line = driverFeeScheduleLine(rows.billing.drivers);
+        if (line) priceTerms.fee_additional_driver = line;
+      }
+      if (prep.damageWaiver === "accepted" && rows.billing?.waiverWeekly != null) priceTerms.damage_waiver_fee = usdText(rows.billing.waiverWeekly);
     }
     const line = amountStyle
       ? (prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0
@@ -828,7 +861,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     // v1.14 values with no record behind them yet.
     if (usesField(tpl.body, "vehicle_owner") && !String(built.data.vehicle_owner ?? "").trim())
       built.data.vehicle_owner = await registeredOwnerFallback(admin, built.namedVehicleId ?? (built.app?.vehicle_id as string | null) ?? null, String(built.data.company_name ?? ""));
-    if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line });
+    if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line, ...priceTerms });
   }
   // An updated agreement for an already-active rental: no Reservation Fee, no
   // new deposit and nothing due now. The renter already paid week 1, and the
@@ -1022,12 +1055,27 @@ async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepare
       email: (app.email as string | null) ?? null,
       name: (app.full_name as string | null) ?? null,
       generatedAt: new Date().toISOString(),
-      // Lets the staff dialog start with the Reservation Fee the switch sets.
-      reservationFeeAuto: await (async () => {
+      // Lets the staff dialog start with the Reservation Fee the switch sets,
+      // and mark an amount Edited against these defaults.
+      ...await (async () => {
+        let reservationFeeAuto = { enabled: false, amount: 0 };
         try {
           const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
-          return await loadReservationFeeSettings(admin);
-        } catch { return { enabled: false, amount: 0 }; }
+          reservationFeeAuto = await loadReservationFeeSettings(admin);
+        } catch { /* switch unread: the dialog uses $50 */ }
+        const { parseUsd, moneyNumber, DEFAULT_DRIVER_WEEKLY_FEE, DEFAULT_RESERVATION_FEE } = await import("@/lib/agreement-prep");
+        const termsNow = readTerms(tpl.body);
+        const templateDriver = parseUsd(termsNow?.fee_additional_driver);
+        return {
+          reservationFeeAuto,
+          priceDefaults: {
+            weeklyRent: moneyNumber(prep.vehicle?.weekly_rate),
+            driverFee: templateDriver != null && templateDriver >= 0 ? templateDriver : DEFAULT_DRIVER_WEEKLY_FEE,
+            damageWaiver: parseUsd(termsNow?.damage_waiver_fee),
+            reservationFee: reservationFeeAuto.enabled && reservationFeeAuto.amount > 0 ? reservationFeeAuto.amount : DEFAULT_RESERVATION_FEE,
+          },
+          savedPrices: await (await import("@/lib/agreement-weekly.server")).previousPrepareBase(admin, prep.app?.id).then((row) => row?.saved ?? null).catch(() => null),
+        };
       })(),
     };
 }

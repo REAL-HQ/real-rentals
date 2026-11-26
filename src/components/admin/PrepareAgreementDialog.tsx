@@ -7,7 +7,7 @@ import { ArrowLeft, ChevronDown, Loader2, Plus, ScanText, Send, Trash2 } from "l
 import { Button } from "@/components/ui/button";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewAgreement, sendAgreement } from "@/lib/agreements.functions";
-import { EMPTY_PREP, PAYMENT_METHODS, PAYMENT_SCHEDULES, fillBlankAgreementDetails, type AgreementDetails, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
+import { EMPTY_PREP, PAYMENT_METHODS, PAYMENT_SCHEDULES, fillBlankAgreementDetails, parseUsd, paymentRows, type AgreementDetails, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
 import { defaultRentalEndIso } from "@/lib/agreement-dates";
 import { layoutToText } from "@/lib/agreement-layout";
 import { readAgreementLicense, readWrittenAgreement } from "@/lib/agreement-license.functions";
@@ -35,7 +35,21 @@ type Res = {
   templateFields?: string[];
   template: { label: string };
   reservationFeeAuto?: { enabled: boolean; amount: number };
+  priceDefaults?: { weeklyRent: number | null; driverFee: number; damageWaiver: number | null; reservationFee: number };
+  savedPrices?: {
+    weeklyRent: number | null;
+    drivers: { name: string; weeklyFee: number }[];
+    damageWaiver: "accepted" | "declined" | null;
+    damageWaiverFee: number | null;
+    reservationMode: "required" | "not_required" | "not_applicable" | null;
+    reservationAmount: number | null;
+    priceNote: string | null;
+  } | null;
 };
+
+function EditedTag() {
+  return <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-950">Edited</span>;
+}
 
 function Section({ title, children, open = true, badge }: { title: string; children: React.ReactNode; open?: boolean; badge?: number }) {
   return (
@@ -86,6 +100,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   // The Reservation Fee switch preselects Required (once); staff can still change it.
   const [feeDefaulted, setFeeDefaulted] = useState(false);
   const [driversPrefilled, setDriversPrefilled] = useState(false);
+  const [pricesRestored, setPricesRestored] = useState(false);
   const key = useMemo(() => JSON.stringify({ prep, templateKey }), [prep, templateKey]);
   function chooseTemplate(k: string) {
     // Switching templates invalidates the previous preview and its fingerprint.
@@ -122,10 +137,16 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
           }
           if (!feeDefaulted) {
             setFeeDefaulted(true);
-            const fee = r.reservationFeeAuto;
-            if (fee?.enabled && fee.amount > 0) {
+            const savedFee = r.savedPrices?.reservationMode === "required" ? r.savedPrices.reservationAmount : null;
+            if (savedFee != null) {
               setPrep((current) => current.reservation.mode === "not_required" && current.reservation.amount == null
-                ? { ...current, reservation: { mode: "required", amount: fee.amount } } : current);
+                ? { ...current, reservation: { mode: "required", amount: savedFee } } : current);
+            } else {
+              const fee = r.reservationFeeAuto;
+              if (fee?.enabled && fee.amount > 0) {
+                setPrep((current) => current.reservation.mode === "not_required" && current.reservation.amount == null
+                  ? { ...current, reservation: { mode: "required", amount: fee.amount } } : current);
+              }
             }
           }
         }
@@ -137,8 +158,29 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, applicationId, regen]);
 
+  useEffect(() => {
+    if (pricesRestored || !driversPrefilled || !res?.savedPrices) return;
+    const saved = res.savedPrices;
+    setPricesRestored(true);
+    setPrep((current) => {
+      const list = current.drivers.list.map((d) => {
+        if (d.weeklyFee != null || !d.name.trim()) return d;
+        const match = saved.drivers.find((row) => row.name.trim().toLowerCase() === d.name.trim().toLowerCase());
+        return match ? { ...d, weeklyFee: match.weeklyFee } : d;
+      });
+      return {
+        ...current,
+        drivers: { ...current.drivers, list },
+        damageWaiver: current.damageWaiver ?? saved.damageWaiver,
+        damageWaiverFee: current.damageWaiverFee ?? saved.damageWaiverFee,
+        priceNote: current.priceNote || saved.priceNote || undefined,
+      };
+    });
+  }, [pricesRestored, driversPrefilled, res?.savedPrices]);
+
   const m = res?.merge ?? {};
   const terms = res?.terms ?? {};
+  const defaults = res?.priceDefaults;
   const upToDate = reviewedKey === key && !rendering;
   const needsAck = (res?.companyMissing?.length ?? 0) > 0 && !companyAck;
   // Home Address is required before Send (the server refuses it too).
@@ -152,6 +194,20 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
     setPrep((p) => ({ ...p, drivers: { ...p.drivers, list: p.drivers.list.map((d, j) => (j === i ? { ...d, ...patch } : d)) } }));
 
   const values = prep.details ?? res?.values ?? null;
+  const live = values && prep.damageWaiver && prep.payment?.schedule
+    ? paymentRows(prep, {
+        weeklyRate: Number(values.weeklyRate) > 0 ? Number(values.weeklyRate) : null,
+        waiverFee: prep.damageWaiverFee ?? parseUsd(terms.damage_waiver_fee),
+        additionalDriverWeeklyFee: defaults?.driverFee ?? parseUsd(terms.fee_additional_driver) ?? 100,
+        catalogWeeklyRate: defaults?.weeklyRent ?? null,
+        defaults: defaults ? { weekly: defaults.weeklyRent, driverFee: defaults.driverFee, waiver: defaults.damageWaiver, reservation: defaults.reservationFee } : undefined,
+      })
+    : null;
+  const weeklyEdited = !!(defaults?.weeklyRent != null && values && values.weeklyRate.trim() !== "" && Number(values.weeklyRate) !== defaults.weeklyRent);
+  const driverEdited = prep.drivers.list.some((d) => d.weeklyFee != null && d.weeklyFee !== (defaults?.driverFee ?? 100));
+  const waiverEdited = prep.damageWaiver === "accepted" && prep.damageWaiverFee != null && prep.damageWaiverFee !== defaults?.damageWaiver;
+  const reservationEdited = prep.reservation.mode === "required" && prep.reservation.amount != null && prep.reservation.amount !== (defaults?.reservationFee ?? 50);
+  const priceEdited = weeklyEdited || driverEdited || waiverEdited || reservationEdited || (prep.priceNote ?? "").trim().length > 0;
   const updateDetails = (patch: Partial<AgreementDetails>) => {
     if (!values) return;
     setPrep((current) => ({ ...current, details: { ...(current.details ?? values), ...patch } }));
@@ -342,7 +398,13 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
               <div className="grid grid-cols-2 gap-2">
                 <label>Start Date<input type="date" className={input} value={values.startDate} onChange={(e) => updateDetails({ startDate: e.target.value, endDate: defaultRentalEndIso(e.target.value) ?? "" })} /></label>
                 <label>End Date<input type="date" min={defaultRentalEndIso(values.startDate) ?? undefined} className={input} value={values.endDate} onChange={(e) => updateDetails({ endDate: e.target.value })} /></label>
-                <label>Weekly Rate ($)<input type="number" min={0} step="0.01" className={input} value={values.weeklyRate} onChange={(e) => updateDetails({ weeklyRate: e.target.value })} /></label>
+                <label className="col-span-2">Weekly Rent ($)
+                  <span className="mb-1 flex items-center gap-2">
+                    {defaults?.weeklyRent != null && values.weeklyRate.trim() !== "" && Number(values.weeklyRate) !== defaults.weeklyRent ? <EditedTag /> : null}
+                    {defaults?.weeklyRent != null ? <button type="button" className="text-[11px] font-medium text-[#111114] underline" onClick={() => updateDetails({ weeklyRate: String(defaults.weeklyRent) })}>Reset To Default</button> : null}
+                  </span>
+                  <input type="number" min={0} step="0.01" aria-label="Weekly Rent" className={input} value={values.weeklyRate} onChange={(e) => updateDetails({ weeklyRate: e.target.value })} />
+                </label>
                 <label>Payment Method<input className={input} value={values.cardOnFile} onChange={(e) => updateDetails({ cardOnFile: e.target.value })} /></label>
                 <label>Insurance Carrier<input className={input} value={values.insuranceCarrier} onChange={(e) => updateDetails({ insuranceCarrier: e.target.value })} /></label>
                 <label>Policy Number<input className={input} value={values.insurancePolicy} onChange={(e) => updateDetails({ insurancePolicy: e.target.value })} /></label>
@@ -372,6 +434,13 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
               <input className={input} placeholder="State" maxLength={2} value={d.licenseState} onChange={(e) => setDriver(i, { licenseState: e.target.value.toUpperCase(), verified: false })} />
             </div>
             <label className="block">License Expiration<input type="date" className={input} value={d.licenseExpiration} onChange={(e) => setDriver(i, { licenseExpiration: e.target.value, verified: false })} /></label>
+            <label className="block">Additional Driver Fee ($ Per Week)
+              <span className="mb-1 flex items-center gap-2">
+                {d.weeklyFee != null && d.weeklyFee !== (defaults?.driverFee ?? 100) ? <EditedTag /> : null}
+                <button type="button" className="text-[11px] font-medium text-[#111114] underline" onClick={() => setDriver(i, { weeklyFee: null })}>Reset To Default</button>
+              </span>
+              <input type="number" min={0} step="0.01" aria-label={`Additional Driver Fee ${i + 1}`} className={input} value={d.weeklyFee ?? ""} placeholder={String(defaults?.driverFee ?? 100)} onChange={(e) => setDriver(i, { weeklyFee: e.target.value === "" ? null : Number(e.target.value) })} />
+            </label>
             <label className="flex items-start gap-2"><input type="checkbox" checked={d.verified} onChange={(e) => setDriver(i, { verified: e.target.checked })} className="mt-0.5" />
               <span>I checked this driver's physical license: the name, number, state and expiration match, and it is valid.</span></label>
           </div>
@@ -386,7 +455,13 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         <Radio checked={prep.reservation.mode === "required"} onChange={() => setPrep((p) => ({ ...p, reservation: { mode: "required", amount: p.reservation.amount } }))} label="Required" />
         {prep.reservation.mode === "required" && (
           <>
-            <label className="block">Amount ($)<input type="number" min={0} step="0.01" className={input} value={prep.reservation.amount ?? ""} onChange={(e) => setPrep((p) => ({ ...p, reservation: { mode: "required", amount: e.target.value === "" ? null : Number(e.target.value) } }))} /></label>
+            <label className="block">Reservation Fee ($)
+              <span className="mb-1 flex items-center gap-2">
+                {prep.reservation.amount != null && prep.reservation.amount !== (defaults?.reservationFee ?? 50) ? <EditedTag /> : null}
+                <button type="button" className="text-[11px] font-medium text-[#111114] underline" onClick={() => setPrep((p) => ({ ...p, reservation: { mode: "required", amount: defaults?.reservationFee ?? 50 } }))}>Reset To Default</button>
+              </span>
+              <input type="number" min={0} step="0.01" aria-label="Reservation Fee" className={input} value={prep.reservation.amount ?? ""} onChange={(e) => setPrep((p) => ({ ...p, reservation: { mode: "required", amount: e.target.value === "" ? null : Number(e.target.value) } }))} />
+            </label>
             {usesV114
               ? <p className="text-[11px] text-muted-foreground">Terms (Section 4): due when the renter signs and applied in full to the first payment. Refunded in full if we cannot set up the Renter Policy, cannot provide a vehicle (or a similar one within 1–2 days), fail pickup inspection without a swap, change confirmed terms the renter declines, deny them after a check we run after they pay, or charged the fee in error. Not refunded for a no-show, a change of mind, a missed pickup without notice, or false or mismatched information. It is not a security deposit.</p>
               : <p className="text-[11px] text-muted-foreground">Terms (Section 2): due when pickup or delivery is scheduled and applied in full to the first week. Refunded in full if we cannot set up the Renter Policy, cannot provide a vehicle, fail pickup inspection without a swap, change confirmed terms the renter declines, deny them after a check we run after they pay, or charged the fee in error. Not refunded for a no-show, a change of mind, a missed pickup without notice, or false or mismatched information. It is not a security deposit.</p>}
@@ -399,7 +474,16 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
           <p className="font-medium">Optional Damage Waiver{terms.damage_waiver_fee ? ` (${terms.damage_waiver_fee} Per Week)` : ""}</p>
           <Radio checked={prep.damageWaiver === "accepted"} onChange={() => setPrep((p) => ({ ...p, damageWaiver: "accepted" }))} label="Accepted By Renter" />
           <Radio checked={prep.damageWaiver === "declined"} onChange={() => setPrep((p) => ({ ...p, damageWaiver: "declined" }))} label="Declined By Renter" />
-          <p className="text-[11px] text-muted-foreground">Ask the renter before sending. The agreement prints the choice and the renter initials it when signing.</p>
+          {prep.damageWaiver === "accepted" ? (
+            <label className="block">Damage Waiver ($ Per Week)
+              <span className="mb-1 flex items-center gap-2">
+                {prep.damageWaiverFee != null && prep.damageWaiverFee !== defaults?.damageWaiver ? <EditedTag /> : null}
+                <button type="button" className="text-[11px] font-medium text-[#111114] underline" onClick={() => setPrep((p) => ({ ...p, damageWaiverFee: null }))}>Reset To Default</button>
+              </span>
+              <input type="number" min={0} step="0.01" aria-label="Damage Waiver" className={input} value={prep.damageWaiverFee ?? ""} placeholder={defaults?.damageWaiver != null ? String(defaults.damageWaiver) : ""} onChange={(e) => setPrep((p) => ({ ...p, damageWaiverFee: e.target.value === "" ? null : Number(e.target.value) }))} />
+            </label>
+          ) : null}
+          <p className="text-[11px] text-muted-foreground">Ask the renter before sending. The agreement prints the choice and the renter initials it when signing. $0 is allowed.</p>
           <div className="grid grid-cols-2 gap-2 pt-1">
             <label>Payment Schedule
               <AppSelect aria-label="Payment Schedule" className={input} value={prep.payment?.schedule ?? ""} onChange={(e) => setPrep((p) => ({ ...p, payment: { schedule: (e.target.value || null) as any, method: p.payment?.method ?? null } }))}>
@@ -418,11 +502,16 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
             </label>
           </div>
           <dl className="grid grid-cols-[minmax(0,50%)_minmax(0,1fr)] gap-x-3 gap-y-1 border-t pt-2">
-            {row("Weekly Rate (Insurance Included)", m.weekly_rate)}
-            {row("Reservation Fee", prep.reservation.mode === "required" && prep.reservation.amount ? `$${prep.reservation.amount.toFixed(2)}` : "None")}
-            {row("Amount Due Each Payment", m.payment_amount)}
-            {row("Balance Due At Pickup", m.balance_due)}
+            {row("Weekly Rent", live?.billing ? `$${live.billing.baseRent.toFixed(2)}` : m.weekly_rate)}
+            {row("Reservation Fee", prep.reservation.mode === "required" && prep.reservation.amount != null ? `$${prep.reservation.amount.toFixed(2)}` : "None")}
+            {row("Amount Due Each Payment", live?.payment_amount || m.payment_amount)}
+            {row("Balance Due At Pickup", live?.balance_due || m.balance_due)}
           </dl>
+          {priceEdited || (live?.blockers ?? []).some((b) => b.field === "price_note") ? (
+            <label className="block">Price Change Note (Not Printed)
+              <input aria-label="Price Change Note" className={input} value={prep.priceNote ?? ""} onChange={(e) => setPrep((p) => ({ ...p, priceNote: e.target.value }))} />
+            </label>
+          ) : null}
           {m._driver_fee_note ? <p className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-950" role="status">{m._driver_fee_note}</p> : null}
           <p className="text-[11px] text-muted-foreground">Balance Due At Pickup is the first payment less the Reservation Fee. Amount Due Each Payment includes the Weekly Rate, each approved Additional Driver, and the Damage Waiver when it is accepted.</p>
         </Section>
