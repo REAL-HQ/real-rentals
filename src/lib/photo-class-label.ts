@@ -4,15 +4,23 @@
 // leaves the photo unknown. A label a person chose is never replaced.
 import { PHOTO_CLASS_OPTIONS, type PhotoClass } from "@/lib/photo-studio";
 
-/** Text model. Vision in, a short JSON label out. Not an image model. */
-export const PHOTO_LABEL_MODEL = "gemini-2.5-flash";
+/**
+ * Text model. Vision in, a short JSON label out. Not an image model.
+ * Same model id as the identity read in photo-studio-provider.server.ts.
+ * gemini-2.5-flash returns 404 for this API key.
+ */
+export const PHOTO_LABEL_MODEL = "gemini-3.5-flash";
 
 /**
- * One Gemini 2.5 Flash vision call. Input is a few hundred tokens
- * (about $0.30 / 1M) plus a short JSON reply. 0.1¢ is a conservative
- * per-photo estimate, logged even though Photo Studio's switch does not apply.
+ * One Gemini 3.5 Flash vision call on the paid tier: $1.50 / 1M input
+ * tokens and $9 / 1M output tokens. Gemini 2.5 Flash was $0.30 / $2.50,
+ * and the logged estimate then was 0.1¢. 0.5¢ keeps that estimate in
+ * line with the higher input price. Photo Studio's switch does not apply.
  */
-export const PHOTO_LABEL_COST_CENTS = 0.1;
+export const PHOTO_LABEL_COST_CENTS = 0.5;
+
+/** Provider text stored on a failure. Long HTML pages must not fill the audit log. */
+export const PHOTO_LABEL_ERROR_MAX = 200;
 
 /** Below this the guess is discarded and the photo stays unknown. */
 export const PHOTO_LABEL_MIN_CONFIDENCE = 0.6;
@@ -84,7 +92,7 @@ export function decideLabel(
   return { write: parsed.photoClass, outcome: "labeled" };
 }
 
-/** "0.1¢" under a dollar, otherwise dollars. */
+/** Tenths of a cent under a dollar, otherwise dollars. */
 export function formatLabelCost(cents: number): string {
   if (!Number.isFinite(cents) || cents < 0) return "0¢";
   if (cents < 100) {
@@ -92,6 +100,65 @@ export function formatLabelCost(cents: number): string {
     return `${rounded}¢`;
   }
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+function redactSecret(text: string, secret?: string): string {
+  let out = text;
+  if (secret && secret.length >= 8) out = out.split(secret).join("[redacted]");
+  out = out.replace(/\bAIza[0-9A-Za-z\-_]{8,}\b/g, "[redacted]");
+  out = out.replace(/([?&#]key=)[^&\s#]+/gi, "$1[redacted]");
+  out = out.replace(/(x-goog-api-key\s*[:=]\s*)\S+/gi, "$1[redacted]");
+  return out;
+}
+
+function messageFromBody(text: string): string | null {
+  if (!text.startsWith("{") && !text.startsWith("[")) return null;
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: unknown }; message?: unknown };
+    const fromError = parsed?.error && typeof parsed.error === "object" ? parsed.error.message : undefined;
+    const message = typeof fromError === "string" ? fromError : parsed?.message;
+    return typeof message === "string" && message.trim() ? message.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A short provider message with the API key removed. Safe to store and show. */
+export function providerErrorDetail(raw: string, secret?: string): string {
+  const redacted = redactSecret(raw, secret).trim().slice(0, 8000);
+  const message = messageFromBody(redacted);
+  let text = (message ?? redacted).replace(/\s+/g, " ").trim();
+  text = redactSecret(text, secret);
+  if (text.length > PHOTO_LABEL_ERROR_MAX) text = `${text.slice(0, PHOTO_LABEL_ERROR_MAX - 1)}…`;
+  return text;
+}
+
+/** What photo_label_spend.outcome stores. Includes the status when the provider sent one. */
+export function providerErrorOutcome(status: number | null, detail: string): string {
+  const head = status == null ? "provider_error" : `provider_error:${status}`;
+  const snippet = detail.trim();
+  return snippet ? `${head} ${snippet}` : head;
+}
+
+/** Audit metadata for one label attempt. http_status and error are set only for a provider failure. */
+export function labelAuditMetadata(e: {
+  mediaId: string;
+  outcome: string;
+  costCents: number;
+  status?: number | null;
+  detail?: string;
+}): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {
+    mediaId: e.mediaId,
+    model: PHOTO_LABEL_MODEL,
+    outcome: e.outcome,
+    cost_cents: e.costCents,
+  };
+  if (e.status !== undefined || e.detail !== undefined) {
+    metadata.http_status = e.status ?? null;
+    metadata.error = e.detail ?? "";
+  }
+  return metadata;
 }
 
 export function isMissingDbColumn(message: string | null | undefined, column: string): boolean {

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { autoLabelUnlabeled, previewAutoLabel } from "@/lib/photo-class-label.functions";
-import { formatLabelCost } from "@/lib/photo-class-label";
+import { PHOTO_LABEL_COST_CENTS, formatLabelCost } from "@/lib/photo-class-label";
 
 /** Label photos that are still Unknown. A label a person set is left alone. */
 export function AutoLabelPhotos({ vehicleId, onDone }: { vehicleId: string; onDone?: () => void }) {
@@ -53,7 +53,7 @@ export function AutoLabelPhotos({ vehicleId, onDone }: { vehicleId: string; onDo
       >
         All Cars
       </button>
-      <span className="text-[11px] text-[#55555E]">About 0.1¢ Per Photo. Labels You Set Stay.</span>
+      <span className="text-[11px] text-[#55555E]">About {formatLabelCost(PHOTO_LABEL_COST_CENTS)} Per Photo. Labels You Set Stay.</span>
     </div>
   );
 }

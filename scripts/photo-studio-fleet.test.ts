@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  carReadyToPublish, fleetProgress, isStudioFleetCar, shotPassedIdentity, type FleetCarInput, type FleetShot,
+  carReadyToPublish, describeStudioRun, fleetProgress, isStudioFleetCar, shotPassedIdentity, studioRunToast,
+  type FleetCarInput, type FleetShot,
 } from "../src/lib/photo-studio-fleet";
 
 const ok = { read: { ok: true, plates: [], vins: [] } };
@@ -80,5 +81,40 @@ describe("fleet progress", () => {
     expect(rows[0].state).toBe("Published");
     expect(rows[0].published).toBe(4);
     expect(rows[0].ready).toBe(true);
+  });
+});
+
+describe("run all cars summary", () => {
+  const none = { labeled: 0, lowConfidence: 0, failed: 0 };
+  test("a clean fleet still says it finished", () => {
+    expect(describeStudioRun(0, none)).toBe("Every car in the fleet already has its shots.");
+    expect(describeStudioRun(10, none)).toBe("Photo Studio finished 10 cars.");
+    expect(describeStudioRun(1, none)).toBe("Photo Studio finished 1 car.");
+    expect(studioRunToast(10, none).level).toBe("success");
+  });
+  test("labeling failures lead, with the other counts", () => {
+    const labels = { labeled: 4, lowConfidence: 2, failed: 121 };
+    expect(describeStudioRun(10, labels)).toBe(
+      "121 photos could not be labeled. Photo Studio finished 10 cars. 4 labeled. 2 low confidence.",
+    );
+    expect(describeStudioRun(2, { labeled: 0, lowConfidence: 0, failed: 1 })).toBe(
+      "1 photo could not be labeled. Photo Studio finished 2 cars.",
+    );
+    expect(studioRunToast(10, labels).level).toBe("error");
+  });
+  test("a cap still explains itself, and a failure is not hidden behind it", () => {
+    expect(describeStudioRun(3, none, "continues_tomorrow")).toBe(
+      "Continues Tomorrow. The daily limit was reached. Run this again tomorrow.",
+    );
+    expect(describeStudioRun(3, none, "monthly_cap")).toBe("The monthly cap was reached.");
+    expect(studioRunToast(3, none, "monthly_cap").level).toBe("message");
+    expect(describeStudioRun(3, { labeled: 1, lowConfidence: 0, failed: 5 }, "continues_tomorrow")).toBe(
+      "5 photos could not be labeled. Continues Tomorrow. The daily limit was reached. Run this again tomorrow. 1 labeled.",
+    );
+  });
+  test("labeled and low confidence are reported when nothing failed", () => {
+    expect(describeStudioRun(3, { labeled: 8, lowConfidence: 1, failed: 0 })).toBe(
+      "Photo Studio finished 3 cars. 8 labeled. 1 low confidence.",
+    );
   });
 });

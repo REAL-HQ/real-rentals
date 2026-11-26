@@ -12,7 +12,7 @@ import {
   type Original, type PhotoClass, type ShotSlot,
 } from "@/lib/photo-studio";
 import { isUnlabeledClass } from "@/lib/photo-class-label";
-import { carReadyToPublish, fleetProgress, type FleetCarInput, type FleetShot } from "@/lib/photo-studio-fleet";
+import { carReadyToPublish, fleetProgress, type FleetCarInput, type FleetShot, type StudioLabelCounts } from "@/lib/photo-studio-fleet";
 
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -93,6 +93,10 @@ function stopOutcome(reason: string) {
   return null;
 }
 
+function freshLabels(): StudioLabelCounts {
+  return { labeled: 0, lowConfidence: 0, failed: 0 };
+}
+
 /** One car: label unlabeled originals, then generate the shots that are still missing. */
 export const runStudioNextCar = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -101,18 +105,20 @@ export const runStudioNextCar = createServerFn({ method: "POST" })
     const actor = await requireManager(context.userId);
     const sb = await admin();
     const { settings, refusal } = await budget(sb);
-    if (!settings.enabled) return { ok: false as const, outcome: "studio_off" as const, error: "Photo Studio is off." };
+    if (!settings.enabled) return { ok: false as const, outcome: "studio_off" as const, error: "Photo Studio is off.", labels: freshLabels() };
     const skip = new Set(data.skipIds ?? []);
     const cars = await loadCars(sb);
     const next = fleetProgress(cars, false).find((r) => !skip.has(r.vehicleId) && r.needsWork);
-    if (!next) return { ok: true as const, outcome: "done" as const };
+    if (!next) return { ok: true as const, outcome: "done" as const, labels: freshLabels() };
     const car = cars.find((c) => c.id === next.vehicleId)!;
     const { data: origs } = await (sb.from("vehicle_media") as any)
       .select("id,photo_class,created_at").eq("vehicle_id", car.id).eq("kind", "original");
     const openIds = ((origs ?? []) as any[]).filter((o) => isUnlabeledClass(o.photo_class)).map((o) => o.id as string);
+    let labels: StudioLabelCounts = freshLabels();
     if (openIds.length) {
       const { runPhotoLabelBatch } = await import("@/lib/photo-class-label.server");
-      await runPhotoLabelBatch(openIds, actor);
+      const summary = await runPhotoLabelBatch(openIds, actor);
+      labels = { labeled: summary.labeled, lowConfidence: summary.lowConfidence, failed: summary.failed };
     }
     const again = await (sb.from("vehicle_media") as any)
       .select("id,photo_class,created_at").eq("vehicle_id", car.id).eq("kind", "original");
@@ -122,22 +128,31 @@ export const runStudioNextCar = createServerFn({ method: "POST" })
     const live = new Set(car.shots.filter((s) => s.status !== "rejected" && s.slot).map((s) => s.slot as ShotSlot));
     const missing = planShots(originals).map((p) => p.slot).filter((slot) => !live.has(slot));
     const held = missing.length ? (refusal ? stopOutcome(refusal) : null) : null;
-    if (held) return { ok: true as const, outcome: held, vehicleId: car.id, label: next.label, reason: refusal };
+    if (held) return { ok: true as const, outcome: held, vehicleId: car.id, label: next.label, reason: refusal, labels };
     if (missing.length) {
       const { generateVehicleShots } = await import("@/lib/photo-studio.functions");
       const result = await generateVehicleShots(actor, car.id, missing);
       if (!result.ok) {
         const why = stopOutcome(result.error);
-        if (why) return { ok: true as const, outcome: why, vehicleId: car.id, label: next.label, reason: result.error };
-        return { ok: false as const, outcome: "failed" as const, error: result.error, vehicleId: car.id };
+        if (why) return { ok: true as const, outcome: why, vehicleId: car.id, label: next.label, reason: result.error, labels };
+        return { ok: false as const, outcome: "failed" as const, error: result.error, vehicleId: car.id, labels };
       }
       const hit = result.outcomes.find((o) => o.reason && stopOutcome(o.reason));
       if (hit?.reason) {
-        return { ok: true as const, outcome: stopOutcome(hit.reason)!, vehicleId: car.id, label: next.label, reason: hit.reason };
+        return { ok: true as const, outcome: stopOutcome(hit.reason)!, vehicleId: car.id, label: next.label, reason: hit.reason, labels };
       }
     }
-    await logAudit(actor, { action: "photo_studio.fleet_car", summary: `Photo Studio ran for ${next.label}`, entityType: "vehicle", entityId: car.id, metadata: { missing } });
-    return { ok: true as const, outcome: "worked" as const, vehicleId: car.id, label: next.label };
+    const unlabeled = labels.failed;
+    await logAudit(actor, {
+      action: "photo_studio.fleet_car",
+      summary: unlabeled
+        ? `Photo Studio ran for ${next.label}. ${unlabeled} ${unlabeled === 1 ? "photo" : "photos"} could not be labeled.`
+        : `Photo Studio ran for ${next.label}`,
+      entityType: "vehicle",
+      entityId: car.id,
+      metadata: { missing, labels },
+    });
+    return { ok: true as const, outcome: "worked" as const, vehicleId: car.id, label: next.label, labels };
   });
 
 async function approveAndPublishOne(actor: Awaited<ReturnType<typeof requireOwner>>, vehicleId: string) {
