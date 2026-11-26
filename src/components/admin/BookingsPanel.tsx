@@ -1,10 +1,10 @@
 import { VehicleCell } from "./VehicleCell";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
 import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
-import { CalendarCheck, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
+import { CalendarCheck, ChevronLeft, ChevronRight, ArrowRight, MoreHorizontal } from "lucide-react";
 import { listBookings } from "@/lib/bookings.functions";
 import {
   BOOKING_LIST_PAGE_SIZE,
@@ -22,6 +22,7 @@ import { BookingConversion } from "./BookingConversion";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { EmptyState, StatusPill } from "./ui";
 import { fmtDate } from "@/lib/date-format";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -31,6 +32,11 @@ import {
 } from "@/components/ui/select";
 import { endedLengthDays, orderByLength, type RentalLengthOrder } from "@/lib/rental-length-order";
 import { RentalLengthSort } from "./RentalLengthSort";
+import { listKeptFeeCreditOffers } from "@/lib/forfeited-fee-credit.functions";
+import type { ForfeitedFeeCreditMode, KeptFeeOffer } from "@/lib/forfeited-fee-credit";
+import { convertReservationFeeToCredit } from "@/lib/rental-hold.functions";
+import { ROW_MENU_COLUMN } from "./open-column";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // Bookings: every rental, in one list.
 //
@@ -94,6 +100,10 @@ export function BookingsPanel({
   onCounts,
   previewRows,
   initialLengthOrder = "default",
+  canManage = false,
+  previewKeptFees,
+  previewCreditMode = "case_by_case",
+  previewMenuOpen = false,
 }: {
   externalSearch?: string;
   openId?: string | null;
@@ -106,9 +116,21 @@ export function BookingsPanel({
   /** Skip the server read and render these rows. The alignment test uses this. */
   previewRows?: BookingRow[];
   initialLengthOrder?: RentalLengthOrder;
+  /** Manager+. The credit server function checks again. */
+  canManage?: boolean;
+  /** Skip the kept-fee lookup. Screenshots and tests pass these offers. */
+  previewKeptFees?: KeptFeeOffer[];
+  previewCreditMode?: ForfeitedFeeCreditMode;
+  previewMenuOpen?: boolean;
 } = {}) {
   const navigate = useNavigate();
   const [lengthOrder, setLengthOrder] = useState<RentalLengthOrder>(initialLengthOrder);
+  const [keptFees, setKeptFees] = useState<KeptFeeOffer[]>(previewKeptFees ?? []);
+  const [creditMode, setCreditMode] = useState<ForfeitedFeeCreditMode>(previewCreditMode);
+  const loadOffers = useServerFn(listKeptFeeCreditOffers);
+  const loadOffersRef = useRef(loadOffers);
+  loadOffersRef.current = loadOffers;
+  const keepFee = useServerFn(convertReservationFeeToCredit);
 
   // List state lives in the URL so refresh, back and shared links keep it.
   const q = listState.q ?? "";
@@ -218,6 +240,37 @@ export function BookingsPanel({
     });
   }, [result, onCounts]);
   const rows = result?.rows ?? [];
+  const showFeeMenu = scope === "cancelled" && canManage;
+  const rentalIdKey = rows.map((row) => row.id).join(",");
+  useEffect(() => {
+    if (previewKeptFees || scope !== "cancelled") return;
+    const ids = rentalIdKey.split(",").filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+    if (!ids.length) return;
+    let alive = true;
+    loadOffersRef.current({ data: { rentalIds: ids } })
+      .then((found) => {
+        if (!alive || !found?.offers || !found.mode) return;
+        setKeptFees((current) => (JSON.stringify(current) === JSON.stringify(found.offers) ? current : found.offers));
+        setCreditMode(found.mode);
+      })
+      .catch(() => {
+        if (alive) setKeptFees([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [previewKeptFees, scope, rentalIdKey]);
+  const offerFor = (id: string) => keptFees.find((offer) => offer.rentalId.toLowerCase() === id.toLowerCase()) ?? null;
+  const onKeepFee = async (offer: KeptFeeOffer, name: string | null) => {
+    if (!window.confirm(`Keep ${name ?? "This Renter"}'s Reservation Fee As A Credit Toward Their Next Rental?`)) return;
+    try {
+      await keepFee({ data: { paymentId: offer.paymentId } });
+      toast.success("Credit Saved");
+      setKeptFees((current) => current.filter((row) => row.paymentId !== offer.paymentId));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could Not Save Credit");
+    }
+  };
   const total = result?.total ?? 0;
   const money = !!result?.canSeeMoney;
   const pages = Math.max(1, Math.ceil(total / BOOKING_LIST_PAGE_SIZE));
@@ -293,6 +346,7 @@ export function BookingsPanel({
                 <th className="w-[12%] px-2 py-2 font-medium">Status</th>
                 {money ? <th className="w-[14%] px-2 py-2 font-medium">Rent</th> : null}
                 <th className={`${OPEN_COLUMN} py-2 font-medium`}>Open</th>
+                {showFeeMenu ? <th className={`${ROW_MENU_COLUMN} py-2 font-medium`} /> : null}
               </tr>
             </thead>
             <tbody>
@@ -316,10 +370,15 @@ export function BookingsPanel({
                     </span>
                     <RentalLength label={b.lengthLabel} />
                   </td>
-                  <td className="px-2 py-2 align-top whitespace-nowrap">
+                  <td className="px-2 py-2 align-top">
                     <StatusPill status={b.phase} tone={PHASE_TONE[b.phase]}>
                       {BOOKING_PHASE_LABEL[b.phase]}
                     </StatusPill>
+                    {creditMode === "case_by_case" && offerFor(b.id) ? (
+                      <span className="mt-1 block text-[11px] font-medium leading-snug text-[#8A6A00]" data-testid="fee-kept-undecided">
+                        Fee Kept, Credit Not Decided
+                      </span>
+                    ) : null}
                   </td>
                   {money ? (
                     <td className="px-2 py-2 align-top tabular-nums">
@@ -342,6 +401,47 @@ export function BookingsPanel({
                       Open <ArrowRight className="w-3 h-3" />
                     </button>
                   </td>
+                  {showFeeMenu ? (
+                    <td className={`${ROW_MENU_COLUMN} relative py-2`} onClick={(e) => e.stopPropagation()}>
+                      {offerFor(b.id) ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Actions For ${b.driverName ?? "Reservation"}`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-[#FAFAFB] hover:text-foreground"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-white">
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                const offer = offerFor(b.id);
+                                if (offer) void onKeepFee(offer, b.driverName);
+                              }}
+                            >
+                              Keep Fee As Credit
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : null}
+                      {previewMenuOpen && offerFor(b.id) ? (
+                        <div className="absolute right-1 top-10 z-30 min-w-[11.5rem] rounded-md border border-[#EDEDF0] bg-white p-1 text-left shadow-sm" data-testid="kept-fee-menu">
+                          <button
+                            type="button"
+                            className="w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-[#111114]"
+                            onClick={() => {
+                              const offer = offerFor(b.id);
+                              if (offer) void onKeepFee(offer, b.driverName);
+                            }}
+                          >
+                            Keep Fee As Credit
+                          </button>
+                        </div>
+                      ) : null}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -381,6 +481,22 @@ export function BookingsPanel({
                   )}
                 </div>
               )}
+              {creditMode === "case_by_case" && offerFor(b.id) ? (
+                <p className="mt-2 text-[12px] font-medium text-[#8A6A00]" data-testid="fee-kept-undecided">Fee Kept, Credit Not Decided</p>
+              ) : null}
+              {showFeeMenu && offerFor(b.id) ? (
+                <button
+                  type="button"
+                  className="mt-2 inline-flex h-8 items-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const offer = offerFor(b.id);
+                    if (offer) void onKeepFee(offer, b.driverName);
+                  }}
+                >
+                  Keep Fee As Credit
+                </button>
+              ) : null}
             </div>
           ))}
         </div>

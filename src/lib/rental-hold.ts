@@ -11,6 +11,8 @@
  * A Reservation Fee kept for a missed pickup can be turned into a renter credit
  * (renter_credits). A credit is never a refund and never a deposit; applying it
  * to a new rental counts it toward week 1 the same way an attached fee is.
+ * It expires the number of days in app_settings.forfeited_fee_credit, counted
+ * from the moment the credit is created. Staff only; renters are not told.
  */
 
 export const ON_HOLD_STATUS = "on_hold" as const;

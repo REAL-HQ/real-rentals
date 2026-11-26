@@ -96,6 +96,7 @@ export function BookingsWorkspace({
         <BookingsPanel
           openId={openId}
           canViewConversion={canViewConversion}
+          canManage={canManageReservations}
           listState={listState}
           scope={effective}
           onCounts={setEndedCounts}

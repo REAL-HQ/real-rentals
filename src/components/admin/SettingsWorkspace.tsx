@@ -17,6 +17,8 @@ import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { AgreementTemplatesPanel } from "@/components/admin/AgreementTemplatesPanel";
 import { RentalActivationSettingsPanel } from "@/components/admin/RentalActivationSettingsPanel";
 import { PickupScheduleSettingsPanel } from "@/components/admin/PickupScheduleSettingsPanel";
+import { ForfeitedFeeCreditSettings } from "@/components/admin/ForfeitedFeeCreditSettings";
+import { tierAllows } from "@/lib/roles";
 import { PendingSignatures } from "@/components/admin/PendingSignatures";
 import { AGREEMENT_PENDING_SIGNATURE_ENABLED } from "@/lib/agreement-pending-signatures-flag";
 import { resolveSettingsSection, visibleSettingsSections } from "@/components/admin/nav-config";
@@ -139,6 +141,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
             <SettingsPanel only={SECTION_KEY[current.id]} />
             {current.id === "rental_terms" ? <RentalActivationSettingsPanel /> : null}
             {current.id === "rental_terms" ? <PickupScheduleSettingsPanel /> : null}
+            {current.id === "rental_terms" ? <ForfeitedFeeCreditSettings canEdit={tierAllows(tier, "manager")} /> : null}
           </div>
         )}
       </section>
