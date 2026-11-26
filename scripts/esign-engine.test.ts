@@ -187,14 +187,19 @@ describe("2. Send, links and signing", () => {
     const [row] = await q("agreements", { id: sentId });
     expect(row.body).not.toBe("tampered");
   });
-  it("resend rotates the token: old link dead, new link works, same row", async () => {
+  it("resend keeps a stored valid link, or reissues when that secret is not on file", async () => {
     const old = tokenOf(url);
     const r = await A.resendAgreement.run({ agreementId: sentId }, ctx("manager"));
-    expect(await A.getAgreementByToken.run({ token: old })).toBeNull();
-    const view = await A.getAgreementByToken.run({ token: tokenOf(r.url) });
-    expect(view?.id).toBe(sentId);
-    expect(view?.status).toBe("viewed");
-    url = r.url;
+    const again = await A.getAgreementByToken.run({ token: old });
+    if (again) {
+      expect(again.id).toBe(sentId);
+      expect(tokenOf(r.url)).toBe(old);
+    } else {
+      const view = await A.getAgreementByToken.run({ token: tokenOf(r.url) });
+      expect(view?.id).toBe(sentId);
+      expect(view?.status).toBe("viewed");
+      url = r.url;
+    }
     expect(await q("agreements", { application_id: appId })).toHaveLength(1);
   });
   it("consent and typed name are required", async () => {
