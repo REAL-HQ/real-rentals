@@ -1169,8 +1169,10 @@ export async function issueAgreement(
     const { recordAgreementWeeklyRate } = await import("@/lib/agreement-weekly.server");
     await recordAgreementWeeklyRate(admin, applicationId, numberedMerge as Record<string, unknown>, { amendment: false });
   }
-  // Agreements are prepared before the rental exists; if the renter already has
-  // a live reservation/rental, tie this one to it now so the booking shows it.
+  // Agreements are prepared before the rental exists. Tie this one only to an
+  // active rental. A pending, reserved, or on-hold rental leaves rental_id null
+  // so activation can still count the signed agreement. The booking still shows
+  // an unlinked agreement for the same person (booking-links.ts).
   if (!amendment) await (await import("@/lib/booking-links.server")).linkAgreementToLiveRental(admin, row.id as string);
 
   const { data: primaryRecipient, error: primaryRecipientError } = await admin.from("esign_recipients").insert({
