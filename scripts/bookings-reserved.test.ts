@@ -9,15 +9,19 @@ const workspace = readFileSync("src/components/admin/BookingsWorkspace.tsx", "ut
 const fn = readFileSync("src/lib/reservations.functions.ts", "utf8");
 
 describe("Bookings Reserved tab", () => {
-  it("tabs read Reserved / Active / Past (Booked is gone)", () => {
-    assert.deepEqual(BOOKINGS_VIEWS.map((v) => v.label), ["Reserved", "Active", "Past"]);
+  it("tabs read Reserved / Active / Completed / Cancelled", () => {
+    assert.deepEqual(BOOKINGS_VIEWS.map((v) => v.label), ["Reserved", "Active", "Completed", "Cancelled"]);
     assert.equal(workspace.includes('"booked"'), false);
+    assert.equal(workspace.includes('scope="past"'), false);
   });
 
-  it("old booked and reserved links both land on Reserved", () => {
+  it("old booked and reserved links both land on Reserved, and past lands on Completed", () => {
     assert.equal(parseBookingsView("reserved", { canViewBoard: true }), "reserved");
     assert.equal(parseBookingsView("booked", { canViewBoard: true }), "reserved");
     assert.equal(parseBookingsView("active", { canViewBoard: true }), "active");
+    assert.equal(parseBookingsView("past", { canViewBoard: true }), "completed");
+    assert.equal(parseBookingsView("all", { canViewBoard: true }), "completed");
+    assert.equal(parseBookingsView("swap", { canViewBoard: true }), "cancelled");
     assert.equal(parseBookingsView(undefined, { canViewBoard: true }), "active");
   });
 
