@@ -1,0 +1,97 @@
+// Staff policy for a Reservation Fee that was kept (missed pickup, released,
+// cancelled). Internal only: nothing here is renter-facing copy.
+//
+// mode
+//   auto          the late-pickup job saves a credit after it marks the fee kept
+//   case_by_case  the fee stays kept; staff decide on each cancelled row
+//   off           no automatic credit; staff can still save one from the row menu
+// days is how long that credit lasts, counted from the moment it is created.
+
+import { isKeptFeeNote } from "@/lib/rental-hold";
+
+export const FORFEITED_FEE_CREDIT_KEY = "forfeited_fee_credit";
+export const FORFEITED_FEE_CREDIT_DEFAULT_DAYS = 90;
+export const FORFEITED_FEE_CREDIT_MODES = ["auto", "case_by_case", "off"] as const;
+export type ForfeitedFeeCreditMode = (typeof FORFEITED_FEE_CREDIT_MODES)[number];
+
+export type ForfeitedFeeCreditSettings = {
+  mode: ForfeitedFeeCreditMode;
+  days: number;
+};
+
+export const DEFAULT_FORFEITED_FEE_CREDIT: ForfeitedFeeCreditSettings = {
+  mode: "case_by_case",
+  days: FORFEITED_FEE_CREDIT_DEFAULT_DAYS,
+};
+
+const DAY_MS = 86_400_000;
+const KEPT_RENTAL = /\bkept:(?:[a-z0-9_]+:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
+
+export function readForfeitedFeeCreditSettings(value: unknown): ForfeitedFeeCreditSettings {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const mode = FORFEITED_FEE_CREDIT_MODES.includes(raw.mode as ForfeitedFeeCreditMode)
+    ? (raw.mode as ForfeitedFeeCreditMode)
+    : DEFAULT_FORFEITED_FEE_CREDIT.mode;
+  const days = Number(raw.days);
+  const whole = Number.isFinite(days) ? Math.round(days) : DEFAULT_FORFEITED_FEE_CREDIT.days;
+  return {
+    mode,
+    days: whole >= 1 && whole <= 3650 ? whole : DEFAULT_FORFEITED_FEE_CREDIT.days,
+  };
+}
+
+/** created_at plus the configured number of days. */
+export function creditExpiresAt(createdAt: Date, days: number): string {
+  const span = readForfeitedFeeCreditSettings({ mode: "case_by_case", days }).days;
+  return new Date(createdAt.getTime() + span * DAY_MS).toISOString();
+}
+
+/** A missing expiry is still usable (a credit saved before the column existed). */
+export function creditExpired(expiresAt: string | null | undefined, now = new Date()): boolean {
+  if (!expiresAt) return false;
+  const t = Date.parse(expiresAt);
+  return Number.isFinite(t) && t <= now.getTime();
+}
+
+/** The rental a kept-fee note names, or the payment's rental when the note only says kept. */
+export function keptFeeRentalId(notes: string | null | undefined, paymentRentalId: string | null | undefined): string | null {
+  if (!isKeptFeeNote(notes)) return null;
+  const named = KEPT_RENTAL.exec(String(notes ?? ""));
+  if (named) return named[1].toLowerCase();
+  const fallback = String(paymentRentalId ?? "").trim().toLowerCase();
+  return fallback || null;
+}
+
+export type KeptFeePayment = {
+  id: string;
+  reason: string | null;
+  status: string | null;
+  notes: string | null;
+  rentalId: string | null;
+};
+
+export type KeptFeeOffer = { rentalId: string; paymentId: string };
+
+/**
+ * Cancelled rows whose kept Reservation Fee has no live credit.
+ * `liveCreditPaymentIds` is every non-void credit's source payment.
+ */
+export function keptFeeOffers(
+  rentalIds: readonly string[],
+  payments: readonly KeptFeePayment[],
+  liveCreditPaymentIds: ReadonlySet<string>,
+): KeptFeeOffer[] {
+  const wanted = new Set(rentalIds.map((id) => id.toLowerCase()));
+  const out: KeptFeeOffer[] = [];
+  const seen = new Set<string>();
+  for (const payment of payments) {
+    if (String(payment.reason ?? "") !== "reservation_fee") continue;
+    if (String(payment.status ?? "") !== "paid") continue;
+    if (liveCreditPaymentIds.has(payment.id)) continue;
+    const rentalId = keptFeeRentalId(payment.notes, payment.rentalId);
+    if (!rentalId || !wanted.has(rentalId) || seen.has(rentalId)) continue;
+    seen.add(rentalId);
+    out.push({ rentalId, paymentId: payment.id });
+  }
+  return out;
+}

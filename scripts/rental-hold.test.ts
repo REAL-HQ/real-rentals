@@ -120,6 +120,9 @@ describe("credits", () => {
     const r = await convertFeeToCredit(admin, { paymentId: PAY }, { actorId: "u1" });
     expect(r).toMatchObject({ ok: true, amount: 50 });
     expect(db.renter_credits[0]).toMatchObject({ application_id: APP, source_payment_id: PAY, amount: 50, status: "available", created_by: "u1" });
+    const expires = Date.parse(db.renter_credits[0].expires_at);
+    expect(expires).toBeGreaterThan(Date.now() + 89 * 86_400_000);
+    expect(expires).toBeLessThan(Date.now() + 91 * 86_400_000);
     expect(db.payments[0].notes).toBe(`reservation_fee:d1266373 credit:next_rental:${RENTAL}`);
     expect(db.payments[0].status).toBe("paid");
     expect(db.payments[0].refunded_amount).toBe("0");
@@ -136,6 +139,15 @@ describe("credits", () => {
     expect(db.payments[0].notes).toContain("credit_applied:r2");
     expect(db.payments[0].notes).not.toMatch(/kept:|credited_week1/); // so paidReservationFee finds it at activation
     expect((await applyCreditToRental(admin, { creditId: c.creditId, rentalId: "r2" })).ok).toBe(false);
+  });
+  test("apply refuses an expired credit", async () => {
+    const { admin, db } = fakeAdmin(seed());
+    const c = await convertFeeToCredit(admin, { paymentId: PAY }, { now: () => new Date("2026-01-01T00:00:00Z"), creditDays: 90 });
+    if (!c.ok) throw new Error("setup");
+    db.renter_credits[0].expires_at = "2026-02-01T00:00:00Z";
+    const expired = await applyCreditToRental(admin, { creditId: c.creditId, rentalId: "r2" }, { now: () => new Date("2026-06-01T00:00:00Z") });
+    expect(expired).toEqual({ ok: false, error: "That Credit Has Expired." });
+    expect(db.renter_credits[0].status).toBe("available");
   });
   test("apply refuses another renter's rental", async () => {
     const s = seed();
