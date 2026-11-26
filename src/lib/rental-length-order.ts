@@ -15,8 +15,22 @@ import { etCalendarDate } from "@/lib/swap-ended-rental";
 export const RENTAL_LENGTH_ORDERS = ["default", "longest", "shortest"] as const;
 export type RentalLengthOrder = (typeof RENTAL_LENGTH_ORDERS)[number];
 
+/** Length order, or the Owes Money filter on the same Bookings dropdown. */
+export const BOOKINGS_LIST_MODES = ["default", "longest", "shortest", "owes"] as const;
+export type BookingsListMode = (typeof BOOKINGS_LIST_MODES)[number];
+
 export function isRentalLengthOrder(value: unknown): value is RentalLengthOrder {
   return value === "default" || value === "longest" || value === "shortest";
+}
+
+export function isBookingsListMode(value: unknown): value is BookingsListMode {
+  return isRentalLengthOrder(value) || value === "owes";
+}
+
+/** The same test as the red "$600 due" line and the "Owes $100.00" line. */
+export function owesAmount(amount: number | null | undefined): boolean {
+  const n = Number(amount);
+  return Number.isFinite(n) && n > 0;
 }
 
 export function orderByLength<T extends { id: string }>(

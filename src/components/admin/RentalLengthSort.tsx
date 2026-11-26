@@ -1,34 +1,38 @@
-import type { RentalLengthOrder } from "@/lib/rental-length-order";
+import { isBookingsListMode, type BookingsListMode } from "@/lib/rental-length-order";
 
-const OPTIONS: { value: RentalLengthOrder; label: string }[] = [
+const OPTIONS: { value: BookingsListMode; label: string }[] = [
   { value: "default", label: "Default" },
   { value: "longest", label: "Longest First" },
   { value: "shortest", label: "Shortest First" },
+  { value: "owes", label: "Owes Money" },
 ];
 
-/** Same length control on every Bookings tab, sitting beside that tab's count. */
+/** Same control on every Bookings tab: length order, or only rows that owe. */
 export function RentalLengthSort({
   value,
   onChange,
+  owesCount = null,
 }: {
-  value: RentalLengthOrder;
-  onChange: (next: RentalLengthOrder) => void;
+  value: BookingsListMode;
+  onChange: (next: BookingsListMode) => void;
+  /** Bookings with a balance due. Shown on the Owes Money option. */
+  owesCount?: number | null;
 }) {
   return (
     <select
-      aria-label="Rental Length"
-      title="Length order. Default keeps the list as it is."
+      aria-label="Bookings Filter"
+      title="Length order, or only bookings that owe money."
       data-testid="rental-length-sort"
       value={value}
       onChange={(e) => {
         const next = e.target.value;
-        if (next === "default" || next === "longest" || next === "shortest") onChange(next);
+        if (isBookingsListMode(next)) onChange(next);
       }}
-      className="h-9 w-[158px] shrink-0 cursor-pointer rounded-md border border-[#D6D6DB] bg-white px-2.5 text-sm text-[#111114]"
+      className="h-9 w-[188px] shrink-0 cursor-pointer rounded-md border border-[#D6D6DB] bg-white px-2.5 text-sm text-[#111114]"
     >
       {OPTIONS.map((option) => (
         <option key={option.value} value={option.value}>
-          {option.label}
+          {option.value === "owes" && owesCount != null ? `Owes Money (${owesCount})` : option.label}
         </option>
       ))}
     </select>
