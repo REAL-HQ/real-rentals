@@ -143,7 +143,14 @@ function RecordReservationFeeDialog({
   );
 }
 
-export function ReservationsPanel({ canManage = false }: { canManage?: boolean }) {
+export function ReservationsPanel({
+  canManage = false,
+  previewRows,
+}: {
+  canManage?: boolean;
+  /** Skip the server read and render these rows. The alignment test uses this. */
+  previewRows?: ReservationRow[];
+} = {}) {
   const navigate = useNavigate();
   const load = useServerFn(listReservations);
   const cancel = useServerFn(cancelReservation);
@@ -151,13 +158,13 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   const toCredit = useServerFn(convertReservationFeeToCredit);
   const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
   const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
-  const [rows, setRows] = useState<ReservationRow[]>([]);
+  const [rows, setRows] = useState<ReservationRow[]>(previewRows ?? []);
   // The $50 Reservation Fee lives in the reservation_deposit_* columns when its
   // switch is on; it is never called a deposit (Dolmar, t309u).
-  const [feeOn, setFeeOn] = useState(false);
+  const [feeOn, setFeeOn] = useState(!!previewRows);
   const chargeLabel = "Reservation Fee";
   const [failed, setFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!previewRows);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [depositRow, setDepositRow] = useState<ReservationRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -176,8 +183,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   }, [load]);
 
   useEffect(() => {
+    if (previewRows) return;
     refresh();
-  }, [refresh]);
+  }, [previewRows, refresh]);
 
   const onReleaseHold = async (row: ReservationRow) => {
     if (!window.confirm(`Release The Pending Reservation For ${row.driverName ?? "This Driver"}? The Car Returns To Available.`)) return;

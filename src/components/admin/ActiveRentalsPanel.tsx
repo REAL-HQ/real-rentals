@@ -57,20 +57,21 @@ function isAbortError(e: unknown): boolean {
   );
 }
 
-export function ActiveRentalsPanel() {
+export function ActiveRentalsPanel({ previewRows }: { previewRows?: ActiveRentalRow[] } = {}) {
   const navigate = useNavigate();
   const fetchBoard = useServerFn(listActiveRentals);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
-  const [rows, setRows] = useState<ActiveRentalRow[]>([]);
+  const [rows, setRows] = useState<ActiveRentalRow[]>(previewRows ?? []);
   const [loaded, setLoaded] = useState({ payments: true, issues: true, incidents: true, documents: true });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!previewRows);
   const fetchFees = useServerFn(getRentalLateFees);
   const [fees, setFees] = useState<Map<string, RentalLateFeeStatus>>(new Map());
-  const [feesLoaded, setFeesLoaded] = useState(false);
+  const [feesLoaded, setFeesLoaded] = useState(!!previewRows);
   const [reload, setReload] = useState(0);
   const [dialog, setDialog] = useState<{ kind: "pay" | "waive" | "return" | "fees"; row: ActiveRentalRow } | null>(null);
 
   useEffect(() => {
+    if (previewRows) return;
     let alive = true;
     setFeesLoaded(false);
     fetchFees()
@@ -87,9 +88,10 @@ export function ActiveRentalsPanel() {
     return () => {
       alive = false;
     };
-  }, [fetchFees, reload]);
+  }, [fetchFees, reload, previewRows]);
 
   useEffect(() => {
+    if (previewRows) return;
     let alive = true;
     setLoading(true);
     fetchBoard({ data: {} })
@@ -113,7 +115,7 @@ export function ActiveRentalsPanel() {
     return () => {
       alive = false;
     };
-  }, [fetchBoard, reload]);
+  }, [fetchBoard, reload, previewRows]);
 
   const visible = rows.filter((row) => {
     if (filter === "overdue") return (row.overdueDays ?? 0) > 0;

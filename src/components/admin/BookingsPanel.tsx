@@ -12,6 +12,7 @@ import {
   bookingDates,
   bookingVehicleName,
   isBookingPhaseFilter,
+  type BookingListResult,
   type BookingPhase,
   type BookingRow,
 } from "@/lib/bookings-list";
@@ -89,6 +90,7 @@ export function BookingsPanel({
   /** Which rental statuses this list is allowed to show. */
   scope = "all",
   onCounts,
+  previewRows,
 }: {
   externalSearch?: string;
   openId?: string | null;
@@ -98,6 +100,8 @@ export function BookingsPanel({
   scope?: "past" | "all" | "completed" | "cancelled";
   /** Completed and Cancelled totals, including swap rows counted with Cancelled. */
   onCounts?: (counts: { completed: number; cancelled: number; swap: number }) => void;
+  /** Skip the server read and render these rows. The alignment test uses this. */
+  previewRows?: BookingRow[];
 } = {}) {
   const navigate = useNavigate();
 
@@ -173,8 +177,24 @@ export function BookingsPanel({
     queryKey: ["admin-bookings-list", params],
     queryFn: () => fetchList({ data: params }),
     placeholderData: keepPreviousData,
+    enabled: !previewRows,
   });
-  const result = listQuery.data;
+  const previewResult: BookingListResult | undefined = previewRows
+    ? {
+        rows: previewRows,
+        total: previewRows.length,
+        page: 1,
+        pageSize: BOOKING_LIST_PAGE_SIZE,
+        counts: {
+          active: 0,
+          completed: previewRows.filter((r) => r.phase === "completed").length,
+          cancelled: previewRows.filter((r) => r.phase === "cancelled").length,
+          swap: previewRows.filter((r) => r.phase === "swap").length,
+        },
+        canSeeMoney: true,
+      }
+    : undefined;
+  const result = previewResult ?? listQuery.data;
   useEffect(() => {
     if (!result?.counts || !onCounts) return;
     onCounts({
