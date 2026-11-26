@@ -110,7 +110,7 @@ function CancelledCreditNote({ credit, now }: { credit: CancelledRentalCredit; n
     ? `${expired ? "Expired" : "Expires"} ${fmtDate(credit.expiresAt)}`
     : null;
   return (
-    <span className="mt-1 block text-[11px] leading-snug text-[#55555E]" data-testid="cancelled-credit" data-credit-state={state}>
+    <span className="block text-[11px] leading-snug text-[#55555E]" data-testid="cancelled-credit" data-credit-state={state}>
       <span className="block font-medium text-[#111114]">
         {amount ? `${amount} · ` : ""}{status}
       </span>
@@ -126,6 +126,31 @@ function CancelledCreditNote({ credit, now }: { credit: CancelledRentalCredit; n
         <span className="mt-1 inline-flex rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#55555E]">Expired</span>
       ) : null}
       {when ? <span className="mt-0.5 block text-[11px] text-muted-foreground">{when}</span> : null}
+    </span>
+  );
+}
+
+/** Credit column on Cancelled only. Nothing to show is a muted dash. */
+function CancelledCreditCell({
+  credit,
+  undecided,
+  now,
+}: {
+  credit: CancelledRentalCredit | null;
+  undecided: boolean;
+  now: Date;
+}) {
+  if (credit) return <CancelledCreditNote credit={credit} now={now} />;
+  if (undecided) {
+    return (
+      <span className="block text-[11px] font-medium leading-snug text-[#8A6A00]" data-testid="fee-kept-undecided">
+        Fee Kept, Credit Not Decided
+      </span>
+    );
+  }
+  return (
+    <span className="text-sm text-[#9A9AA3]" data-testid="cancelled-credit-empty" aria-label="No Credit">
+      —
     </span>
   );
 }
@@ -327,6 +352,12 @@ export function BookingsPanel({
       toast.error(e instanceof Error ? e.message : "Could Not Save Credit");
     }
   };
+  const showCreditColumn = scope === "cancelled";
+  // Cancelled adds Credit after Status. Percentages leave room for Rent, the
+  // fixed Open button, and the row menu inside a 1280px window with the sidebar.
+  const widths = showCreditColumn
+    ? { driver: "w-[18%]", vehicle: "w-[20%]", dates: "w-[12%]", status: "w-[10%]", credit: "w-[17%]", rent: "w-[11%]" }
+    : { driver: "w-[22%]", vehicle: "w-[20%]", dates: "w-[20%]", status: "w-[16%]", credit: "", rent: "w-[14%]" };
   const total = result?.total ?? 0;
   const money = !!result?.canSeeMoney;
   const pages = Math.max(1, Math.ceil(total / BOOKING_LIST_PAGE_SIZE));
@@ -396,11 +427,12 @@ export function BookingsPanel({
           <table className="w-full table-fixed text-sm">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
-                <th className="w-[22%] px-2 py-2 font-medium">Driver</th>
-                <th className="w-[20%] px-2 py-2 font-medium">Vehicle</th>
-                <th className="w-[20%] px-2 py-2 font-medium">Dates</th>
-                <th className="w-[16%] px-2 py-2 font-medium">Status</th>
-                {money ? <th className="w-[14%] px-2 py-2 font-medium">Rent</th> : null}
+                <th className={`${widths.driver} px-2 py-2 font-medium`}>Driver</th>
+                <th className={`${widths.vehicle} px-2 py-2 font-medium`}>Vehicle</th>
+                <th className={`${widths.dates} px-2 py-2 font-medium`}>Dates</th>
+                <th className={`${widths.status} px-2 py-2 font-medium`}>Status</th>
+                {showCreditColumn ? <th className={`${widths.credit} px-2 py-2 font-medium`}>Credit</th> : null}
+                {money ? <th className={`${widths.rent} px-2 py-2 font-medium`}>Rent</th> : null}
                 <th className={`${OPEN_COLUMN} py-2 font-medium`}>Open</th>
                 {showFeeMenu ? <th className={`${ROW_MENU_COLUMN} py-2 font-medium`} /> : null}
               </tr>
@@ -430,14 +462,16 @@ export function BookingsPanel({
                     <StatusPill status={b.phase} tone={PHASE_TONE[b.phase]}>
                       {BOOKING_PHASE_LABEL[b.phase]}
                     </StatusPill>
-                    {creditFor(b) ? (
-                      <CancelledCreditNote credit={creditFor(b)!} now={clock} />
-                    ) : creditMode === "case_by_case" && offerFor(b.id) ? (
-                      <span className="mt-1 block text-[11px] font-medium leading-snug text-[#8A6A00]" data-testid="fee-kept-undecided">
-                        Fee Kept, Credit Not Decided
-                      </span>
-                    ) : null}
                   </td>
+                  {showCreditColumn ? (
+                    <td className="px-2 py-2 align-top" data-testid="cancelled-credit-column">
+                      <CancelledCreditCell
+                        credit={creditFor(b)}
+                        undecided={creditMode === "case_by_case" && !!offerFor(b.id) && !creditFor(b)}
+                        now={clock}
+                      />
+                    </td>
+                  ) : null}
                   {money ? (
                     <td className="px-2 py-2 align-top tabular-nums">
                       <span className="block">{usd(b.weeklyRate)}/wk</span>
@@ -539,10 +573,14 @@ export function BookingsPanel({
                   )}
                 </div>
               )}
-              {creditFor(b) ? (
-                <CancelledCreditNote credit={creditFor(b)!} now={clock} />
-              ) : creditMode === "case_by_case" && offerFor(b.id) ? (
-                <p className="mt-2 text-[12px] font-medium text-[#8A6A00]" data-testid="fee-kept-undecided">Fee Kept, Credit Not Decided</p>
+              {showCreditColumn && (creditFor(b) || (creditMode === "case_by_case" && offerFor(b.id))) ? (
+                <div className="mt-2">
+                  <CancelledCreditCell
+                    credit={creditFor(b)}
+                    undecided={creditMode === "case_by_case" && !!offerFor(b.id) && !creditFor(b)}
+                    now={clock}
+                  />
+                </div>
               ) : null}
               {showFeeMenu && offerFor(b.id) ? (
                 <button

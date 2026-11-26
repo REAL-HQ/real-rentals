@@ -1,5 +1,5 @@
 /**
- * Cancelled booking rows show the renter's credit under Status.
+ * Cancelled booking rows show the renter's credit in its own column.
  * Run: bun test scripts/cancelled-credit-line-render.test.ts
  * WRITE_CANCELLED_CREDIT_HTML=1 writes the screenshot page to /tmp.
  */
@@ -34,6 +34,7 @@ const CASEY = "11111111-3333-4000-8000-000000000003";
 const RILEY = "11111111-4444-4000-8000-000000000004";
 const SAM = "11111111-5555-4000-8000-000000000005";
 const DEE = "11111111-6666-4000-8000-000000000006";
+const ALEX = "11111111-7777-4000-8000-000000000007";
 const APP = (n: string) => `aaaaaaaa-0000-4000-8000-00000000000${n}`;
 const NOW = new Date("2026-11-26T16:00:00Z");
 
@@ -66,6 +67,7 @@ const rows: BookingRow[] = [
   row({ id: RILEY, driverName: "Riley Ortiz", applicationId: APP("4"), driverEmail: "riley@example.com", unitNumber: "RR-003", vehicleLabel: "2017 Hyundai Elantra", plate: "ELN1703", vinLast6: "331704" }),
   row({ id: SAM, driverName: "Sam Patel", applicationId: APP("5"), driverEmail: "sam@example.com", unitNumber: "RR-011", vehicleLabel: "2016 Ford Fusion", plate: "FUS1611", vinLast6: "551611" }),
   row({ id: DEE, driverName: "Dee Cole", applicationId: APP("6"), driverEmail: "dee@example.com", unitNumber: "RR-019", vehicleLabel: "2021 Kia Forte", plate: "FOR2119", vinLast6: "772119" }),
+  row({ id: ALEX, driverName: "Alex Kim", applicationId: APP("7"), driverEmail: "alex@example.com", unitNumber: "RR-027", vehicleLabel: "2015 Chevy Malibu", plate: "MAL1527", vinLast6: "991527" }),
 ];
 
 const credits: CancelledRentalCredit[] = [
@@ -78,15 +80,15 @@ const credits: CancelledRentalCredit[] = [
 
 const client = new QueryClient();
 
-function panel() {
+function panel(scope: "cancelled" | "completed" = "cancelled") {
   return renderToStaticMarkup(
     createElement(
       QueryClientProvider,
       { client },
       createElement(BookingsPanel, {
-        scope: "cancelled",
+        scope,
         canManage: false,
-        previewRows: rows,
+        previewRows: scope === "cancelled" ? rows : rows.map((item) => ({ ...item, phase: "completed" as const, status: "completed" })),
         previewKeptFees: [{ rentalId: DEE, paymentId: "03733dbe-a9c1-4eaf-9f42-2c04e386945a" }],
         previewCreditMode: "case_by_case",
         previewCredits: credits,
@@ -96,12 +98,37 @@ function panel() {
   );
 }
 
-describe("cancelled credit line", () => {
-  it("shows amount, status, redeem-by date, and the days-left pill", () => {
+function rowMarkup(html: string, id: string): string {
+  const start = html.indexOf(`data-booking="${id}"`);
+  return html.slice(start, html.indexOf("</tr>", start));
+}
+
+function cells(markup: string): string[] {
+  return [...markup.matchAll(/<td\b[^>]*>[\s\S]*?<\/td>/g)].map((match) => match[0]);
+}
+
+describe("cancelled credit column", () => {
+  it("puts the credit in its own column after Status", () => {
     const html = panel();
-    assert.match(html, /Fabio Hale/);
-    assert.match(html, /\$50\.00 · Available/);
-    assert.match(html, /Expires Feb 23, 2027/);
+    const head = html.slice(html.indexOf("<thead"), html.indexOf("</thead>"));
+    const labels = [...head.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map((match) =>
+      match[1].replace(/<[^>]+>/g, "").trim(),
+    );
+    assert.deepEqual(
+      labels.filter((label) => label.length > 0),
+      ["Driver", "Vehicle", "Dates", "Status", "Credit", "Rent", "Open"],
+    );
+    assert.match(head, /class="w-\[10%\] px-2 py-2 font-medium">Status/);
+    assert.match(head, /class="w-\[17%\] px-2 py-2 font-medium">Credit/);
+    assert.match(head, /class="w-\[11%\] px-2 py-2 font-medium">Rent/);
+
+    const fabio = cells(rowMarkup(html, FABIO));
+    assert.match(fabio[3], />Cancelled</);
+    assert.equal(fabio[3].includes("cancelled-credit"), false);
+    assert.equal(fabio[3].includes("$50.00"), false);
+    assert.match(fabio[4], /data-testid="cancelled-credit-column"/);
+    assert.match(fabio[4], /\$50\.00 · Available/);
+    assert.match(fabio[4], /Expires Feb 23, 2027/);
     assert.match(html, /Expires Feb 17, 2027/);
     assert.match(html, /bg-\[#FFF4D6\]/);
     assert.match(html, />7 days left</);
@@ -109,18 +136,30 @@ describe("cancelled credit line", () => {
     assert.match(html, /Expired Jan 1, 2026/);
     assert.match(html, /\$50\.00 · Credit Applied/);
     assert.match(html, /Expires Jan 15, 2027/);
-    assert.match(html, /Fee Kept, Credit Not Decided/);
-    const deeStart = html.indexOf(`data-booking="${DEE}"`);
-    const deeRow = html.slice(deeStart, html.indexOf("</tr>", deeStart));
-    assert.equal(deeRow.includes("cancelled-credit"), false);
-    assert.match(deeRow, /Fee Kept, Credit Not Decided/);
+
+    const dee = cells(rowMarkup(html, DEE));
+    assert.equal(dee[3].includes("fee-kept-undecided"), false);
+    assert.match(dee[4], /Fee Kept, Credit Not Decided/);
+    assert.equal(dee[4].includes("cancelled-credit\""), false);
+
+    const alex = cells(rowMarkup(html, ALEX));
+    assert.match(alex[3], />Cancelled</);
+    assert.match(alex[4], /data-testid="cancelled-credit-empty"/);
+    assert.match(alex[4], /—/);
+    assert.equal(alex[3].includes("—"), false);
+
     assert.match(html, />Open<\/th>/);
     assert.match(html, /Open <svg/);
+
+    const completed = panel("completed");
+    assert.equal(completed.includes(">Credit<"), false);
+    assert.match(completed, /class="w-\[16%\] px-2 py-2 font-medium">Status/);
+    assert.equal(completed.includes("cancelled-credit"), false);
   });
 });
 
 if (process.env.WRITE_CANCELLED_CREDIT_HTML === "1") {
   const wrap = (body: string) =>
-    `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="http://127.0.0.1:5173/src/styles.css"></head><body class="bg-[#F6F6F7]"><div class="mx-auto max-w-6xl p-6"><h1 class="mb-4 text-lg font-semibold">Bookings · Cancelled</h1>${body}</div></body></html>`;
+    `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="http://127.0.0.1:5173/src/styles.css"></head><body class="bg-[#FAFAFB]"><div class="flex w-[1280px]"><aside class="w-[220px] shrink-0 bg-[#141416]"></aside><main class="min-w-0 flex-1 px-8 pt-4"><h1 class="mb-4 text-lg font-semibold">Bookings · Cancelled</h1>${body}</main></div></body></html>`;
   writeFileSync("/tmp/cancelled-credit-line.html", wrap(panel()));
 }
