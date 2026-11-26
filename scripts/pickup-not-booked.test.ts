@@ -165,7 +165,7 @@ describe("profile state", () => {
 });
 
 describe("Book Pickup", () => {
-  it("creates a reserved rental, marks the vehicle reserved, and links the current agreement and the paid Reservation Fee", async () => {
+  it("creates a reserved rental, marks the vehicle reserved, links the paid Reservation Fee, and leaves the signed agreement unlinked", async () => {
     const db = fakeDb(world());
     const booked = await createReservationCore(db as any, {
       applicationId: APP,
@@ -184,7 +184,7 @@ describe("Book Pickup", () => {
       reservation_deposit_payment_id: PAY,
     });
     expect(db.state.vehicles[0].status).toBe("reserved");
-    expect(db.state.agreements.find((a) => a.id === NEW).rental_id).toBe(booked.id);
+    expect(db.state.agreements.find((a) => a.id === NEW).rental_id).toBeNull();
     expect(db.state.agreements.find((a) => a.id === OLD).rental_id).toBeNull();
     expect(db.state.payments[0].rental_id).toBe(booked.id);
     expect(sent.invite).toHaveLength(1);

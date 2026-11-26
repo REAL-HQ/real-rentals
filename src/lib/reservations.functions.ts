@@ -399,7 +399,9 @@ export async function createReservationCore(
   }
 
   await admin.from("vehicles").update({ status: "reserved" }).eq("id", data.vehicleId).neq("status", "rented");
-  // The agreement and the Reservation Fee were created before this row: tie them to it.
+  // The Reservation Fee was paid before this row. Link that payment. The signed
+  // agreement stays unlinked until the rental is active, so pickup can still
+  // count it (linkOrphansToRental).
   await (await import("@/lib/booking-links.server")).linkOrphansToRental(admin, inserted.id);
 
   const loginEmail = await maybeSendPickupBookedEmail(admin, data.applicationId, {
