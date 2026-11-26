@@ -516,51 +516,6 @@ export function ReservationsPanel({
                   </tr>
                 );
               })}
-              {awaitingFees.map((fee) => {
-                const line = unpaidReservationFeeLine(fee.amount, fee.dueDate);
-                return (
-                  <tr
-                    key={fee.paymentId}
-                    className={`border-b border-[#EDEDF0] last:border-0 ${ROW_OPEN_CLASS}`}
-                    data-testid="awaiting-fee-row"
-                    data-payment-id={fee.paymentId}
-                    {...rowOpenProps(() => void navigate({ to: "/admin", search: { tab: "drivers", id: fee.applicationId } as never }))}
-                  >
-                    <td className="px-2 py-2 align-middle font-medium text-[#111114]">
-                      <span className="block truncate">{fee.driverName ?? "—"}</span>
-                    </td>
-                    <td className="px-2 py-2 align-middle text-[#55555E]">{fee.vehicleLabel ?? "Not Held"}</td>
-                    <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
-                    <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
-                    <td className="px-2 py-2 align-middle">
-                      <span className="inline-flex rounded-full bg-[#FFF4D6] px-2 py-0.5 text-xs font-medium text-[#8A6A00]">Unpaid</span>
-                      {line ? <span className="mt-1 block text-[11px] text-[#55555E]" data-testid="reservation-fee-unpaid">{line}</span> : null}
-                    </td>
-                    <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
-                    <td className="px-2 py-2 align-middle sticky right-0 bg-white">
-                      <div className="flex items-center justify-end">
-                        <Link
-                          to="/admin"
-                          search={{ tab: "drivers", id: fee.applicationId } as never}
-                          className="inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
-                        >
-                          Open
-                        </Link>
-                        {canManage ? (
-                          <button
-                            type="button"
-                            data-testid="release-reservation-fee"
-                            className="ml-1 inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
-                            onClick={() => setReleaseFeeTarget({ applicationId: fee.applicationId, driverName: fee.driverName })}
-                          >
-                            Release
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
             </tbody>
           </table>
         </AdminTableScroll>

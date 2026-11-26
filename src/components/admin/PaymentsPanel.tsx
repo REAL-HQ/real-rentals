@@ -143,11 +143,27 @@ function paymentStatusLabel(p: { status?: string | null; type?: string | null; r
   return STATUS_LABEL[String(p.status ?? "")] ?? enumDisplayLabel(String(p.status ?? ""));
 }
 
-export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initialRecordId, previewPayments }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null; initialRecordId?: string; /** Skip the payments read. Screenshots and tests pass the rows. */ previewPayments?: Payment[] } = {}) {
+export function PaymentsPanel({
+  initialFilter,
+  autoOpenAdd,
+  tier = null,
+  initialRecordId,
+  previewPayments,
+  previewDrivers,
+}: {
+  initialFilter?: string;
+  autoOpenAdd?: boolean;
+  tier?: StaffTier | null;
+  initialRecordId?: string;
+  /** Skip the payments read. Screenshots and tests pass the rows. */
+  previewPayments?: Payment[];
+  /** Skip the driver read when previewing the ledger. */
+  previewDrivers?: Application[];
+} = {}) {
   const navigate = useNavigate();
   const preview = previewPayments != null;
   const [payments, setPayments] = useState<Payment[]>(previewPayments ?? []);
-  const [drivers, setDrivers] = useState<Application[]>([]);
+  const [drivers, setDrivers] = useState<Application[]>(previewDrivers ?? []);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   // Arriving from the dashboard's Collections card asks for everything
   // unresolved at once, which no single status covers.
