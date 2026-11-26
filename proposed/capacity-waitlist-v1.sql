@@ -1,5 +1,5 @@
 -- Moved. Do not apply this file.
--- The schema change is supabase/migrations/20261126213000_capacity_waitlist.sql
+-- The schema change is supabase/migrations/20261126214500_capacity_waitlist.sql
 -- and it is not applied by the pull request.
 -- Rollback: proposed/rollback/capacity-waitlist-v1.sql
 --

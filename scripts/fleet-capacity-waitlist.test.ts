@@ -163,7 +163,7 @@ describe("quiet hours queue", () => {
 
 describe("migration SQL", () => {
   test("migration and rollback are paired, additive, and do not replace the event list", () => {
-    const sql = readFileSync("supabase/migrations/20261126213000_capacity_waitlist.sql", "utf8");
+    const sql = readFileSync("supabase/migrations/20261126214500_capacity_waitlist.sql", "utf8");
     const rollback = readFileSync("proposed/rollback/capacity-waitlist-v1.sql", "utf8");
     expect(sql).toContain("ALTER TABLE public.applications");
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS approved_at");

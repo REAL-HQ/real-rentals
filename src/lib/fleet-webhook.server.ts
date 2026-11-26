@@ -13,7 +13,7 @@
  *   applicant_ready_for_agreement          (queued when staff click Move Forward on the Terms Confirmed row,
  *                                           staff-terms.server.ts; needs proposed/staff-terms-confirmations-v1.sql)
  *   reservation_refunded                   (queued when a Reservation Fee is refunded; needs proposed/reservation-fee-refunds-v1.sql)
- *   vehicle_available                      (queued when the Available count leaves zero; gated by the vehicle_available team alert; needs migration 20261126213000_capacity_waitlist.sql, not applied)
+ *   vehicle_available                      (queued when the Available count leaves zero; gated by the vehicle_available team alert; needs migration 20261126214500_capacity_waitlist.sql, not applied)
  *
  * Disabled until FLEET_WEBHOOK_URL (https) and FLEET_WEBHOOK_KEY are set.
  * While disabled, queued rows are marked 'skipped' (nothing is sent and no

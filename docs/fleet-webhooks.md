@@ -26,7 +26,7 @@ The site sends FLEET one signed JSON POST per event. Nothing is sent until
 | `rental_returned` | the return checklist was completed * |
 | `rental_ended` | a rental was ended * |
 | `reservation_refunded` | a paid Reservation Fee was refunded (staff, FLEET, or auto on insurance decline). Needs proposed/reservation-fee-refunds-v1.sql |
-| `vehicle_available` | the Available count left zero (a car was marked Available or added as Available). Off until the Team Alert switch is on. Needs migration `20261126213000_capacity_waitlist.sql`, which is not applied by the pull request. |
+| `vehicle_available` | the Available count left zero (a car was marked Available or added as Available). Off until the Team Alert switch is on. Needs migration `20261126214500_capacity_waitlist.sql`, which is not applied by the pull request. |
 
 \* Lifecycle events. **Off** until `app_settings.fleet_lifecycle_events` is
 `{"enabled": true}` (`proposed/fleet-lifecycle-events-on.sql`), and they need

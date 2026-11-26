@@ -7,7 +7,7 @@
  * Staff alerts and the vehicle_available webhook are gated by
  * team_alerts.vehicle_available (default OFF).
  *
- * Schema: supabase/migrations/20261126213000_capacity_waitlist.sql (not applied
+ * Schema: supabase/migrations/20261126214500_capacity_waitlist.sql (not applied
  * by this PR). Missing columns or tables are tolerated: we retry without
  * them or skip the queued send.
  */

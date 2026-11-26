@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261126213000_capacity_waitlist.sql.
+-- Rollback for supabase/migrations/20261126214500_capacity_waitlist.sql.
 -- Not applied. Drops the notice queue and the additive columns.
 -- Existing waitlist holds stay; only the source column is removed.
 -- Does not install a frozen event list. It only removes vehicle_available
