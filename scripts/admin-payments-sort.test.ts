@@ -117,7 +117,10 @@ describe("Payments / Charges / Bookings wiring", () => {
   });
 
   test("Current uses the green success pill; overdue stays the red pill of the same size", () => {
-    expect(rentals).toContain("<OverdueStatus days={row.overdueDays} />");
+    expect(rentals).toContain("<OverdueStatus days={row.overdueDays} due={row.nextPaymentDue} today={today} />");
+    expect(rentals).toContain(">Status</th>");
+    expect(overdue).toContain('data-testid="overdue-due-pill"');
+    expect(overdue).toContain("bg-[#FFF4D6]");
     expect(rentals).not.toContain("overdueLabel(");
     expect(overdue).toContain('data-testid="overdue-current-pill"');
     expect(overdue).toContain("rgba(80,192,96,0.08)");

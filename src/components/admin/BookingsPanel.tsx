@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { endedLengthDays, orderByLength, type RentalLengthOrder } from "@/lib/rental-length-order";
+import { endedLengthDays, orderByLength, owesAmount, type BookingsListMode, type RentalLengthOrder } from "@/lib/rental-length-order";
 import { RentalLengthSort } from "./RentalLengthSort";
 import { listKeptFeeCreditOffers } from "@/lib/forfeited-fee-credit.functions";
 import {
@@ -157,7 +157,7 @@ export function BookingsPanel({
   onCounts?: (counts: { completed: number; cancelled: number; swap: number }) => void;
   /** Skip the server read and render these rows. The alignment test uses this. */
   previewRows?: BookingRow[];
-  initialLengthOrder?: RentalLengthOrder;
+  initialLengthOrder?: BookingsListMode;
   /** Manager+. The credit server function checks again. */
   canManage?: boolean;
   /** Skip the kept-fee lookup. Screenshots and tests pass these offers. */
@@ -170,7 +170,8 @@ export function BookingsPanel({
   previewNow?: Date;
 } = {}) {
   const navigate = useNavigate();
-  const [lengthOrder, setLengthOrder] = useState<RentalLengthOrder>(initialLengthOrder);
+  const [lengthOrder, setLengthOrder] = useState<BookingsListMode>(initialLengthOrder);
+  const lengthSort: RentalLengthOrder = lengthOrder === "owes" ? "default" : lengthOrder;
   const [keptFees, setKeptFees] = useState<KeptFeeOffer[]>(previewKeptFees ?? []);
   const [credits, setCredits] = useState<CancelledRentalCredit[]>(previewCredits ?? []);
   const [creditMode, setCreditMode] = useState<ForfeitedFeeCreditMode>(previewCreditMode);
@@ -244,7 +245,8 @@ export function BookingsPanel({
     phase,
     scope,
     sort,
-    length: lengthOrder,
+    length: lengthSort,
+    owes: lengthOrder === "owes",
     page,
     pageSize: BOOKING_LIST_PAGE_SIZE,
     ...(vehicleFilter ? { vehicleId: vehicleFilter } : {}),
@@ -255,13 +257,11 @@ export function BookingsPanel({
     placeholderData: keepPreviousData,
     enabled: !previewRows,
   });
-  const orderedPreview = useMemo(
-    () =>
-      previewRows
-        ? orderByLength(previewRows, (row) => endedLengthDays(row.startDate, row.endDate), lengthOrder)
-        : undefined,
-    [previewRows, lengthOrder],
-  );
+  const orderedPreview = useMemo(() => {
+    if (!previewRows) return undefined;
+    const source = lengthOrder === "owes" ? previewRows.filter((row) => owesAmount(row.balanceDue)) : previewRows;
+    return orderByLength(source, (row) => endedLengthDays(row.startDate, row.endDate), lengthSort);
+  }, [previewRows, lengthOrder, lengthSort]);
   const previewResult: BookingListResult | undefined =
     previewRows && orderedPreview
       ? {
@@ -276,6 +276,7 @@ export function BookingsPanel({
             swap: previewRows.filter((r) => r.phase === "swap").length,
           },
           canSeeMoney: true,
+          owesCount: previewRows.filter((row) => owesAmount(row.balanceDue)).length,
         }
       : undefined;
   const result = previewResult ?? listQuery.data;
@@ -355,6 +356,7 @@ export function BookingsPanel({
           )}
           <RentalLengthSort
             value={lengthOrder}
+            owesCount={result?.owesCount ?? null}
             onChange={(next) => {
               setLengthOrder(next);
               if (page !== 1) setList({});

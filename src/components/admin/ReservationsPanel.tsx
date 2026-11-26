@@ -14,7 +14,7 @@ import {
   listReservations,
   recordReservationFee,
 } from "@/lib/reservations.functions";
-import { reservationFeeLabel, type ReservationRow } from "@/lib/reservations";
+import { reservationFeeLabel, reservationOwes, type ReservationRow } from "@/lib/reservations";
 import { MANUAL_METHODS, easternParts } from "@/lib/rent-reminders";
 import { fmtDate, formatReservationTime } from "@/lib/date-format";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -33,7 +33,7 @@ import { isOnHoldStatus } from "@/lib/rental-hold";
 import { isPendingReservationStatus, PENDING_RESERVATION_LABEL, WAITING_ON_INSURANCE_CARD } from "@/lib/pending-reservation";
 import { releaseReservationHold } from "@/lib/reservations.functions";
 import { etDateISO } from "@/lib/active-rentals";
-import { heldLengthDays, orderByLength, type RentalLengthOrder } from "@/lib/rental-length-order";
+import { heldLengthDays, orderByLength, type BookingsListMode, type RentalLengthOrder } from "@/lib/rental-length-order";
 import { RentalLengthSort } from "./RentalLengthSort";
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
@@ -154,7 +154,7 @@ export function ReservationsPanel({
   canManage?: boolean;
   /** Skip the server read and render these rows. The alignment test uses this. */
   previewRows?: ReservationRow[];
-  initialLengthOrder?: RentalLengthOrder;
+  initialLengthOrder?: BookingsListMode;
 } = {}) {
   const navigate = useNavigate();
   const load = useServerFn(listReservations);
@@ -164,15 +164,18 @@ export function ReservationsPanel({
   const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
   const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
   const [rows, setRows] = useState<ReservationRow[]>(previewRows ?? []);
-  const [lengthOrder, setLengthOrder] = useState<RentalLengthOrder>(initialLengthOrder);
-  const today = etDateISO();
-  const shown = useMemo(
-    () => orderByLength(rows, (row) => heldLengthDays(row.createdAt, today), lengthOrder),
-    [rows, lengthOrder, today],
-  );
+  const [lengthOrder, setLengthOrder] = useState<BookingsListMode>(initialLengthOrder);
   // The $50 Reservation Fee lives in the reservation_deposit_* columns when its
   // switch is on; it is never called a deposit (Dolmar, t309u).
   const [feeOn, setFeeOn] = useState(!!previewRows);
+  const today = etDateISO();
+  const owesCount = rows.filter((row) => reservationOwes(row.depositStatus, feeOn)).length;
+  const lengthSort: RentalLengthOrder = lengthOrder === "owes" ? "default" : lengthOrder;
+  const listed = lengthOrder === "owes" ? rows.filter((row) => reservationOwes(row.depositStatus, feeOn)) : rows;
+  const shown = useMemo(
+    () => orderByLength(listed, (row) => heldLengthDays(row.createdAt, today), lengthSort),
+    [listed, lengthSort, today],
+  );
   const chargeLabel = "Reservation Fee";
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(!previewRows);
@@ -249,9 +252,9 @@ export function ReservationsPanel({
         </p>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground" data-testid="reserved-count">
-            {rows.length} Reserved Vehicle{rows.length === 1 ? "" : "s"}{rows.some((r) => isOnHoldStatus(r.status)) ? ` (${rows.filter((r) => isOnHoldStatus(r.status)).length} On Hold)` : ""}{rows.some((r) => isPendingReservationStatus(r.status)) ? ` (${rows.filter((r) => isPendingReservationStatus(r.status)).length} Pending Reservation)` : ""}
+            {shown.length} Reserved Vehicle{shown.length === 1 ? "" : "s"}{rows.some((r) => isOnHoldStatus(r.status)) ? ` (${rows.filter((r) => isOnHoldStatus(r.status)).length} On Hold)` : ""}{rows.some((r) => isPendingReservationStatus(r.status)) ? ` (${rows.filter((r) => isPendingReservationStatus(r.status)).length} Pending Reservation)` : ""}
           </span>
-          <RentalLengthSort value={lengthOrder} onChange={setLengthOrder} />
+          <RentalLengthSort value={lengthOrder} onChange={setLengthOrder} owesCount={owesCount} />
           {canManage ? (
             <button type="button" className={primary} onClick={() => setReserveOpen(true)}>
               Reserve A Car
