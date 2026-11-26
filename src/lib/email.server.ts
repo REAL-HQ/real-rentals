@@ -1389,12 +1389,13 @@ export async function sendPortalWelcomeEmail(args: {
 export async function sendAgreementEmail(args: AgreementSendArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   if (args.document) {
+    const { SIGNING_REQUEST_SUBJECT, signingRequestMessage } = await import("@/lib/standalone-doc");
     const html = shell(`
-      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Document Is Ready To Sign</h1>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Hi ${escapeHtml(name)}, a document is ready for your signature. Please review it and sign electronically.</p>
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${SIGNING_REQUEST_SUBJECT}</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(signingRequestMessage(args.firstName))}</p>
       <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Review And Sign</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span><br>This secure link expires in 30 days.</p>`);
-    return sendEmail({ to: args.to, subject: "Your Document Is Ready To Sign", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
+    return sendEmail({ to: args.to, subject: SIGNING_REQUEST_SUBJECT, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
   }
   const vehicleLine = args.vehicle
     ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Vehicle: <strong>${escapeHtml(args.vehicle)}</strong></p>`
@@ -1417,14 +1418,15 @@ export async function sendSignedDocumentEmail(args: {
   copyFor: "insurer" | "renter";
   attachment?: EmailAttachment | null;
 }): Promise<SendResult> {
-  const who = args.copyFor === "renter" ? "You signed" : `${escapeHtml(args.signerName)} signed`;
+  const { signedDocumentSubject, signedDocumentMessage } = await import("@/lib/standalone-doc");
+  const message = signedDocumentMessage({ title: args.title, signerName: args.signerName, copyFor: args.copyFor });
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Signed Document</h1>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${who} <strong>${escapeHtml(args.title)}</strong>. The signed PDF is attached.</p>`);
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(message)}</p>`);
   return sendEmail({
     to: args.to,
     cc: args.cc,
-    subject: `Signed Document — ${args.title}`,
+    subject: signedDocumentSubject(args.title),
     html,
     replyTo: EMAIL_REPLY_TO,
     track: { workflow: "esign_standalone_delivered", meta: { copy: args.copyFor } },

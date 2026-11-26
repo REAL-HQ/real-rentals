@@ -28,7 +28,7 @@ type SigningArgs = {
   ip: string | null;
   userAgent: string | null;
   authMethod: "email_link" | "portal";
-  adoption?: import("@/lib/signature-adoption").Adoption | null;
+  adoption?: import("@/lib/signature-adoption").SigningAdoption | null;
   recipientId?: string | null;
 };
 
@@ -172,7 +172,7 @@ export async function completeSigning(
     entityId: args.id,
     ...(args.adoption ? { metadata: {
       signature: args.adoption.signature.method === "typed" ? `typed:${args.adoption.signature.style}` : "drawn",
-      initials: args.adoption.initials.method === "typed" ? `typed:${args.adoption.initials.style}` : "drawn",
+      initials: !args.adoption.initials ? "not_required" : args.adoption.initials.method === "typed" ? `typed:${args.adoption.initials.style}` : "drawn",
       acknowledgments: `${args.adoption.acks.filter(Boolean).length}/${args.adoption.acks.length}`,
       evidence_sha256: evidence?.sha256 ?? (metadata as { signature?: { sha256?: string } } | undefined)?.signature?.sha256,
     } } : {}),

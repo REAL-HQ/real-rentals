@@ -3,7 +3,7 @@
 // same origin pdf-lib stamps with, so a box placed in the preview is the box
 // drawn on the signed file.
 import { z } from "zod";
-import { adoptionProblems, type Adoption } from "@/lib/signature-adoption";
+import { type Mark } from "@/lib/signature-adoption";
 
 export const TEAM_CC = "team@drivereal.com";
 export const SOURCE_URL_TTL_SECONDS = 300;
@@ -144,10 +144,40 @@ export function validateFields(fields: StandaloneField[], sizes: PageSize[], fal
   return null;
 }
 
-/** A signature is required. Rental agreements still allow a typed name alone. */
-export function standaloneSignatureProblems(a: Adoption | undefined, legalName: string): string[] {
+/** A signature is required. Initials are not: a standalone PDF has no initials boxes. */
+export function standaloneSignatureProblems(a: { signature?: Mark } | undefined, legalName: string): string[] {
   if (!a?.signature) return ["Adopt a signature before signing this document."];
-  return adoptionProblems("unsigned document", a, legalName);
+  const p: string[] = [];
+  if (a.signature.method === "typed" && a.signature.text.trim().toLowerCase() !== legalName.trim().toLowerCase()) {
+    p.push("Your typed signature must match the full legal name you entered.");
+  }
+  if (a.signature.method === "drawn") {
+    const pts = a.signature.strokes.reduce((n, s) => n + s.length, 0);
+    if (pts < 8) p.push("Your drawn signature is too short — please draw it again.");
+  }
+  return p;
+}
+
+export const SIGNING_REQUEST_SUBJECT = "Your Document Is Ready To Sign";
+
+export function renterFirstName(name: string | null | undefined): string {
+  return (name ?? "").trim().split(/\s+/)[0] || "there";
+}
+
+/** The sentence in the renter's signing-link email. */
+export function signingRequestMessage(renterName: string | null | undefined): string {
+  return `Hi ${renterFirstName(renterName)}, a document is ready for your signature. Please review it and sign electronically.`;
+}
+
+export function signedDocumentSubject(title: string): string {
+  return `Signed Document — ${title.trim() || "Document"}`;
+}
+
+/** The sentence in the email that carries the signed PDF. */
+export function signedDocumentMessage(args: { title: string; signerName: string; copyFor: "insurer" | "renter" }): string {
+  const title = args.title.trim() || "this document";
+  const who = args.copyFor === "renter" ? "You signed" : `${(args.signerName || "The renter").trim()} signed`;
+  return `${who} ${title}. The signed PDF is attached.`;
 }
 
 /** Voided, already signed, and expired links are not a way back into the PDF. */

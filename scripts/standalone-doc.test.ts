@@ -178,8 +178,8 @@ function agreement(over: Row): Row {
 }
 
 describe("standalone document signing", () => {
-  test("the send flag stays off and gates the upload before any storage write", () => {
-    expect(SEND_DOCUMENT_FOR_SIGNATURE_ENABLED).toBe(false);
+  test("the send flag is on and still gates the upload when turned off", () => {
+    expect(SEND_DOCUMENT_FOR_SIGNATURE_ENABLED).toBe(true);
     const src = readFileSync("src/lib/agreements.functions.ts", "utf8");
     const gate = src.indexOf("if (!SEND_DOCUMENT_FOR_SIGNATURE_ENABLED) throw new Error");
     const upload = src.indexOf("createStandaloneDocument");
@@ -200,6 +200,7 @@ describe("standalone document signing", () => {
     expect(standaloneSignatureProblems(undefined, "Riley Morgan")).toEqual(["Adopt a signature before signing this document."]);
     expect(standaloneSignatureProblems(adoption, "Someone Else")[0]).toMatch(/legal name/i);
     expect(standaloneSignatureProblems(adoption, "Riley Morgan")).toEqual([]);
+    expect(standaloneSignatureProblems({ signature: adoption.signature }, "Riley Morgan")).toEqual([]);
   });
 
   test("voided and expired links are refused and do not expose the source PDF", () => {
@@ -261,7 +262,7 @@ describe("standalone document signing", () => {
       metadata: {
         source_pdf: { path, sha256: sha, pages: 2 },
         fields: [field],
-        signature: { adoption, sha256: "cd".repeat(32) },
+        signature: { adoption: { signature: adoption.signature, acks: [] }, sha256: "cd".repeat(32) },
       },
     });
     expect(admin.uploads.some((p) => p.startsWith("standalone-signed/a1/"))).toBe(true);
@@ -275,7 +276,9 @@ describe("standalone document signing", () => {
     const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const doc = await pdfjs.getDocument({ data: stamped.pdf.slice(), isEvalSupported: false }).promise;
     const last = await pageItems(stamped.pdf, doc.numPages);
-    expect(last.map((i) => i.str).join(" ")).toContain(sha);
+    const certificate = last.map((i) => i.str).join(" ");
+    expect(certificate).toContain(sha);
+    expect(certificate).toContain("Not required");
     const click = fieldAtClick({ type: "name", page: 2, fx: 0.2, fy: 0.1, pageWidth: 612, pageHeight: 792 });
     expect(click.page).toBe(2);
     expect(click.y).toBeGreaterThan(600);

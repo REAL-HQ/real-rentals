@@ -7,8 +7,6 @@ import {
   deliverTo,
   parseEmailList,
   pdfLooksEncrypted,
-  recipientLines,
-  type RecipientLine,
   type StandaloneField,
   type StandaloneFieldType,
 } from "@/lib/standalone-doc";
@@ -33,7 +31,6 @@ export function SendDocumentDialog({
   const [copyRenter, setCopyRenter] = useState(true);
   const [fallbackNote, setFallbackNote] = useState<string | null>(null);
   const [step, setStep] = useState<"place" | "confirm">("place");
-  const [recipients, setRecipients] = useState<RecipientLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -55,19 +52,10 @@ export function SendDocumentDialog({
     setError(null);
     if (!file || !bytes) { setError("Upload a PDF."); return; }
     if (!title.trim()) { setError("Enter a document title."); return; }
-    let plan;
-    try {
-      plan = deliverTo({ insurerEmail, cc: parseEmailList(cc), copyRenter });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Check the email addresses.");
-      return;
-    }
     if (!fallbackNote && !fields.some((f) => f.type === "signature")) {
       setError("Place a Signature box on the document.");
       return;
     }
-    if (copyRenter && !renterEmail) { setError("This driver has no email on file."); return; }
-    setRecipients(recipientLines(plan, { name: renterName, email: renterEmail }));
     setStep("confirm");
   }
 
@@ -76,6 +64,8 @@ export function SendDocumentDialog({
     setBusy(true);
     setError(null);
     try {
+      deliverTo({ insurerEmail, cc: parseEmailList(cc), copyRenter });
+      if (copyRenter && !renterEmail) throw new Error("This driver has no email on file.");
       let bin = "";
       for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
       const res = await send({
@@ -118,7 +108,6 @@ export function SendDocumentDialog({
       fallbackNote={fallbackNote}
       renterName={renterName}
       renterEmail={renterEmail}
-      recipients={recipients}
       error={error}
       busy={busy}
       onClose={onClose}

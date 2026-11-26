@@ -15,7 +15,7 @@ import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, DEFAULT_LIBRARY_KEY,
 import { applyPrep, PrepSchema, type AgreementDetails, type AgreementPrep } from "@/lib/agreement-prep";
 import { recordFillsFromDetails, type AppliedFill } from "@/lib/agreement-fills";
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
-import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
+import { SigningAdoptionSchema, adoptionProblems, type Adoption } from "@/lib/signature-adoption";
 import { publicAppOrigin } from "@/lib/public-app-url";
 import { SEND_DOCUMENT_FOR_SIGNATURE_ENABLED } from "@/lib/send-document-flag";
 import { StandaloneFieldSchema, refuseStandaloneLink, standaloneSignatureProblems, type SourcePdfClient } from "@/lib/standalone-doc";
@@ -1562,9 +1562,9 @@ export const getAgreementPdf = createServerFn({ method: "POST" })
   });
 
 /**
- * Staff sends an uploaded PDF for the renter to sign. Off until
- * SEND_DOCUMENT_FOR_SIGNATURE_ENABLED is turned on. The flag is checked
- * before any read or upload.
+ * Staff sends an uploaded PDF for the renter to sign. The same Manager
+ * check as sendAgreement. The flag is still read first so turning the
+ * constant off stops the upload before any read.
  */
 export const sendStandaloneDocument = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -1838,7 +1838,7 @@ export const signAgreement = createServerFn({ method: "POST" })
         token: z.string().min(20).max(200),
         signerName: z.string().trim().min(2).max(120),
         agree: z.literal(true),
-        adoption: AdoptionSchema.optional(),
+        adoption: SigningAdoptionSchema.optional(),
       })
       .parse(d),
   )
@@ -1873,9 +1873,12 @@ export const signAgreement = createServerFn({ method: "POST" })
     if (!ag) throw new Error("This signing link is no longer valid");
     const standalone = (ag as { source?: string }).source === "standalone";
     if (standalone) refuseStandaloneLink(ag as { status?: string | null; token_expires_at?: string | null });
+    if (!standalone && data.adoption && !data.adoption.initials) {
+      throw new Error("Adopt a signature and initials, and initial each acknowledgment.");
+    }
     const problems = standalone
       ? standaloneSignatureProblems(data.adoption, data.signerName)
-      : adoptionProblems(ag.body as string, data.adoption, data.signerName);
+      : adoptionProblems(ag.body as string, data.adoption as Adoption | undefined, data.signerName);
     if (problems.length) throw new Error(problems[0]);
     const meta = requestMeta(getRequest());
     const { result } = await completeSigning(supabaseAdmin, {
@@ -1963,7 +1966,7 @@ export const signMyAgreement = createServerFn({ method: "POST" })
         agreementId: z.string().uuid(),
         signerName: z.string().trim().min(2).max(120),
         agree: z.literal(true),
-        adoption: AdoptionSchema.optional(),
+        adoption: SigningAdoptionSchema.optional(),
       })
       .parse(d),
   )
@@ -1979,9 +1982,12 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     if (!own) throw new Error("Agreement not found");
     const standalone = (own as { source?: string }).source === "standalone";
     if (standalone) refuseStandaloneLink(own as { status?: string | null; token_expires_at?: string | null });
+    if (!standalone && data.adoption && !data.adoption.initials) {
+      throw new Error("Adopt a signature and initials, and initial each acknowledgment.");
+    }
     const problems = standalone
       ? standaloneSignatureProblems(data.adoption, data.signerName)
-      : adoptionProblems(own.body as string, data.adoption, data.signerName);
+      : adoptionProblems(own.body as string, data.adoption as Adoption | undefined, data.signerName);
     if (problems.length) throw new Error(problems[0]);
     const { data: mine } = await context.supabase
       .from("applications")

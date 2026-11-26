@@ -348,7 +348,7 @@ export async function appendCertificateOfCompletion(
     ["Authentication", d.authMethod === "portal" ? "Signed-in renter portal session" : "Single-use emailed signing link"],
     ["Signature method", d.adoption ? `${describeMark(d.adoption.signature)}; legal name typed; explicit consent checkbox` : "Typed legal name with explicit consent checkbox"],
     ...(d.adoption ? ([
-      ["Initials", describeMark(d.adoption.initials)],
+      ["Initials", d.adoption.initials ? describeMark(d.adoption.initials) : "Not required"],
       ["Acknowledgments", `${d.adoption.acks.filter(Boolean).length} of ${d.adoption.acks.length} initialed individually by the renter`],
       ["Signature evidence SHA-256", d.adoptionSha256 ?? "-"],
     ] as [string, string][]) : []),

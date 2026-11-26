@@ -50,9 +50,6 @@ const GATE_BEFORE_AUTH = new Set([
 //    and neither flag can stop a live call.
 const MIXED_LIVE = new Set([
   "waitlist.functions.ts",
-  // Live agreement send. SEND_DOCUMENT_FOR_SIGNATURE_ENABLED only gates the
-  // standalone upload; preview, send, sign and void stay on.
-  "agreements.functions.ts",
   "applications.functions.ts",
   "documents.functions.ts",
   // Return is live. RETURN_CHECKLIST_ENABLED only gates saving the optional

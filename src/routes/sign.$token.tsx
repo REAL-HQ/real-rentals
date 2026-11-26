@@ -5,7 +5,7 @@ import { getAgreementByToken, signAgreement, type SigningView } from "@/lib/agre
 import { Logo } from "@/components/site/Logo";
 import { layoutToText } from "@/lib/agreement-layout";
 import { SigningPanel } from "@/components/esign/SigningPanel";
-import type { Adoption } from "@/lib/signature-adoption";
+import type { SigningAdoption } from "@/lib/signature-adoption";
 import { CheckCircle2, ShieldCheck, Loader2 } from "lucide-react";
 import { ReservationFeeNextStep } from "@/components/esign/ReservationFeeNextStep";
 import { StandaloneDocumentView } from "@/components/esign/StandaloneDocumentView";
@@ -60,7 +60,7 @@ function SignPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  async function onSign(v: { signerName: string; adoption: Adoption }) {
+  async function onSign(v: { signerName: string; adoption: SigningAdoption }) {
     setError(null);
     setBusy(true);
     try {
