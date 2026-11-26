@@ -95,7 +95,7 @@ function harness(d: { check?: any; open?: boolean; enqueueFails?: boolean; deliv
   };
   return { deps, enq, dispatched, audits };
 }
-const seed = (status = "approved", extra: Row = {}) => ({ applications: [{ id: A, status, full_name: "Briana Palmer", phone: "+10000000000", email: "b@example.com", deleted_at: null, contacted_at: null, ...extra }], staff_terms_confirmations: [], fleet_webhook_deliveries: [] });
+const seed = (status = "approved", extra: Row = {}) => ({ applications: [{ id: A, status, full_name: "Briana Palmer", phone: "+10000000000", email: "b@example.com", deleted_at: null, contacted_at: null, ...extra }], vehicles: [{ id: V, archived_at: null }, { id: V2, archived_at: null }], rentals: [], staff_terms_confirmations: [], fleet_webhook_deliveries: [] });
 
 describe("Terms Confirmed row", () => {
   test("sits right after Application Approved and before Rental Agreement Signed; hidden unless supplied", () => {
@@ -166,7 +166,7 @@ describe("confirmStaffTerms (Move Forward)", () => {
     expect(db.state.staff_terms_confirmations).toHaveLength(1);
     expect(db.state.staff_terms_confirmations[0]).toMatchObject({ clicked_by: ROSA, clicked_by_name: "Rosa DeJesus", fleet_delivery_id: h.enq.length ? db.state.fleet_webhook_deliveries[0].id : null });
     expect(db.state.applications[0].contacted_at).toBe(NOW.toISOString());
-    expect(h.audits.map((a) => a.action)).toEqual(["application.terms_confirmed_by_staff", "application.contacted_by_staff"]);
+    expect(h.audits.map((a) => a.action)).toEqual(["application.terms_saved_by_staff", "application.terms_confirmed_by_staff", "application.contacted_by_staff"]);
     expect(h.audits.every((a) => a.actor.userId === ROSA)).toBe(true);
   });
   test("double click: same event, nothing queued twice", async () => {

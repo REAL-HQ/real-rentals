@@ -143,7 +143,7 @@ describe("paid-row stripe success", () => {
       customerId: "cus_1",
       paymentMethodId: "pm_1",
       description: "Rent balance payment",
-      metadata: { rentalId: "r1", reason: "rent" },
+      metadata: { rentalId: "r1", rental_id: "r1", lead_id: "app1", reason: "rent", for_date: "2026-10-02", renter: "Test Renter", plate: "ABC123" },
     });
     expect(result).toMatchObject({ ok: true, status: "paid" });
     expect(db.tables.payments.find((row) => row.id === PAID)).toMatchObject({

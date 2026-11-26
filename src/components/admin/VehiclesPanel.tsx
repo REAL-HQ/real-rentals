@@ -1,4 +1,5 @@
 import { AdminToolbar, TOOLBAR, TopSearchChip } from "./AdminToolbar";
+import { rowOpenProps } from "@/lib/row-click";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -11,6 +12,7 @@ import {
   READINESS_HINT,
   READINESS_LABEL,
   VEHICLE_LIST_PAGE_SIZE,
+  ON_RENT_STATUS_FILTER,
   type ReadinessBand,
   type VehicleListRow,
 } from "@/lib/vehicles-list";
@@ -148,6 +150,29 @@ function CopyVin({ vin }: { vin: string | null }) {
 function Availability({ v }: { v: VehicleListRow }) {
   const label = availabilityLabel(v);
   return <VehicleStatusBadge status={v.on_rent ? "on_rent" : v.status} label={label} />;
+}
+
+/**
+ * An open swap on this car. A signed swap leaves both cars where they were
+ * until Complete Swap is pressed on the booking, so say so here and link there.
+ */
+function SwapNotice({ v }: { v: VehicleListRow }) {
+  const n = v.swap_notice;
+  if (!n) return null;
+  const signed = n.status === "signed";
+  const cls = signed
+    ? "inline-flex items-center rounded-full border border-[#F2C94C] bg-[#FFF8E1] px-2 py-0.5 text-[11px] font-medium text-[#7A5B00]"
+    : "inline-flex items-center rounded-full border border-[#EDEDF0] bg-white px-2 py-0.5 text-[11px] text-[#55555E]";
+  const title = signed
+    ? `${n.role === "outgoing" ? "Outgoing Vehicle" : "Replacement Vehicle"} · Renter Signed · Open The Booking And Press Complete Swap At The Handover`
+    : "Swap Agreement Waiting For The Renter's Signature";
+  return n.href ? (
+    <a href={n.href} data-testid="vehicle-swap-notice" title={title} onClick={(e) => e.stopPropagation()} className={cls}>
+      {n.label}
+    </a>
+  ) : (
+    <span data-testid="vehicle-swap-notice" title={title} className={cls}>{n.label}</span>
+  );
 }
 
 /**
@@ -331,7 +356,7 @@ function FleetVehicles({
     <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-lg:min-w-0 ${view === "list" ? "md:hidden" : ""}`}>
       {rows.map((v, index) => {
         return (
-          <div key={v.id} onClick={() => setViewing(v.id)} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md max-lg:min-w-0">
+          <div key={v.id} {...rowOpenProps(() => setViewing(v.id))} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md max-lg:min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/40">
             {view !== "list" && <div className="aspect-[4/3] bg-background flex items-center justify-center">
               <VehicleStaffPhoto path={v.thumbnailPath ?? null} name={vehicleName(v)} className="w-full h-full object-cover" />
             </div>}
@@ -348,6 +373,7 @@ function FleetVehicles({
               </dl>
               <div className="mt-2.5 text-[13px] text-muted-foreground"><Rate v={v} /></div>
               <div data-vehicle-status-row className="mt-2 flex items-center gap-1.5 whitespace-nowrap"><ReadinessPill v={v} /><Availability v={v} /></div>
+              {v.swap_notice ? <div className="mt-1.5"><SwapNotice v={v} /></div> : null}
               <div className="mt-3 flex gap-2 max-lg:flex-wrap" onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
                   Open Record <ArrowRight className="w-3.5 h-3.5" />
@@ -374,9 +400,45 @@ function FleetVehicles({
     </div>
   );
 
+  const stats = result?.fleetStats ?? null;
+  const statValue = (n: number | null | undefined) => (n == null ? "—" : String(n));
+
   return (
     <div className="min-w-0">
       {remindersFailed ? <p className="mb-3 text-sm text-[#D03020]" data-testid="maintenance-log-error">Could not load maintenance reminders.</p> : null}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5" data-testid="vehicle-stat-cards">
+        <VehicleStatCard
+          label="Total"
+          value={statValue(stats?.total ?? result?.fleetTotal)}
+          hint="Including archived"
+          active={statusFilter === "all"}
+          onClick={() => setList({ status: "all" })}
+        />
+        <VehicleStatCard
+          label="Rented"
+          value={statValue(stats?.rented)}
+          hint="Active rentals"
+          active={statusFilter === ON_RENT_STATUS_FILTER}
+          onClick={() => setList({ status: ON_RENT_STATUS_FILTER })}
+        />
+        <VehicleStatCard
+          label="Available"
+          value={statValue(stats?.available)}
+          active={statusFilter === "available"}
+          onClick={() => setList({ status: "available" })}
+        />
+        <VehicleStatCard
+          label="Maintenance"
+          value={statValue(stats?.maintenance)}
+          active={statusFilter === "maintenance"}
+          onClick={() => setList({ status: "maintenance" })}
+        />
+        <VehicleStatCard
+          label="Utilization"
+          value={stats?.utilizationPct == null ? "—" : `${stats.utilizationPct}%`}
+          hint="Of unarchived"
+        />
+      </div>
       <AdminToolbar compact
         search={
           <input
@@ -394,7 +456,8 @@ function FleetVehicles({
             <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Status: All</SelectItem>
-              {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}><VehicleStatusBadge status={s} label={availabilityLabel({ on_rent: false, status: s })} /></SelectItem>)}
+              <SelectItem value={ON_RENT_STATUS_FILTER}>Rented</SelectItem>
+              {(result?.statuses ?? []).filter((status) => status !== "rented").map((s) => <SelectItem key={s} value={s}><VehicleStatusBadge status={s} label={availabilityLabel({ on_rent: false, status: s })} /></SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={bodyFilter} onValueChange={(v) => setList({ body: v })}>
@@ -533,10 +596,10 @@ function FleetVehicles({
             </thead>
             <tbody>
               {rows.map((v, index) => (
-                <tr key={v.id} onClick={() => setViewing(v.id)} className="group border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
+                <tr key={v.id} className="group border-t border-border cursor-pointer hover:bg-[#FAFAFB] focus-visible:outline-none focus-visible:bg-[#FAFAFB] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D03020]/40 transition-colors" {...rowOpenProps(() => setViewing(v.id))}>
                   <td className="w-10 px-3 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
                   <td className="px-3 py-2 whitespace-nowrap"><VehicleListThumbnail vehicle={v} /></td>
-                  <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
+                  <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}{v.swap_notice ? <div className="mt-1"><SwapNotice v={v} /></div> : null}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{displayVehicleWord(v.color ?? "") || <span className="text-muted-foreground">Not Set</span>}</td>
                   <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>
@@ -605,5 +668,42 @@ function FleetVehicles({
         />
       )}
     </div>
+  );
+}
+
+function VehicleStatCard({
+  label,
+  value,
+  hint,
+  active = false,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const className = `min-w-0 rounded-2xl border bg-white px-4 py-3 text-left shadow-sm transition-colors ${
+    onClick
+      ? active
+        ? "border-[#D03020]"
+        : "border-[#EDEDF0] hover:border-[#D03020]"
+      : "border-[#EDEDF0]"
+  }`;
+  const body = (
+    <>
+      <div className="text-[10px] font-semibold text-muted-foreground">{label}</div>
+      <div className="mt-1 text-[18px] font-semibold tabular-nums">{value}</div>
+      {hint ? <div className="mt-0.5 text-[11px] text-[#55555E]">{hint}</div> : null}
+    </>
+  );
+  if (!onClick) {
+    return <div className={className}>{body}</div>;
+  }
+  return (
+    <button type="button" onClick={onClick} aria-pressed={active} aria-label={`${label} ${value}`} className={className}>
+      {body}
+    </button>
   );
 }

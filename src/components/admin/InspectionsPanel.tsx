@@ -1,4 +1,5 @@
 import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
@@ -166,7 +167,7 @@ export function InspectionsPanel() {
         <div className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm overflow-hidden">
           <ul className="divide-y divide-[#EDEDF0]">
             {rows.map((r) => (
-              <li key={r.id} className="p-4 flex items-center justify-between gap-3">
+              <li key={r.id} className={`p-4 flex items-center justify-between gap-3 ${ROW_OPEN_CLASS}`} {...rowOpenProps(() => setOpenId(r.id))}>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <VehiclePickerPhoto vehicleId={r.vehicle_id} className="h-8 w-11 rounded-md" iconClassName="h-3.5 w-3.5" /><span className="font-medium truncate">{vName(r.vehicle_id)}</span>

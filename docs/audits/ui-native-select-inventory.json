@@ -100,14 +100,6 @@
       }
     },
     {
-      "file": "src/components/admin/BookingVehicleHistory.tsx",
-      "ordinal": 1,
-      "props": {
-        "value": "{reason}",
-        "onChange": "{(e) => setReason(e.target.value as (typeof SWAP_REASONS)[number])}"
-      }
-    },
-    {
       "file": "src/components/admin/BulkReceiptUpload.tsx",
       "ordinal": 1,
       "props": {
@@ -699,6 +691,16 @@
         "file": "src/components/admin/ReserveCarDialog.tsx",
         "ordinal": 2,
         "aria-label": "Deposit Required"
+      }
+    ]
+  },
+  "replacedWithVehicleSwapEsign": {
+    "note": "Nov 20 2026 (Dolmar, e-signed vehicle swap): the M2 swap form and its Reason select were replaced by the e-sign Swap Vehicle form, whose AppSelects (Reason, Damage Waiver, Payment Schedule, Payment Method, Return Fuel, Pickup Fuel, Returned Car Goes To) are all aria-labelled.",
+    "controls": [
+      {
+        "file": "src/components/admin/BookingVehicleHistory.tsx",
+        "ordinal": 1,
+        "aria-label": "Reason"
       }
     ]
   }

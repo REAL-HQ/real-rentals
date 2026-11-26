@@ -1,3 +1,4 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { AppSelect } from "@/components/ui/app-select";
 import { paymentOverlap } from "@/lib/payment-overlap";
 import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
@@ -7,7 +8,7 @@ import LeadPriorities from "./LeadPriorities";
 import OverviewToday from "./OverviewToday";
 import { BookingFollowupSlot } from "./BookingFollowupSlot";
 import { BookingConversion } from "./BookingConversion";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
 import {
@@ -17,6 +18,7 @@ import {
   ArrowUpRight,
   Plus,
   CheckCircle2,
+  Users,
   ChevronDown,
   TrendingUp,
   Receipt,
@@ -40,10 +42,12 @@ import {
   summarizeFleet,
   summarizeFleetOccupancy,
   activeRentalVehicleIds,
+  fleetSnapshotSlices,
   type FleetSummary,
   type FleetStatusMismatch,
 } from "@/lib/fleet-summary";
 import { buildWeeklyBilledCollected, OVERVIEW_REVENUE_TYPES } from "@/lib/overview-weekly-revenue";
+import { isUnpaidReservationFee } from "@/lib/payments-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import { MaintenanceDueTile } from "./MaintenanceLog";
 import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
@@ -83,6 +87,7 @@ import { getProjectedRevenueSummary } from "@/lib/projected-revenue.functions";
 import type { ProjectedRevenueSummary } from "@/lib/projected-revenue";
 import { centsToDollars } from "@/lib/projected-revenue";
 import { consolidatedRevenue } from "@/lib/stripe-collections";
+import { readWithRetry, recordedRevenueTotal, revenueCardDisplay } from "@/lib/revenue-card";
 import { useNavigate } from "@tanstack/react-router";
 import { DocumentsExpiringChip } from "./DocumentsExpiring";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
@@ -90,8 +95,11 @@ import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 import { Button } from "@/components/ui/button";
 import { Tooltip as ControlTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { serviceSummaryPreview, type ServiceSummaryRow } from "./overview-summary-details";
+import { ActiveRentersDetails } from "./ActiveRentersDetails";
+import { getOverviewActiveRenters } from "@/lib/overview-active-renters.functions";
+import { ACTIVE_RENTER_COPY, type ActiveRentersSummary } from "@/lib/overview-active-renters";
 
-type WeekPoint = { label: string; iso: string; collected: number; billed: number };
+type WeekPoint = import("@/lib/overview-weekly-revenue").WeekPoint;
 
 /**
  * What counts as revenue.
@@ -178,6 +186,9 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   const [overdueRenters, setOverdueRenters] = useState(0);
   const [overdueAmt, setOverdueAmt] = useState(0);
   const [activeRentalCount, setActiveRentalCount] = useState<number | null>(null);
+  const loadActiveRenters = useServerFn(getOverviewActiveRenters);
+  const [renterSummary, setRenterSummary] = useState<ActiveRentersSummary | null>(null);
+  const [renterSummaryFailed, setRenterSummaryFailed] = useState(false);
   const [opsRefreshKey, setOpsRefreshKey] = useState(0);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
@@ -186,6 +197,8 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   const [revenue, setRevenue] = useState<number | null>(null);
   const [priorRevenue, setPriorRevenue] = useState<number | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
+  const [revenueFailed, setRevenueFailed] = useState(false);
+  const [revenueRetryKey, setRevenueRetryKey] = useState(0);
   const [internalNonStripe, setInternalNonStripe] = useState<number | null>(null);
   const [overlapOwed, setOverlapOwed] = useState<number | null>(null);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
@@ -220,6 +233,25 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   }, []);
 
   useEffect(() => {
+    let live = true;
+    loadActiveRenters({ data: {} })
+      .then((summary) => {
+        if (!live) return;
+        setRenterSummary(summary);
+        setRenterSummaryFailed(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setRenterSummary(null);
+        setRenterSummaryFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opsRefreshKey]);
+
+  useEffect(() => {
     (async () => {
       const now = new Date();
       const d84 = new Date(now.getTime() - 84 * 864e5).toISOString();
@@ -245,7 +277,7 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
         // and is deliberately absent.
         supabase
           .from("payments")
-          .select("amount, balance_due, driver_id")
+          .select("amount, balance_due, driver_id, type, reason, notes, status")
           .in("status", [...COLLECTIONS_WATCH_STATUSES]),
         supabase
           .from("payments")
@@ -255,7 +287,7 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           .gte("paid_date", d84),
         supabase
           .from("payments")
-          .select("amount, due_date, type")
+          .select("amount, due_date, type, status, reason, notes")
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("due_date", d84),
         supabase
@@ -315,7 +347,8 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
       // collections query has no net_collected, so summing it was always $0.
       const sumOutstanding = (rows?: any[] | null) =>
         (rows ?? []).reduce((a, r) => a + (Number(r.balance_due ?? 0) || Number(r.amount ?? 0)), 0);
-      const overdueRows = (overdueQ.data ?? []) as any[];
+      // An unpaid Reservation Fee is a pending hold, not Past Due and not Billed.
+      const overdueRows = ((overdueQ.data ?? []) as any[]).filter((row) => !isUnpaidReservationFee(row));
       setOverdueAmt(sumOutstanding(overdueRows));
       setOverdueCount(overdueRows.length);
       setOverdueRenters(new Set(overdueRows.map((r) => r.driver_id).filter(Boolean)).size);
@@ -323,11 +356,13 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
 
       // 12-week weekly buckets — same revenue types as the Revenue card
       // (multi-method collected; deposits excluded from billed and collected).
+      const billedRows = ((billed12wQ.data ?? []) as { due_date: string | null; amount: number | null; type: string | null; status?: string | null; reason?: string | null; notes?: string | null }[])
+        .filter((row) => !isUnpaidReservationFee(row));
       setWeekly(
         buildWeeklyBilledCollected({
           now,
           collected: (pay12wQ.data ?? []) as { paid_date: string | null; net_collected: number | null; type: string | null }[],
-          billed: (billed12wQ.data ?? []) as { due_date: string | null; amount: number | null; type: string | null }[],
+          billed: billedRows,
           label: (d) => fmtDate(d),
         }),
       );
@@ -337,11 +372,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opsRefreshKey]);
 
-  const { total, rentable, rented, reserved, needsSetup } = fleet;
+  const { total, rentable, rented } = fleet;
   const vehiclesAvail = fleet.available;
-  const maintOpen = fleet.maintenance;
-  const vehiclesTotal = fleet.total;
   const utilPct = fleet.utilizationPct;
+  const fleetSlices = fleetSnapshotSlices(fleet);
   const pctOf = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
   // ---- revenue for the selected range -------------------------------------
   // Its own effect, so changing the range refetches two small queries rather
@@ -353,9 +387,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   const compare = useMemo(() => priorRange(range), [range]);
 
   useEffect(() => {
-    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setRevenueLoading(false);return;}
+    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setRevenueFailed(false);setRevenueLoading(false);return;}
     let live = true;
     setRevenueLoading(true);
+    setRevenueFailed(false);
     (async () => {
       const q = (r: DayRange) =>
         supabase
@@ -365,22 +400,30 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", r.from)
           .lte("paid_date", r.to);
-      const [cur, prev] = await Promise.all([q(range), q(compare)]);
+      // A transient read failure retries before the card gives up; the
+      // recorded total is the card's floor, so it must not blank on one blip.
+      const read = (r: DayRange) => readWithRetry(() => q(r), (res) => !!res.error || !Array.isArray(res.data), { alive: () => live });
+      const [cur, prev] = await Promise.all([read(range), read(compare)]);
       if (!live) return;
-      const current=paymentRevenue(cur), previous=paymentRevenue(prev);
-      setRevenue(current?.total ?? null);
-      setInternalNonStripe(current?.nonStripe ?? null);
+      // Display floor: tolerant sum of recorded payments ($0 when none).
+      // Consolidation inputs stay strict (paymentRevenue fails closed) so a
+      // doubtful read can never be presented as Stripe-verified.
+      const strict = paymentRevenue(cur);
+      const shownTotal = recordedRevenueTotal(cur);
+      setRevenue(shownTotal);
+      setRevenueFailed(shownTotal === null);
+      setInternalNonStripe(strict?.nonStripe ?? null);
       setOverlapOwed(paymentOverlap(cur));
-      setPriorRevenue(previous?.total ?? null);
+      setPriorRevenue(recordedRevenueTotal(prev));
       setRevenueLoading(false);
     })().catch(()=>{
       if(!live)return;
-      setRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setPriorRevenue(null);setRevenueLoading(false);
+      setRevenue(null);setRevenueFailed(true);setInternalNonStripe(null);setOverlapOwed(null);setPriorRevenue(null);setRevenueLoading(false);
     });
     return () => {
       live = false;
     };
-  }, [range, compare, canSeeCollections, opsRefreshKey]);
+  }, [range, compare, canSeeCollections, opsRefreshKey, revenueRetryKey]);
 
   const revenueDelta = useMemo(() => {
     // No prior revenue is not a 100% rise; it is a comparison that cannot be
@@ -390,8 +433,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   }, [revenue, priorRevenue]);
 
   // Projected vs collected rent for the current ET week and month. Separate
-  // from the range picker total above — this is the active-renter schedule
-  // against rent already recorded, deposits excluded from both.
+  // from the range picker total above, which counts every revenue type in the
+  // selected range. These rows are rent only. Projected is the full weekly
+  // schedule for the period, including weeks already due. Collected is rent
+  // recorded in that same period.
   const loadProjected = useServerFn(getProjectedRevenueSummary);
   const [projected, setProjected] = useState<ProjectedRevenueSummary | null>(null);
   const [projectedLoading, setProjectedLoading] = useState(false);
@@ -461,40 +506,15 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
 
       {OVERVIEW_TODAY_ENABLED && canSeeCollections && <OverviewToday />}
 
-      <LeadPriorities
-        isManager={canSeeCollections}
-        tier={tier}
-        refreshKey={opsRefreshKey}
-        readiness={readiness}
-        canSeeReadiness={canSeeReadiness}
-      />
-      <BookingFollowupSlot />
-      <BookingConversion canView={canSeeCollections} />
-
-      {/* Four cards. Each control matches what the card is for — a plus only
-          where something gets created. */}
+      {/* Four cards sit above Lead Priorities so the health check is first.
+          Order: Revenue, Collections, Service, then Active Renters. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <ActionCard
-          icon={Car}
-          eyebrow="Fleet"
-          title="Add Vehicle"
-          hint={`${vehiclesTotal} In Fleet`}
-          href="/admin"
-          search={{ tab: "vehicles", add: "1" }}
-          control="add"
-          expanded={summaryExpanded}
-          onExpand={() => setSummaryExpanded((value) => !value)}
-          details={<>
-            <SummaryDetailRow label="Available" value={vehiclesAvail} />
-            <SummaryDetailRow label="Rented" value={rented} />
-            <SummaryDetailRow label="Maintenance" value={maintOpen} />
-          </>}
-        />
-
         <RevenueCard
           amount={revenue}
           delta={revenueDelta}
           loading={revenueLoading}
+          failed={revenueFailed}
+          onRetry={() => setRevenueRetryKey((k) => k + 1)}
           range={range}
           compare={compare}
           rangeKey={rangeKey}
@@ -566,7 +586,7 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
                   <Link to="/admin" search={{ tab: "vehicles", id: row.vehicle.id }}>
                     <Car className="shrink-0 text-destructive" />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[11px] font-semibold">{row.vehicle.unit_number || "Vehicle"}</span>
+                      <LinkedVehicleCell vehicleId={row.vehicle.id} size="sm" fallback={{ unitNumber: row.vehicle.unit_number }} />
                       <span className="block text-[10px] font-normal text-muted-foreground">
                         {row.vehicle.status === "maintenance" ? <VehicleStatusBadge status="maintenance" /> : row.item}
                         {row.vehicle.status === "maintenance" ? null : ` · ${row.due.state === "due_soon" ? "Due Soon" : row.due.state === "overdue" ? "Overdue" : row.due.state === "due" ? "Due" : row.due.state === "conflict" ? "Needs Review" : "Open"}`}
@@ -579,8 +599,38 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
             </div>
           ) : <p className="text-[11px] text-muted-foreground">{serviceFailed ? "Service Details Unavailable" : servicePreview === null ? "Loading Service Details…" : "No Vehicles Need Service"}</p>}
         />
+
+        <ActionCard
+          icon={Users}
+          eyebrow="Active Renters"
+          title={activeRentalCount === null ? "—" : String(activeRentalCount)}
+          hint={activeRentalCount === 0 ? ACTIVE_RENTER_COPY.emptyHint : ACTIVE_RENTER_COPY.hint}
+          href="/admin"
+          search={{ tab: "drivers", filter: "active" }}
+          control="view"
+          expanded={summaryExpanded}
+          onExpand={() => setSummaryExpanded((value) => !value)}
+          details={
+            <ActiveRentersDetails
+              summary={renterSummary}
+              failed={renterSummaryFailed}
+              canOpenBoard={canSeeCollections}
+            />
+          }
+        />
         {MAINTENANCE_LOG_ENABLED ? <MaintenanceDueTile /> : null}
       </div>
+
+      <LeadPriorities
+        isManager={canSeeCollections}
+        tier={tier}
+        refreshKey={opsRefreshKey}
+        readiness={readiness}
+        canSeeReadiness={canSeeReadiness}
+      />
+      <BookingFollowupSlot />
+      <BookingConversion canView={canSeeCollections} />
+
       {canSeeCollections ? <DocumentsExpiringChip /> : null}
 
       {/* Fleet snapshot + Applications queue */}
@@ -618,25 +668,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           }
         >
           <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-6 lg:grid-cols-[auto_1fr]">
-            <SegmentedDonut
-              total={total}
-              segments={[
-                { key: "rented", label: "Rented", value: rented, color: "#4CD964" },
-                { key: "reserved", label: "Reserved", value: reserved, color: "#FFCC33" },
-                { key: "available", label: "Available", value: vehiclesAvail, color: "#C7C7CC" },
-                { key: "maintenance", label: "Maintenance", value: maintOpen, color: "#FF3B30" },
-                { key: "setup", label: "Needs Setup", value: needsSetup, color: "#8E8E93" },
-              ]}
-            />
+            <SegmentedDonut total={total} segments={fleetSlices} />
             <div>
               <ul className="space-y-1.5">
-                {[
-                  { key: "rented", label: "Rented", value: rented, color: "#4CD964" },
-                  { key: "reserved", label: "Reserved", value: reserved, color: "#FFCC33" },
-                  { key: "available", label: "Available", value: vehiclesAvail, color: "#C7C7CC" },
-                  { key: "maintenance", label: "Maintenance", value: maintOpen, color: "#FF3B30" },
-                  { key: "setup", label: "Needs Setup", value: needsSetup, color: "#8E8E93" },
-                ].map((s) => (
+                {fleetSlices.map((s) => (
                   <li key={s.key} className="flex items-center gap-2 text-[13px]">
                     <span
                       className="h-2 w-2 rounded-full shrink-0"
@@ -830,6 +865,8 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
         let worst: WeekPoint | null = null;
         let worstGap = 0;
         for (const w of weekly) {
+          // The in-progress week is still being collected; it cannot be the worst.
+          if (w.current) continue;
           const gap = w.billed - w.collected;
           if (w.billed > 0 && gap > worstGap) {
             worstGap = gap;
@@ -873,6 +910,7 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
                     tick={{ fill: "#9A9AA3", fontSize: 10 }}
                     tickLine={false}
                     axisLine={{ stroke: "#EDEDF0" }}
+                    interval={0}
                   />
                   <YAxis
                     tick={{ fill: "#9A9AA3", fontSize: 10 }}
@@ -887,6 +925,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
                       border: "1px solid #EDEDF0",
                       borderRadius: 8,
                       fontSize: 12,
+                    }}
+                    labelFormatter={(label: any, items: any) => {
+                      const w = items?.[0]?.payload as WeekPoint | undefined;
+                      return w ? `Week Of ${shortDate(w.iso)}${w.current ? " (Through Today)" : ""}` : String(label);
                     }}
                     formatter={(v: any, name: any) => [
                       usd(Number(v)),
@@ -933,7 +975,7 @@ function SummaryExpandControl({ expanded, onExpand }: { expanded: boolean; onExp
             className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
             aria-label={label}
             aria-expanded={expanded}
-            aria-controls="fleet-summary-details revenue-summary-details collections-summary-details service-summary-details"
+            aria-controls="fleet-summary-details revenue-summary-details collections-summary-details service-summary-details active-summary-details"
             onClick={(event) => { event.stopPropagation(); onExpand(); }}
             onKeyDown={(event) => event.stopPropagation()}
           >
@@ -1065,6 +1107,8 @@ function RevenueCard({
   amount,
   delta,
   loading,
+  failed = false,
+  onRetry,
   range,
   compare,
   rangeKey,
@@ -1081,6 +1125,8 @@ function RevenueCard({
   amount: number | null;
   delta: number | null;
   loading: boolean;
+  failed?: boolean;
+  onRetry?: () => void;
   range: DayRange;
   compare: DayRange;
   rangeKey: RangeKey;
@@ -1100,18 +1146,30 @@ function RevenueCard({
   // Shares the Collections section's cache entry — no duplicate provider request.
   const loadCollections = useServerFn(getStripeCollections);
   const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, Boolean(consolidated)));
-  const c = consolidated
-    ? sq.isError ? { amount: null, coverage: "Unavailable" as const }
-      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, overlap: overlapOwed, report: sq.data })
+  // Stripe is an optional refinement. Its loading, error or incomplete
+  // report never hides the recorded total.
+  const c = consolidated && !sq.isError && sq.data
+    ? consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, overlap: overlapOwed, report: sq.data })
     : null;
-  const shownLoading = consolidated ? loading || (sq.isFetching && !sq.data) : loading;
-  const shownAmount = c ? c.amount : amount;
-  const coverage = c ? c.coverage : amount === null ? "Unavailable" : "Partial";
-  const coverageHint = coverage === "Unavailable"
-    ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Verified Stripe collections remain available in Collections."
-    : c
-      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. A manual receipt Stripe later collected is not added on top of that Stripe net. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
-      : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
+  const shown = revenueCardDisplay({ consolidated: c, recorded: loading ? null : amount, recordedFailed: !loading && failed });
+  const fromStripe = shown.source === "stripe";
+  const shownLoading = shown.amount === null && !failed;
+  const shownAmount = shown.amount;
+  const coverage = shown.badge;
+  const stripeNote = !consolidated
+    ? ""
+    : sq.isFetching && !sq.data
+      ? " Stripe is still being verified."
+      : sq.isError || (sq.data && !fromStripe)
+        ? " Stripe could not be verified just now."
+        : "";
+  const coverageHint = fromStripe
+    ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. A manual receipt Stripe later collected is not added on top of that Stripe net. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
+    : shown.source === "recorded"
+      ? "Total of payments recorded in the system for this period." + stripeNote + " Verified Stripe collections remain available in Collections."
+      : failed
+        ? "The payments for this period could not be read. Click Retry to try again."
+        : "Loading recorded payments for this period.";
   const goPayments = () => !open && navigate({ to: "/admin", search: { tab: "payments" } });
   const label = RANGE_LABELS.find((r) => r.key === rangeKey)?.label ?? "Range";
 
@@ -1154,7 +1212,16 @@ function RevenueCard({
         </span>
       </div>
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
-        {shownLoading || shownAmount == null ? <span className="text-[#C7C7CC]">—</span> : usd(shownAmount)}
+        {shownAmount != null ? usd(shownAmount) : shownLoading ? <span className="text-[#C7C7CC]">—</span> : (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onRetry?.(); }}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="text-[13px] font-medium text-[#55555E] underline underline-offset-2"
+          >
+            Retry
+          </button>
+        )}
       </div>
       {overlapOwed != null && overlapOwed > 0 && (
         <div className="mt-1 text-[11px] text-[#8A5A00]">
@@ -1163,7 +1230,7 @@ function RevenueCard({
       )}
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
-        {c ? null : delta != null ? (
+        {fromStripe ? null : delta != null ? (
           <>
             <span className="mx-1 text-[#C7C7CC]">·</span>
             <span className={`font-medium ${delta >= 0 ? "text-[#0F8A4B]" : "text-[#CC0000]"}`}>
@@ -1181,23 +1248,46 @@ function RevenueCard({
       </div>
 
       <SummaryDetails expanded={expanded} label="Revenue Details">
-          <div className="text-[10px] font-semibold text-muted-foreground">
-            Revenue: Projected / Collected
+          <div
+            className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-1 gap-y-1"
+            aria-label="Revenue, Projected then Collected"
+          >
+            <div
+              className="text-[10px] font-semibold text-muted-foreground"
+              title="Rent for the calendar week and month. Separate from the range total above."
+            >
+              Revenue
+            </div>
+            <div
+              className="text-right text-[10px] font-semibold text-muted-foreground"
+              title="Weekly rent expected for the whole period, including weeks already due."
+            >
+              Projected
+            </div>
+            <div className="text-center text-[10px] font-normal text-[#C7C7CC]" aria-hidden="true">/</div>
+            <div
+              className="text-right text-[10px] font-semibold text-muted-foreground"
+              title="Rent recorded in the period. Deposits, late fees, and the Reservation Fee are not included."
+            >
+              Collected
+            </div>
+            {(["week", "month"] as const).map((key) => {
+              const row = projected?.[key];
+              const label = key === "week" ? "This Week" : "This Month";
+              const projectedText = projectedLoading || !row ? "—" : usd(centsToDollars(row.projectedCents));
+              const collectedText = projectedLoading || !row ? "—" : usd(centsToDollars(row.collectedCents));
+              return (
+                <Fragment key={key}>
+                  <div className="whitespace-nowrap text-[11px] text-muted-foreground" aria-label={`${label}: Projected ${projectedText}, Collected ${collectedText}`}>
+                    {label}
+                  </div>
+                  <div className="whitespace-nowrap text-right text-[11px] tabular-nums text-foreground" aria-hidden="true">{projectedText}</div>
+                  <div className="text-center text-[11px] text-[#C7C7CC]" aria-hidden="true">/</div>
+                  <div className="whitespace-nowrap text-right text-[11px] tabular-nums text-foreground" aria-hidden="true">{collectedText}</div>
+                </Fragment>
+              );
+            })}
           </div>
-          {(["week", "month"] as const).map((key) => {
-            const row = projected?.[key];
-            const label = key === "week" ? "This Week" : "This Month";
-            return (
-              <div key={key} className="flex flex-wrap items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
-                <span>{label}</span>
-                <span className="tabular-nums text-foreground">
-                  {projectedLoading || !row
-                    ? "—"
-                    : `${usd(centsToDollars(row.projectedCents))} / ${usd(centsToDollars(row.collectedCents))}`}
-                </span>
-              </div>
-            );
-          })}
       </SummaryDetails>
 
       {open && (
@@ -1288,7 +1378,9 @@ function SegmentedDonut({
     c = 2 * Math.PI * r;
   const gap = 2; // px gap between segments
   let offset = 0;
-  const sum = segments.reduce((a, s) => a + s.value, 0) || 1;
+  // Scale to the center total so a missing slice leaves a gap instead of
+  // stretching the categories that happened to be drawn.
+  const denom = total > 0 ? total : 1;
   return (
     <div className="relative mx-auto shrink-0 sm:mx-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
@@ -1302,7 +1394,7 @@ function SegmentedDonut({
         />
         {segments.map((s) => {
           if (s.value <= 0) return null;
-          const len = (s.value / sum) * c;
+          const len = (s.value / denom) * c;
           const dash = Math.max(0, len - gap);
           const el = (
             <circle

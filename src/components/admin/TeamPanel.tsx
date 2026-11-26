@@ -14,6 +14,7 @@ import {
   type PendingInvite,
 } from "@/lib/team.functions";
 import { fmtDate } from "@/lib/date-format";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 // Team management.
 //
@@ -24,7 +25,7 @@ import { fmtDate } from "@/lib/date-format";
 // goes through a server function that checks the caller is an Owner.
 
 const ROLE_TONE: Record<string, string> = {
-  admin: "bg-[rgba(208,48,32,0.08)] text-[#D03020]",
+  admin: DANGER_BADGE,
   team: "bg-[rgba(37,99,235,0.08)] text-[#2563EB]",
   coordinator: "bg-[rgba(22,163,74,0.08)] text-[#16A34A]",
 };

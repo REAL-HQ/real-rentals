@@ -91,10 +91,10 @@ describe("reservation helpers", () => {
 describe("bookings workspace + nav", () => {
   it("defaults to Active for managers and Past when a rental id is open", () => {
     assert.equal(parseBookingsView(undefined, { canViewBoard: true }), "active");
-    assert.equal(parseBookingsView("booked", { canViewBoard: true }), "booked");
-    assert.equal(parseBookingsView("past", { canViewBoard: true }), "past");
-    assert.equal(parseBookingsView(undefined, { canViewBoard: true, openId: "r1" }), "past");
-    assert.equal(parseBookingsView(undefined, { canViewBoard: false }), "past");
+    assert.equal(parseBookingsView("booked", { canViewBoard: true }), "reserved");
+    assert.equal(parseBookingsView("past", { canViewBoard: true }), "completed");
+    assert.equal(parseBookingsView(undefined, { canViewBoard: true, openId: "r1" }), "completed");
+    assert.equal(parseBookingsView(undefined, { canViewBoard: false }), "completed");
   });
 
   it("shows Bookings on the rail and redirects Active Rentals", () => {
@@ -112,22 +112,23 @@ describe("Reserved pickup appointment details", () => {
       pickupTime: "14:05",
       pickupLocation: "3500 E. Hillsborough Ave., Tampa, FL 33610",
       note: "Confirmed With Driver",
+      bookedBy: null,
     });
     assert.equal(formatReservationTime("14:05"), "2:05 PM");
   });
 
   it("preserves legacy plain notes and rejects incomplete new appointments", () => {
-    assert.deepEqual(readReservationDetails("Historical Note"), { pickupTime: null, pickupLocation: null, note: "Historical Note" });
+    assert.deepEqual(readReservationDetails("Historical Note"), { pickupTime: null, pickupLocation: null, note: "Historical Note", bookedBy: null });
     assert.throws(() => writeReservationDetails({ pickupTime: "25:00", pickupLocation: "Tampa" }), /Pick A Real Pickup Time/);
     assert.throws(() => writeReservationDetails({ pickupTime: "09:00", pickupLocation: "" }), /Enter A Pickup Location/);
   });
 });
 
-describe("Booking Login Email + Reserved next step", () => {
-  it("catalogues Booking Login Email default On", () => {
+describe("Pickup Booked Email + Reserved next step", () => {
+  it("catalogues Pickup Booked Email default On (no login details, t466u)", () => {
     const row = AUTOMATIONS.find((a) => a.key === "booking_login_email");
     assert.ok(row);
-    assert.equal(row?.title, "Booking Login Email");
+    assert.equal(row?.title, "Pickup Booked Email");
     assert.equal(row?.defaultOn, undefined);
     assert.deepEqual(row?.emailWorkflows, []); // portal_invite stays ungated for Approve
   });
@@ -186,6 +187,7 @@ describe("migration + server source guards", () => {
     assert.equal(/optional reservation deposit/.test(readFileSync("src/components/admin/SettingsWorkspace.tsx", "utf8")), false);
     assert.equal(fn.includes("buy.stripe.com"), false);
     assert.match(fn, /booking_login_email/);
-    assert.match(fn, /maybeSendBookingLoginEmail/);
+    assert.match(fn, /maybeSendPickupBookedEmail/);
+    assert.equal(/maybeSendBookingLoginEmail|sendPortalInviteEmail/.test(fn), false);
   });
 });

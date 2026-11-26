@@ -1,13 +1,16 @@
 import { PhoneInput } from "@/components/ui/phone-input";
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { chargeTypeLabel, enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { initialPortalTab, rememberPayIntent, wantsPay } from "@/lib/portal-pay-link";
 import { SigningPanel } from "@/components/esign/SigningPanel";
+import { StandaloneDocumentView } from "@/components/esign/StandaloneDocumentView";
 import { layoutToText } from "@/lib/agreement-layout";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { getMyPortalGate } from "@/lib/portal-access.functions";
+import { PORTAL_OPENS_AT_PICKUP_MESSAGE, PORTAL_OPENS_AT_PICKUP_TITLE } from "@/lib/portal-pickup-gate";
 import { useBusinessPhone } from "@/lib/company.functions";
 import {
   getDriverDashboard,
@@ -31,6 +34,9 @@ import {
   type RentalBilling,
 } from "@/lib/rental-payments.functions";
 import { getMyAgreements, signMyAgreement, getAgreementPdf } from "@/lib/agreements.functions";
+import { recordReservationFeeSmsConsent } from "@/lib/sms-consent-signing.functions";
+import { ReservationFeeNextStep } from "@/components/esign/ReservationFeeNextStep";
+import type { ReservationFeeSigningStep } from "@/lib/reservation-fee";
 import { portalAgreementState, portalAgreementStatusLabel } from "@/lib/portal-agreement-state";
 import { saveAgreementPdf } from "@/lib/agreement-download";
 import { DocumentVault } from "@/components/admin/DocumentVault";
@@ -44,6 +50,8 @@ import { PaymentHistoryCard } from "@/components/portal/PaymentHistoryCard";
 import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history";
 import { DRIVER_DOC_EXPIRY_CARD_ENABLED } from "@/lib/driver-doc-expiry";
 import { DRIVER_AGREEMENT_VIEW_ENABLED } from "@/lib/driver-agreement-view";
+import { DriverStaffPhotos } from "@/components/portal/DriverStaffPhotos";
+import { getDriverStaffPhotos, openDriverStaffPhoto } from "@/lib/driver-staff-photos.functions";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import { CONDITION_SECTIONS, ROLE_SUBSECTION, groupConditionPhotos } from "@/lib/condition-photos";
 import {
@@ -109,6 +117,7 @@ import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { fmtDate } from "@/lib/date-format";
 import { buildRoadsideIssue, ROADSIDE_TYPES } from "@/lib/driver-issues";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 export const Route = createFileRoute("/portal")({
   head: () => ({
@@ -119,7 +128,7 @@ export const Route = createFileRoute("/portal")({
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "vehicle", label: "My Vehicle", icon: Car },
+  { id: "vehicle", label: "Vehicle", icon: Car },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "pictures", label: "Pictures", icon: ImageIcon },
   { id: "payments", label: "Payments", icon: CreditCard },
@@ -176,13 +185,15 @@ function DriverAgreementGate() {
  * Maintenance tab listing nothing is worse than not showing it: it reads like
  * something is broken.
  *
- * What is left — Dashboard, Documents, Payments, Report Issue, Referrals,
- * Settings — all render truthfully with no rental: Payments shows outstanding
- * tolls and citations from any earlier rental and nothing at all otherwise,
- * Report Issue files against a null rental by design, and Referrals needs no
- * vehicle. The four below are the ones that cannot mean anything yet.
+ * What is left — Dashboard, Documents, Payments, Pictures, Report Issue,
+ * Referrals, Settings — all render truthfully with no active rental.
+ * Pictures stays because the condition photos from a returned rental are
+ * still the driver's to look at. Payments shows outstanding tolls and
+ * citations from any earlier rental and nothing at all otherwise, Report
+ * Issue files against a null rental by design, and Referrals needs no
+ * vehicle. The three below are the ones that cannot mean anything yet.
  */
-const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance", "pictures"]);
+const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance"]);
 
 
 /** Staff read-only "Viewing as" preview: the selected driver's account id, or null. */
@@ -202,6 +213,13 @@ function usePortalWrite<F extends (...a: any[]) => Promise<any>>(fn: F): F {
   const f = useServerFn(fn) as any;
   return (id ? async () => { throw new Error("Driver Preview is read-only."); } : f) as F;
 }
+/** Portal read that also sends the caller's payload. Preview id is added here, never trusted alone. */
+function usePortalCall<F extends (opts: { data: any }) => Promise<any>>(fn: F) {
+  const id = usePreviewDriver();
+  const f = useServerFn(fn) as any;
+  return (data: Record<string, unknown>) =>
+    f({ data: { ...data, ...(id ? { previewDriverId: id } : {}) } });
+}
 function usePreviewNull<F extends (...a: any[]) => Promise<any>>(fn: F, empty: Awaited<ReturnType<F>>): F {
   const id = usePreviewDriver();
   const f = useServerFn(fn) as any;
@@ -209,6 +227,29 @@ function usePreviewNull<F extends (...a: any[]) => Promise<any>>(fn: F, empty: A
 }
 function ReadOnlyNote({ what }: { what: string }) {
   return <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{what} are disabled in Driver Preview.</div>;
+}
+
+function PortalOpensAtPickup() {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Nav />
+      <div className="container-real py-32 text-center max-w-lg">
+        <h1 className="text-2xl font-semibold">{PORTAL_OPENS_AT_PICKUP_TITLE}</h1>
+        <p className="mt-3 text-muted-foreground text-sm leading-relaxed">{PORTAL_OPENS_AT_PICKUP_MESSAGE}</p>
+        <button
+          type="button"
+          onClick={() => {
+            void supabase.auth.signOut().then(() => {
+              if (typeof window !== "undefined") window.location.assign("/login");
+            });
+          }}
+          className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
+        >
+          Get My Secure Link
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function Portal() {
@@ -244,6 +285,17 @@ function Portal() {
       });
   }, [session]);
 
+  // The Driver Portal opens at pickup (t466u). Checked for every signed-in
+  // non-staff account, driver role or not: Reserved creates the login well
+  // before pickup, and nothing before pickup may open the portal.
+  const fetchGate = useServerFn(getMyPortalGate);
+  const { data: gateData, isError: gateFailed } = useQuery({
+    queryKey: ["portal-gate", session?.user?.id ?? null],
+    queryFn: () => fetchGate(),
+    enabled: Boolean(session),
+  });
+  const gate = gateData?.gate ?? null;
+
   // Shares PortalBody's query key, so this costs no extra request — it only
   // lets the shell know whether there is a rental before it draws the nav.
   const fetchDashboard = usePortalRead(getDriverDashboard);
@@ -258,13 +310,13 @@ function Portal() {
     [hasRental],
   );
 
-  // A rental ending while someone is sitting on My Vehicle must not leave them
+  // A rental ending while someone is sitting on the Vehicle tab must not leave them
   // staring at a tab that is no longer in the nav.
   useEffect(() => {
     if (!visibleTabs.some((t) => t.id === tab)) setTab("dashboard");
   }, [visibleTabs, tab]);
 
-  if (checking) {
+  if (checking || (session && !gateData && !gateFailed)) {
     return (
       <div className="min-h-screen flex flex-col">
         <Nav />
@@ -292,6 +344,10 @@ function Portal() {
         </div>
       </div>
     );
+  }
+  // Fails closed for renters: an unreadable gate does not open the portal.
+  if (!staffTier && (gate === "pre_pickup" || gateFailed)) {
+    return <PortalOpensAtPickup />;
   }
   if (!isDriver && wantsPreview && availableExperiences(staffTier, false).includes("driver")) {
     return <DriverPreview tier={staffTier} />;
@@ -570,6 +626,7 @@ function DocumentsView() {
 function AgreementsView() {
   const fetchAgreements = usePortalRead(getMyAgreements);
   const sign = usePortalWrite(signMyAgreement);
+  const recordFeeConsent = useServerFn(recordReservationFeeSmsConsent);
   const getPdf = useServerFn(getAgreementPdf);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-agreements"],
@@ -579,16 +636,37 @@ function AgreementsView() {
   const [name, setName] = useState("");
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [smsChecked, setSmsChecked] = useState(false);
+  // $50 Reservation Fee step after a portal signature: the same Checkout the email links to.
+  const [feeStep, setFeeStep] = useState<ReservationFeeSigningStep | null>(null);
+  const [feeSms, setFeeSms] = useState<{ needed: boolean; ticket: string | null }>({ needed: false, ticket: null });
 
   if (isLoading) return null;
+  const feeCard = feeStep ? (
+    <div className="rounded-2xl border border-border bg-white p-5">
+      <h3 className="font-semibold">Agreement Signed</h3>
+      <ReservationFeeNextStep
+        step={feeStep}
+        smsConsent={feeSms.needed && feeSms.ticket ? {
+          checked: smsChecked,
+          onChange: setSmsChecked,
+          onCommit: async (checked) => {
+            await recordFeeConsent({ data: { ticket: feeSms.ticket as string, consent: checked } });
+          },
+        } : null}
+      />
+    </div>
+  ) : null;
   // Drafts are not issued agreements and never reach the driver. Voided rows
   // stay visible, neutrally, with no signing call to action.
   const rows = (data ?? [])
     .map((a) => ({ ...a, state: portalAgreementState(a) }))
     .filter((a) => a.state === "awaiting_signature" || a.state === "signing");
-  if (rows.length === 0) return null;
+  if (rows.length === 0) return feeCard;
 
   return (
+    <>
+    {feeCard}
     <div className="rounded-2xl border border-border bg-white p-5">
       <h3 className="font-semibold">Agreements To Sign</h3>
       <ul className="mt-3 divide-y divide-border">
@@ -635,20 +713,40 @@ function AgreementsView() {
 
             {openId === a.id && (a.state === "signed" || a.state === "awaiting_signature") ? (
               <div className="mt-3 rounded-xl border border-border bg-muted/30 p-4">
-                <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">
-                  {layoutToText(a.body)}
-                </pre>
+                {a.source === "standalone" && a.source_pdf ? (
+                  <StandaloneDocumentView source={a.source_pdf} />
+                ) : (
+                  <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">
+                    {layoutToText(a.body)}
+                  </pre>
+                )}
                 {a.state === "awaiting_signature" ? (
                   <div className="mt-4">
                     <SigningPanel
                       body={a.body}
                       defaultName={name}
                       busy={busy}
+                      document={a.source === "standalone"}
+                      smsConsent={a.source !== "standalone" && a.smsConsentNeeded ? { checked: smsChecked, onChange: setSmsChecked } : null}
                       onSubmit={async (v) => {
                         setBusy(true);
                         try {
-                          await sign({ data: { agreementId: a.id, signerName: v.signerName, agree: true, adoption: v.adoption } });
-                          toast.success("Agreement signed");
+                          const res = await sign({
+                            data: {
+                              agreementId: a.id,
+                              signerName: v.signerName,
+                              agree: true,
+                              adoption: v.adoption,
+                              ...(a.source !== "standalone" && a.smsConsentNeeded ? { smsConsent: smsChecked } : {}),
+                            },
+                          });
+                          setFeeStep((res as any)?.reservationFee ?? null);
+                          setSmsChecked(false);
+                          setFeeSms({
+                            needed: (res as { smsConsentNeeded?: boolean })?.smsConsentNeeded === true,
+                            ticket: (res as { smsConsentTicket?: string | null })?.smsConsentTicket ?? null,
+                          });
+                          toast.success(a.source === "standalone" ? "Document signed" : "Agreement signed");
                           setOpenId(null);
                           await refetch();
                         } catch (e: any) {
@@ -666,6 +764,7 @@ function AgreementsView() {
         ))}
       </ul>
     </div>
+    </>
   );
 }
 
@@ -1127,6 +1226,8 @@ function Fact({ label, value }: { label: string; value: string }) {
 function PicturesView() {
   const picsPreviewId = usePreviewDriver();
   const fetchPics = usePortalRead(getDriverPictures);
+  const loadStaffPhotos = usePortalRead(getDriverStaffPhotos);
+  const openStaffPhoto = usePortalCall(openDriverStaffPhoto);
   const fetchCondition = usePreviewNull(listConditionMedia, [] as any);
   const fetchDashboard = usePortalRead(getDriverDashboard);
 
@@ -1159,6 +1260,11 @@ function PicturesView() {
 
   return (
     <div className="w-full space-y-5">
+      <DriverStaffPhotos
+        cacheKey={picsPreviewId ?? "self"}
+        load={() => loadStaffPhotos()}
+        open={(photo) => openStaffPhoto({ id: photo.id, kind: photo.kind })}
+      />
       <CheckoutSignOffCard />
 
       {vehicleId ? (
@@ -1307,7 +1413,7 @@ function SettingsView() {
           <div className="py-2.5 flex items-center justify-between gap-4">
             <dt className="text-sm text-muted-foreground">Status</dt>
             <dd className="text-sm font-medium text-right">
-              {data?.status ? enumDisplayLabel(data.status) : "—"}
+              {data?.status ? formatStatusLabel(data.status) : "—"}
             </dd>
           </div>
           <div className="py-2.5 flex items-center justify-between gap-4">
@@ -1492,7 +1598,7 @@ function IssuesViewInner() {
                           : "bg-gray-100 text-gray-700"
                     }`}
                   >
-                    {i.status}
+                    {formatStatusLabel(i.status)}
                   </span>
                 </div>
                 {i.body && (
@@ -1605,7 +1711,7 @@ function ReferralsView() {
                         : "bg-gray-100 text-gray-700"
                     }`}
                   >
-                    {r.status}
+                    {formatStatusLabel(r.status)}
                   </span>
                 </div>
               </li>
@@ -1942,7 +2048,7 @@ function DashboardView({
                       {p.paid_date ? fmtDate(p.paid_date) : "Pending"}
                     </div>
                     <div className="text-xs text-muted-foreground ">
-                      {p.type} · {p.status}
+                      {p.type} · {formatStatusLabel(p.status)}
                     </div>
                   </div>
                   <div className="text-sm font-medium">{fmt(p.amount)}</div>
@@ -2083,7 +2189,7 @@ function MetricTile({
 }
 
 function VehicleView({ data }: { data: DriverDashboard }) {
-  if (!data.vehicle) return <Stub label="My Vehicle" />;
+  if (!data.vehicle) return <Stub label="Vehicle" />;
   const v = data.vehicle;
   return (
     <div className="rounded-2xl border border-border bg-white overflow-hidden">
@@ -2151,12 +2257,13 @@ function MyChargesCard() {
           <li key={c.id} className="py-2.5 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <div className="text-sm font-medium ">
-                {enumDisplayLabel(c.charge_type)}
+                {chargeTypeLabel(c.charge_type)}
               </div>
               <div className="text-xs text-muted-foreground">
                 {fmtDate(c.occurred_at)}
                 {c.location ? ` · ${c.location}` : ""}
                 {c.agency ? ` · ${c.agency}` : ""}
+                {c.renter_pay_by ? ` · Pay By ${fmtDate(c.renter_pay_by)}` : ""}
               </div>
             </div>
             <div className="text-right shrink-0">
@@ -2314,14 +2421,14 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
                       className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
                         p.status === "paid"
                           ? "bg-emerald-100 text-emerald-800"
-                          : p.status === "failed"
-                            ? "bg-red-100 text-red-800"
+                          : ["failed", "unpaid", "overdue", "past_due", "late", "collections"].includes(String(p.status))
+                            ? DANGER_BADGE
                             : p.status === "pending"
                               ? "bg-amber-100 text-amber-800"
                               : "bg-gray-100 text-gray-700"
                       }`}
                     >
-                      {p.status}
+                      {formatStatusLabel(p.status)}
                     </span>
                   </td>
                   <td className="text-right">{fmt(p.amount)}</td>

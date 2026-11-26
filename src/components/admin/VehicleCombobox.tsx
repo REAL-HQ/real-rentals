@@ -14,7 +14,8 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { displayTitleCase, displayVehicleWord } from "@/lib/display-normalize";
-import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
+import { VehiclePickerPhoto, type EnlargedPhoto } from "./VehiclePickerPhoto";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import {
   formatVehicleLabel,
@@ -60,6 +61,7 @@ export function VehicleCombobox({
 }: Props) {
   const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState("");
+  const [enlarged, setEnlarged] = React.useState<EnlargedPhoto | null>(null);
 
   const selected = value ? vehicles.find((v) => v.id === value) : null;
   const filtered = React.useMemo(
@@ -68,6 +70,7 @@ export function VehicleCombobox({
   );
 
   return (
+    <>
     <Popover
       modal
       open={open}
@@ -85,7 +88,7 @@ export function VehicleCombobox({
           aria-label={ariaLabel}
           disabled={disabled}
           className={cn(
-            "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-popover px-3 text-left text-sm font-normal text-popover-foreground shadow-sm hover:bg-popover disabled:cursor-not-allowed disabled:opacity-50",
+            "flex h-9 w-full min-w-0 max-w-full overflow-hidden items-center justify-between gap-2 rounded-md border border-border bg-popover px-3 text-left text-sm font-normal text-popover-foreground shadow-sm hover:bg-popover disabled:cursor-not-allowed disabled:opacity-50",
             photoColumns && selected && "h-12",
             triggerClassName,
           )}
@@ -102,9 +105,12 @@ export function VehicleCombobox({
         className={cn(
           "z-[200] w-[var(--radix-popover-trigger-width)] min-w-[min(100vw-2rem,22rem)] max-w-[36rem] p-0",
           className,
-          photoColumns && "w-[min(48rem,var(--radix-popover-trigger-width))] min-w-[min(48rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]",
+          // Photo list is at least as wide as the trigger and never narrower than 28rem (clamped to the viewport), so the full year/make/model, plate and VIN last 6 show without truncation even from a narrow trigger.
+          photoColumns && "w-[var(--radix-popover-trigger-width)] min-w-[min(28rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]",
         )}
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onInteractOutside={(e) => { if (enlarged) e.preventDefault(); }}
+        onEscapeKeyDown={(e) => { if (enlarged) e.preventDefault(); }}
       >
         <Command shouldFilter={false} className="rounded-md">
           <CommandInput
@@ -113,8 +119,8 @@ export function VehicleCombobox({
             placeholder="Search Plate, VIN, Unit, Make…"
             aria-label="Search Vehicles"
           />
-          {photoColumns ? <div aria-hidden="true" className="mx-1 grid grid-cols-[1rem_3rem_minmax(0,1fr)_5.5rem] items-center gap-2 border-b border-border px-2 py-2 text-[10px] font-semibold text-muted-foreground sm:grid-cols-[1rem_3rem_minmax(0,1fr)_5rem_5rem_6rem]">
-            <span /><span>Photo</span><span>Vehicle</span><span className="hidden sm:block">Plate</span><span className="hidden sm:block">VIN</span><span>Status</span>
+          {photoColumns ? <div aria-hidden="true" className="mx-1 grid grid-cols-[1rem_3rem_minmax(0,1fr)_5.5rem] items-center gap-2 border-b border-border px-2 py-2 text-[10px] font-semibold text-muted-foreground">
+            <span /><span>Photo</span><span>Vehicle · Plate · VIN</span><span>Status</span>
           </div> : null}
           <CommandList>
             {photoColumns ? (filtered.length === 0 ? <div role="status" className="py-6 text-center text-sm text-muted-foreground">No Vehicles Match.</div> : null) : <CommandEmpty>No vehicles match.</CommandEmpty>}
@@ -140,7 +146,7 @@ export function VehicleCombobox({
                     key={v.id}
                     value={v.id}
                     aria-label={label}
-                    className={photoColumns ? "grid min-h-14 grid-cols-[1rem_3rem_minmax(0,1fr)_5.5rem] gap-2 border-b border-border/50 py-2 last:border-b-0 data-[selected=true]:bg-muted data-[selected=true]:text-popover-foreground sm:grid-cols-[1rem_3rem_minmax(0,1fr)_5rem_5rem_6rem]" : undefined}
+                    className={photoColumns ? "grid min-h-14 grid-cols-[1rem_3rem_minmax(0,1fr)_5.5rem] gap-2 border-b border-border/50 py-2 last:border-b-0 data-[selected=true]:bg-muted data-[selected=true]:text-popover-foreground" : undefined}
                     onSelect={() => {
                       onChange(v.id);
                       setOpen(false);
@@ -151,13 +157,11 @@ export function VehicleCombobox({
                       className={cn("h-4 w-4 shrink-0", !photoColumns && "mr-2", value === v.id ? "opacity-100" : "opacity-0")}
                     />
                     {photoColumns ? <>
-                      <VehiclePickerPhoto vehicleId={v.id} />
+                      <VehiclePickerPhoto vehicleId={v.id} label={label} onEnlarge={setEnlarged} />
                       <span className="min-w-0">
-                        <span className="block truncate text-[12px] font-medium">{[v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ") || "Vehicle"}</span>
-                        <span className="block truncate text-[10px] text-muted-foreground sm:hidden">{v.license_plate || "—"} · VIN …{vinLast6(v.vin) || "—"}</span>
+                        <span className="block break-words text-[12px] font-medium">{[v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ") || "Vehicle"}</span>
+                        <span className="block break-words text-[11px] tabular-nums text-muted-foreground">{v.license_plate || "—"} · VIN …{vinLast6(v.vin) || "—"}</span>
                       </span>
-                      <span className="hidden min-w-0 truncate text-[11px] tabular-nums sm:block">{v.license_plate || "—"}</span>
-                      <span className="hidden min-w-0 truncate text-[11px] tabular-nums text-muted-foreground sm:block">{vinLast6(v.vin) || "—"}</span>
                       <VehicleStatusBadge status={v.status} className="max-w-full px-1.5 text-[10px]" />
                     </> : <span className="truncate">{label}</span>}
                   </CommandItem>
@@ -168,5 +172,20 @@ export function VehicleCombobox({
         </Command>
       </PopoverContent>
     </Popover>
+    <Dialog open={!!enlarged} onOpenChange={(o) => { if (!o) setEnlarged(null); }}>
+      <DialogContent
+        data-testid="vehicle-photo-lightbox"
+        overlayClassName="z-[300]"
+        className="z-[301] w-[min(56rem,calc(100vw-1.5rem))] max-w-none gap-2 border-0 bg-black p-2 sm:rounded-lg [&>button]:text-white"
+      >
+        <DialogTitle className="pr-8 text-sm font-medium text-white">{enlarged?.label}</DialogTitle>
+        <DialogDescription className="sr-only">Larger photo of this vehicle. Press Escape or Close to return to the list.</DialogDescription>
+        {enlarged ? <img src={enlarged.url} alt={`${enlarged.label} Photo`} className="max-h-[75vh] w-full rounded-md object-contain" /> : null}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
+
+/** The one shared vehicle picker (thumbnail + enlarge, plate, VIN last 6, search). */
+export { VehicleCombobox as VehiclePicker };

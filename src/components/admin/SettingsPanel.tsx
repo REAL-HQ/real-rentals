@@ -97,7 +97,7 @@ export function SettingsPanel({ only }: { only?: string } = {}) {
   if (!settings) return <p className="text-sm text-muted-foreground">Loading…</p>;
   return (
     <TooltipProvider delayDuration={150}>
-    <div className="space-y-8 max-w-3xl">
+    <div className="space-y-8">
       {SECTIONS.filter((sec) => !only || sec.key === only).map((sec) => (
         <SectionForm key={sec.key} sec={sec} framed={!only} saved={settings[sec.key] || {}}
           onSaved={(v) => setSettings((m) => ({ ...(m ?? {}), [sec.key]: v }))} />

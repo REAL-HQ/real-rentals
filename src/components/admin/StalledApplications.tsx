@@ -1,4 +1,6 @@
 import { ContactStatusCell } from "@/components/admin/ContactStatusCell";
+import { useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import { displayPersonName } from "@/lib/display-normalize";
 import { fmtDate } from "@/lib/date-format";
 import type { ContactStatusState } from "@/lib/contact-status";
@@ -41,6 +43,7 @@ export function StalledApplications({
   relatedTruncated?: boolean;
   onContactSaved: (applicationId: string, state: ContactStatusState) => void;
 }) {
+  const navigate = useNavigate();
   return (
     <div>
       <h2 className="mb-2 text-sm font-medium text-[#111114]">Stalled Applications</h2>
@@ -71,7 +74,7 @@ export function StalledApplications({
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id} data-stalled-application={row.id} className="border-t border-border">
+                <tr key={row.id} data-stalled-application={row.id} {...rowNav(navigate, { tab: "drivers", id: row.id }, "border-t border-border")}>
                   <td className="px-3 py-2.5 font-medium">{displayPersonName(row.name)}</td>
                   <td className="px-3 py-2.5">
                     {row.phone ? (

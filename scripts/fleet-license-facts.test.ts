@@ -167,11 +167,15 @@ describe("license-facts endpoint", () => {
     const p = await srv.buildReviewPacket(db, A, { now: NOW });
     expect(p!.license_reading!.license_number_masked).toBe("******6789");
   });
-  test("an expired license read off the photo becomes a hard blocker; under 25 escalates", async () => {
+  test("an expired license read off the photo becomes a hard blocker; under 23 is a hard blocker (minimum age, Nov 21 2026)", async () => {
     const db = fakeDb(seed());
-    const j = await (await lic.handleFleetLicenseFacts(req({ ...good, dob: "2003-06-01", license_expiration: "2026-10-01" }), deps(db))).json();
-    expect(j.assessment.hard_blockers.map((b: any) => b.code)).toContain("license_expired");
-    expect(j.assessment.escalations.map((b: any) => b.code)).toContain("young_driver");
+    const j = await (await lic.handleFleetLicenseFacts(req({ ...good, dob: "2004-06-01", license_expiration: "2026-10-01" }), deps(db))).json();
+    expect(j.assessment.hard_blockers.map((b: any) => b.code)).toEqual(expect.arrayContaining(["license_expired", "under_min_age"]));
+    // 23 (was a young-driver escalation under 25) is not blocked or escalated for age.
+    const db23 = fakeDb(seed());
+    const j23 = await (await lic.handleFleetLicenseFacts(req({ ...good, dob: "2003-06-01" }), deps(db23))).json();
+    expect(j23.assessment.hard_blockers.map((b: any) => b.code)).not.toContain("under_min_age");
+    expect(j23.assessment.escalations.map((b: any) => b.code)).not.toContain("young_driver");
   });
   test("table not installed: 503, nothing changed", async () => {
     const db = fakeDb(seed(), { missing: ["fleet_license_readings"] });

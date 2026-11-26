@@ -223,11 +223,12 @@ export function buildCollectionsWatch(input: {
 /**
  * Payments statuses the Overview card and the Payments overdue filter share.
  * `current` is issued and not yet due, so it is absent. This list does not call Stripe.
+ * `collections` is absent too: a row moved to Payments > Collections is a debt tracked there
+ * (Dolmar, Nov 22 2026), not late rent, so it never counts as Overdue.
  */
 export const COLLECTIONS_WATCH_STATUSES = [
   "late",
   "past_due",
-  "collections",
   "overdue",
   "failed",
   "unpaid",

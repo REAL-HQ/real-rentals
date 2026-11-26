@@ -43,6 +43,7 @@ import {
   type OutreachSettings,
 } from "@/lib/missing-items";
 import { notDrivingGigYet } from "@/lib/fleet-review";
+import { isSuppressedEmail } from "@/lib/email-suppression";
 
 export const OUTREACH_LOG_TABLE = "applicant_outreach_log";
 const APP_COLUMNS =
@@ -97,20 +98,8 @@ async function readIn(admin: any, table: string, cols: string, field: string, id
   return rows;
 }
 
-/** Common misspellings of big mail domains, plus reserved test domains. These never deliver. */
-const UNDELIVERABLE_DOMAINS = new Set([
-  "gkail.com", "gmail.vom", "gmail.con", "gmail.co", "gmial.com", "gmai.com", "gamil.com", "gnail.com", "fmail.com",
-  "yaho.com", "yahoo.con", "hotmal.com", "hotmail.con", "outlok.com", "icloud.con",
-]);
-
-export function isSuppressedEmail(raw: unknown, bad: ReadonlySet<string>): boolean {
-  const e = String(raw ?? "").trim().toLowerCase();
-  const dom = e.split("@")[1] ?? "";
-  if (!dom) return false;
-  if (bad.has(e)) return true;
-  if (UNDELIVERABLE_DOMAINS.has(dom)) return true;
-  return dom.endsWith(".invalid") || dom.endsWith(".test");
-}
+// The rule is shared with every renter-facing email (email-suppression.ts).
+export { isSuppressedEmail };
 
 /** Recipients with a bounced or complained delivery on record. Fails open to an empty set (the provider still bounces). */
 async function loadSuppressedEmails(admin: any): Promise<Set<string>> {
@@ -466,6 +455,14 @@ async function closeOne(admin: any, p: { app: OutreachApp; email: boolean; sms: 
   const claimId = claim.data?.id;
   // Only if nobody changed the status meanwhile.
   const upd = await admin.from("applications").update({ status: "closed" }).eq("id", p.app.id).eq("status", p.app.status).select("id").maybeSingle();
+  if (!upd.error && upd.data) {
+    try {
+      const { releasePendingReservation } = await import("@/lib/pending-reservation.server");
+      await releasePendingReservation(admin, { applicationId: p.app.id, reason: "application_closed" });
+    } catch (err) {
+      console.error("[missing-items] pending reservation release failed", err);
+    }
+  }
   if (upd.error || !upd.data) {
     if (claimId) await admin.from(AUTOCLOSE_TABLE).delete().eq("id", claimId);
     if (upd.error) throw new Error(upd.error.message);

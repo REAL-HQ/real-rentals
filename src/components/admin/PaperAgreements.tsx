@@ -1,4 +1,5 @@
 import { AppSelect } from "@/components/ui/app-select";
+import { rowOpenProps, ROW_OPEN_CLASS, rowNav } from "@/lib/row-click";
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -263,7 +264,7 @@ function PaperPanel({ applicationId }: { applicationId: string }) {
       </Button>
       <p role="status">{message}</p>
       {rows.map((r) => (
-        <article key={r.id} className="border-b py-2 break-words">
+        <article key={r.id} className={`border-b py-2 break-words ${ROW_OPEN_CLASS}`} {...rowOpenProps(() => get(r.id, true))}>
           <p>
             {r.file_name} — {r.agreement_type ?? "Type unavailable"} — Signed{" "}
             {r.signed_on ?? "Not recorded"}

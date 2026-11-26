@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getVehicleTurnaround } from "@/lib/vehicle-turnaround.functions";
 import { VEHICLE_TURNAROUND_ENABLED } from "@/lib/vehicle-turnaround-flag";
@@ -15,6 +16,7 @@ export function VehicleTurnaround() {
 }
 
 function VehicleTurnaroundLive() {
+  const navigate = useNavigate();
   const load = useServerFn(getVehicleTurnaround);
   const [board, setBoard] = useState<VehicleTurnaroundBoard | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +80,7 @@ function VehicleTurnaroundLive() {
             </thead>
             <tbody>
               {board.rows.map((row) => (
-                <tr key={row.vehicleId} className="border-b border-[#EDEDF0] last:border-b-0 align-top">
+                <tr key={row.vehicleId} {...rowNav(navigate, row.vehicleSearch, "border-b border-[#EDEDF0] last:border-b-0 align-top")}>
                   <td className="px-3 py-2">
                     <Link to="/admin" search={row.vehicleSearch} className="font-medium text-[#111114] underline">
                       {row.label}

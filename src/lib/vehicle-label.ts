@@ -83,7 +83,9 @@ export function vehicleMatchesQuery(v: VehicleLabelSource, query: string): boole
   const compact = q.replace(/\s+/g, "");
   if (hay.includes(q)) return true;
   if (compact && hay.replace(/\s+/g, "").includes(compact)) return true;
-  return false;
+  // Several words in any order ("ford 2015", "fusion 153036") must all appear.
+  const words = q.split(/\s+/).filter(Boolean);
+  return words.length > 1 && words.every((w) => hay.includes(w));
 }
 
 /** Columns every vehicle query should include so the combobox can label/search. */

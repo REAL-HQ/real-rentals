@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { RESERVATION_ROW_TYPE } from "@/lib/payment-category";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
@@ -7,8 +8,13 @@ import {
   reservationPickupDate,
   writeReservationDetails,
   RESERVATION_STATUS,
+  vinLast6,
   type ReservationRow,
 } from "@/lib/reservations";
+import { tierAllows } from "@/lib/roles";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
+import { SwitchReservationVehicleInput, type SwitchResult } from "@/lib/reservation-switch";
+import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 import {
   DEFAULT_RESERVATION_DEPOSIT_SETTINGS,
   isReservationDepositStatus,
@@ -51,7 +57,7 @@ async function loadDepositSettings(_admin: any): Promise<ReservationDepositSetti
   return { ...DEFAULT_RESERVATION_DEPOSIT_SETTINGS };
 }
 
-function mapRow(r: any, app: any, veh: any): ReservationRow {
+function mapRow(r: any, app: any, veh: any, extra?: { thumbnailPath?: string | null; weeklyRate?: number | null }): ReservationRow {
   const label = veh ? [veh.year, veh.make, veh.model].filter(Boolean).join(" ").trim() || null : null;
   const details = readReservationDetails(r.reservation_note);
   const status = isReservationDepositStatus(r.reservation_deposit_status)
@@ -69,16 +75,32 @@ function mapRow(r: any, app: any, veh: any): ReservationRow {
     pickupTime: details.pickupTime,
     pickupLocation: details.pickupLocation,
     note: details.note,
+    bookedBy: details.bookedBy,
     createdAt: r.created_at,
+    status: r.status ?? "reserved",
+    holdReason: r.hold_reason ?? null,
+    holdStartedAt: r.hold_started_at ?? null,
     depositRequired: r.reservation_deposit_required === true,
     depositAmount: Number(r.reservation_deposit_amount ?? 0),
     depositStatus: status,
     depositPaymentId: r.reservation_deposit_payment_id ?? null,
+    plate: veh?.license_plate ?? null,
+    vinLast6: vinLast6(veh?.vin),
+    thumbnailPath: extra?.thumbnailPath ?? null,
+    ...(extra && "weeklyRate" in extra ? { weeklyRate: extra.weeklyRate ?? null } : {}),
   };
 }
 
-/** One pickup/login email per new reservation; existing accounts get the portal URL, not a new password link. */
-async function maybeSendBookingLoginEmail(
+/**
+ * One "Your Pickup Is Booked" email per new reservation (switch
+ * booking_login_email, kept under its old key so the saved setting carries).
+ *
+ * It carries NO login details (t463u / t466u). The login was created a few
+ * lines earlier only because a rental needs a driver id; nothing about it is
+ * emailed here. The Driver Portal opens at pickup, and the one login email is
+ * portal-welcome.server.ts, after the pickup rent is paid.
+ */
+async function maybeSendPickupBookedEmail(
   admin: any,
   applicationId: string,
   reservation: { pickupDate: string; pickupTime: string; pickupLocation: string; vehicle: string | null },
@@ -90,33 +112,22 @@ async function maybeSendBookingLoginEmail(
 
   const { data: app, error } = await admin
     .from("applications")
-    .select("id,email,full_name,user_id,status")
+    .select("id,email,full_name,status")
     .eq("id", applicationId)
     .maybeSingle();
   if (error || !app?.email) return "failed";
   if (!["approved", "active"].includes(String(app.status ?? "").toLowerCase())) return "skipped";
 
   try {
-    const { provisionDriverAccount } = await import("@/lib/driver-account.server");
-    const account = await provisionDriverAccount(admin, {
-      applicationId,
-      email: String(app.email),
-      fullName: (app.full_name as string | null) ?? null,
-    });
-    if (account.conflict) return "failed";
-    // Existing accounts receive the confirmed appointment and portal URL;
-    // only a brand-new account receives a set-password link.
-
-    const { sendPortalInviteEmail } = await import("@/lib/email.server");
-    await sendPortalInviteEmail({
+    const { sendPickupBookedEmail } = await import("@/lib/email.server");
+    const r = await sendPickupBookedEmail({
       to: String(app.email),
       firstName: String(app.full_name ?? "there").trim().split(/\s+/)[0] || "there",
-      inviteUrl: account.inviteUrl,
       reservation,
     });
-    return "sent";
+    return r?.ok === false ? "failed" : "sent";
   } catch (e) {
-    console.error("[reservation] booking login email failed", e);
+    console.error("[reservation] pickup booked email failed", e);
     return "failed";
   }
 }
@@ -132,7 +143,8 @@ export const getReservationDepositSettings = createServerFn({ method: "GET" })
 export const listReservations = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<{ rows: ReservationRow[]; settings: ReservationDepositSettings; reservationFeeOn: boolean }> => {
-    await requireStaff(context.userId);
+    const actor = await requireStaff(context.userId);
+    const canSeeMoney = tierAllows(actor.tier, "manager");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const settings = await loadDepositSettings(supabaseAdmin);
     // With the $50 Reservation Fee on, these columns hold the Reservation Fee,
@@ -142,14 +154,13 @@ export const listReservations = createServerFn({ method: "GET" })
       const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
       reservationFeeOn = (await loadReservationFeeSettings(supabaseAdmin)).enabled;
     } catch { /* off */ }
-    const { data, error } = await supabaseAdmin
-      .from("rentals")
-      .select(
-        "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id",
-      )
-      .eq("status", RESERVATION_STATUS)
-      .order("start_date", { ascending: true })
-      .limit(500);
+    const baseCols =
+      "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,weekly_rate,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id";
+    const run = (cols: string) =>
+      supabaseAdmin.from("rentals").select(cols).in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation"]).order("start_date", { ascending: true }).limit(500);
+    let { data, error } = await run(`${baseCols},hold_reason,hold_started_at`);
+    // Before the On Hold migration is applied the hold columns are missing: read without them.
+    if (error && /hold_/i.test(error.message)) ({ data, error } = await run(baseCols));
     if (error) {
       if (/reservation_/i.test(error.message)) return { rows: [], settings, reservationFeeOn };
       throw new Error(error.message);
@@ -158,12 +169,26 @@ export const listReservations = createServerFn({ method: "GET" })
     if (!list.length) return { rows: [], settings, reservationFeeOn };
     const appIds = [...new Set(list.map((r) => r.application_id).filter(Boolean))] as string[];
     const vehicleIds = [...new Set(list.map((r) => r.vehicle_id))];
-    const [apps, vehicles] = await Promise.all([
+    const [apps, vehicles, media, thumbSettings] = await Promise.all([
       appIds.length
         ? supabaseAdmin.from("applications").select("id,full_name,email").in("id", appIds)
         : Promise.resolve({ data: [] as any[], error: null }),
-      supabaseAdmin.from("vehicles").select("id,unit_number,year,make,model").in("id", vehicleIds),
+      supabaseAdmin.from("vehicles").select("id,unit_number,year,make,model,license_plate,vin").in("id", vehicleIds),
+      supabaseAdmin
+        .from("vehicle_media")
+        .select("id,vehicle_id,storage_path")
+        .in("vehicle_id", vehicleIds)
+        .eq("kind", "original")
+        .order("is_primary", { ascending: false })
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true }),
+      supabaseAdmin
+        .from("app_settings")
+        .select("key,value")
+        .in("key", vehicleIds.map((id) => vehicleListThumbnailKey(id))),
     ]);
+    // Thumbnails are cosmetic: a failed read leaves the placeholder, never the list.
+    const thumbnailFor = chooseVehicleThumbnailPaths((media.data ?? []) as VehicleThumbnailMedia[], thumbSettings.data ?? []);
     if (apps.error) throw new Error(apps.error.message);
     if (vehicles.error) throw new Error(vehicles.error.message);
     const appBy = new Map((apps.data ?? []).map((a: any) => [a.id, a]));
@@ -171,7 +196,12 @@ export const listReservations = createServerFn({ method: "GET" })
     return {
       settings,
       reservationFeeOn,
-      rows: list.map((r) => mapRow(r, r.application_id ? appBy.get(r.application_id) : null, vehBy.get(r.vehicle_id))),
+      rows: list.map((r) =>
+        mapRow(r, r.application_id ? appBy.get(r.application_id) : null, vehBy.get(r.vehicle_id), {
+          thumbnailPath: thumbnailFor.get(r.vehicle_id) ?? null,
+          ...(canSeeMoney ? { weeklyRate: r.weekly_rate == null ? null : Number(r.weekly_rate) } : {}),
+        }),
+      ),
     };
   });
 
@@ -201,15 +231,24 @@ export const createReservation = createServerFn({ method: "POST" })
 
 /**
  * The one Reserved code path, shared by staff (createReservation, manager
- * only) and FLEET (/api/public/fleet/pickup-slots). Callers authorize first.
+ * only), FLEET (/api/public/fleet/pickup-slots) and the renter on the Payment
+ * Received page (payment-received.server.ts, scoped to a paid Reservation Fee
+ * Checkout). Callers authorize first.
  */
-export async function createReservationCore(admin: any, data: CreateReservationData): Promise<{ id: string; loginEmail: string }> {
+export async function createReservationCore(
+  admin: any,
+  data: CreateReservationData & {
+    /** Server-only (never in CreateReservationInput): the renter picked this slot on the Payment Received page. */
+    bookedBy?: "renter";
+  },
+): Promise<{ id: string; loginEmail: string }> {
   const pickup = reservationPickupDate(data.pickupDate);
   if (!pickup) throw new Error("Pick A Real Pickup Date.");
   const reservationNote = writeReservationDetails({
     pickupTime: data.pickupTime,
     pickupLocation: data.pickupLocation,
     note: data.note,
+    bookedBy: data.bookedBy === "renter" ? "renter" : null,
   });
   const settings = await loadDepositSettings(admin);
   // No per-booking deposit any more: only the Reservation Fee below sets these columns.
@@ -239,13 +278,17 @@ export async function createReservationCore(admin: any, data: CreateReservationD
     .maybeSingle();
   if (appErr) throw new Error(appErr.message);
   if (!app) throw new Error("Applicant Not Found.");
+  // Never rent to a blacklisted renter (rentals_blacklist_guard refuses it too).
+  await (await import("@/lib/blacklist.server")).assertNotBlacklisted(admin, data.applicationId);
   // Safer: block until approved (no held emails for unapproved drivers).
   const appStatus = String(app.status ?? "").toLowerCase();
   if (!["approved", "active"].includes(appStatus)) {
     throw new Error("Only An Approved Applicant Or Active Renter Can Hold A Reservation.");
   }
   if (!app.user_id) {
-    // Provision so driver_id NOT NULL can be satisfied; invite may follow.
+    // Provision so driver_id NOT NULL can be satisfied. Creates the login
+    // only; nothing is emailed and portal access stays closed until pickup
+    // (portal-pickup-gate). The one login email is the pickup welcome.
     try {
       const { provisionDriverAccount } = await import("@/lib/driver-account.server");
       const account = await provisionDriverAccount(admin, {
@@ -270,24 +313,62 @@ export async function createReservationCore(admin: any, data: CreateReservationD
   if (!vehicle) throw new Error("Vehicle Not Found.");
   if (vehicle.archived_at) throw new Error("That Vehicle Is Archived.");
   const vStatus = String(vehicle.status ?? "").toLowerCase();
-  if (["sold", "retired", "archived", "rented"].includes(vStatus)) {
+  if (["sold", "retired", "archived", "rented", "unavailable"].includes(vStatus) || isForSaleVehicleStatus(vStatus)) {
     throw new Error("That Vehicle Is Not Free To Reserve.");
   }
 
+  // A Pending Reservation or an On Hold row for this lead is reused. A
+  // reserved row that already has a pickup time still refuses, so a second
+  // tap stays "already booked". Book Pickup (PR 517) calls this function.
+  const { reuseOpenHoldForPickup } = await import("@/lib/pending-reservation.server");
+  const reused = await reuseOpenHoldForPickup(admin, {
+    applicationId: data.applicationId,
+    vehicleId: data.vehicleId,
+    pickupDate: pickup,
+    pickupTime: data.pickupTime,
+    reservationNote,
+    deposit,
+    feeOn,
+    feePaymentId,
+  });
+  if (reused.reused) {
+    const loginEmail = reused.pickupWasNew
+      ? await maybeSendPickupBookedEmail(admin, data.applicationId, {
+          pickupDate: pickup,
+          pickupTime: data.pickupTime,
+          pickupLocation: data.pickupLocation.trim(),
+          vehicle: [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ").trim() || null,
+        })
+      : "skipped";
+    if (reused.status === RESERVATION_STATUS) {
+      try {
+        const { maybeConfirmReservation } = await import("@/lib/reservation-confirmation.server");
+        await maybeConfirmReservation(admin, { rentalId: reused.id });
+      } catch (e) {
+        console.error("[reservation] confirmation check failed", String((e as Error)?.message ?? e));
+      }
+    }
+    return { id: reused.id, loginEmail };
+  }
+
+  const vStatusHeld = String(vehicle.status ?? "").toLowerCase();
+  if (vStatusHeld === "pending_reservation") throw new Error("That Vehicle Is Not Free To Reserve.");
+
   const { data: busyActive } = await admin.from("rentals").select("id").eq("vehicle_id", data.vehicleId).eq("status", "active").limit(1);
   if (busyActive?.length) throw new Error("That Vehicle Already Has An Active Rental.");
-  const { data: busyReserved } = await admin.from("rentals").select("id").eq("vehicle_id", data.vehicleId).eq("status", RESERVATION_STATUS).limit(1);
+  const { data: busyReserved } = await admin.from("rentals").select("id").eq("vehicle_id", data.vehicleId).in("status", [RESERVATION_STATUS, "pending_reservation", "on_hold"]).limit(1);
   if (busyReserved?.length) throw new Error("That Vehicle Is Already Reserved.");
-  const { data: driverReserved } = await admin.from("rentals").select("id").eq("driver_id", app.user_id).eq("status", RESERVATION_STATUS).limit(1);
+  const { data: driverReserved } = await admin.from("rentals").select("id").eq("driver_id", app.user_id).in("status", [RESERVATION_STATUS, "pending_reservation", "on_hold"]).limit(1);
   if (driverReserved?.length) throw new Error("This Person Already Has A Reserved Car. Cancel It First.");
 
   // One booking per pickup slot (date + time), for staff and FLEET alike.
-  const { data: sameDay } = await admin.from("rentals").select("id,reservation_note").eq("status", RESERVATION_STATUS).eq("start_date", pickup).limit(50);
+  const { data: sameDay } = await admin.from("rentals").select("id,reservation_note").in("status", [RESERVATION_STATUS, "pending_reservation"]).eq("start_date", pickup).limit(50);
   if ((sameDay ?? []).some((r: any) => readReservationDetails(r.reservation_note).pickupTime === data.pickupTime)) {
     throw new Error("That Pickup Slot Is Already Booked.");
   }
 
-  const weekly = typeof vehicle.weekly_rate === "number" ? vehicle.weekly_rate : 0;
+  const { weeklyRateForApplication } = await import("@/lib/agreement-weekly.server");
+  const weekly = (await weeklyRateForApplication(admin, data.applicationId, vehicle.weekly_rate)) ?? 0;
   const insertRow: Record<string, unknown> = {
     driver_id: app.user_id,
     vehicle_id: data.vehicleId,
@@ -308,6 +389,8 @@ export async function createReservationCore(admin: any, data: CreateReservationD
 
   const { data: inserted, error: insErr } = await admin.from("rentals").insert(insertRow as never).select("id").single();
   if (insErr) {
+    const blacklisted = (await import("@/lib/blacklist.server")).blacklistRefusalFromDbError(insErr.message);
+    if (blacklisted) throw new Error(blacklisted);
     if (/rentals_one_reserved_per_vehicle/i.test(insErr.message)) throw new Error("That Vehicle Is Already Reserved.");
     if (/rentals_one_reserved_per_driver/i.test(insErr.message)) throw new Error("This Person Already Has A Reserved Car.");
     if (/rentals_one_reserved_per_pickup_slot/i.test(insErr.message)) throw new Error("That Pickup Slot Is Already Booked.");
@@ -316,8 +399,12 @@ export async function createReservationCore(admin: any, data: CreateReservationD
   }
 
   await admin.from("vehicles").update({ status: "reserved" }).eq("id", data.vehicleId).neq("status", "rented");
+  // The Reservation Fee was paid before this row. Link that payment. The signed
+  // agreement stays unlinked until the rental is active, so pickup can still
+  // count it (linkOrphansToRental).
+  await (await import("@/lib/booking-links.server")).linkOrphansToRental(admin, inserted.id);
 
-  const loginEmail = await maybeSendBookingLoginEmail(admin, data.applicationId, {
+  const loginEmail = await maybeSendPickupBookedEmail(admin, data.applicationId, {
     pickupDate: pickup,
     pickupTime: data.pickupTime,
     pickupLocation: data.pickupLocation.trim(),
@@ -342,13 +429,14 @@ export const cancelReservation = createServerFn({ method: "POST" })
     const { data: row, error } = await supabaseAdmin.from("rentals").select("id,status,vehicle_id").eq("id", data.rentalId).maybeSingle();
     if (error) throw new Error(error.message);
     if (!row) throw new Error("Reservation Not Found.");
-    if (!isReservationStatus(row.status)) throw new Error("That Rental Is Not An Open Reservation.");
+    const pending = row.status === "pending_reservation";
+    if (!pending && !isReservationStatus(row.status)) throw new Error("That Rental Is Not An Open Reservation.");
 
     const { error: upd } = await supabaseAdmin
       .from("rentals")
       .update({ status: "cancelled" } as never)
       .eq("id", data.rentalId)
-      .eq("status", RESERVATION_STATUS);
+      .in("status", pending ? ["pending_reservation"] : [RESERVATION_STATUS]);
     if (upd) throw new Error(upd.message);
 
     if (row.vehicle_id) {
@@ -356,16 +444,41 @@ export const cancelReservation = createServerFn({ method: "POST" })
         .from("rentals")
         .select("id")
         .eq("vehicle_id", row.vehicle_id)
-        .in("status", [RESERVATION_STATUS, "active"])
+        .in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation", "active"])
         .limit(1);
       if (!still?.length) {
-        const { readFleetCapacity, scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
-        const before = await readFleetCapacity(supabaseAdmin).catch(() => null);
-        await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).eq("status", "reserved");
-        scheduleCapacitySideEffects(supabaseAdmin, { vehicleId: row.vehicle_id, capacityBefore: before });
+        await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).in("status", ["reserved", "pending_reservation"]);
       }
     }
     return { ok: true };
+  });
+
+/** Staff Release Hold. Only a Pending Reservation. The car returns to Available. */
+export const releaseReservationHold = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ rentalId: UUID }).parse(d))
+  .handler(async ({ context, data }): Promise<{ released: number }> => {
+    await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { releasePendingReservation } = await import("@/lib/pending-reservation.server");
+    const result = await releasePendingReservation(supabaseAdmin, { rentalId: data.rentalId, reason: "staff_release" });
+    if (!result.released) throw new Error("That Car Is Not On A Pending Reservation.");
+    return result;
+  });
+
+/**
+ * Switch Vehicle on a Reserved rental (Manager+). Core logic and guards live in
+ * reservation-switch.server.ts; this wrapper authorizes and writes the audit entry.
+ */
+export const switchReservationVehicle = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => SwitchReservationVehicleInput.parse(d))
+  .handler(async ({ context, data }): Promise<SwitchResult> => {
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { switchReservationVehicleCore } = await import("@/lib/reservation-switch.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    return switchReservationVehicleCore(supabaseAdmin, data, (entry) => logAudit(actor, entry));
   });
 
 export const clearReservationAfterActivate = createServerFn({ method: "POST" })
@@ -378,7 +491,7 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
       .from("rentals")
       .select("id,vehicle_id,reservation_deposit_status,reservation_deposit_amount,reservation_deposit_payment_id,reservation_deposit_required")
       .eq("application_id", data.applicationId)
-      .eq("status", RESERVATION_STATUS);
+      .in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation"]);
     if (data.vehicleId) q = q.eq("vehicle_id", data.vehicleId);
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
@@ -388,7 +501,7 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
       // Nothing is carried into the security deposit: the old reservation
       // deposit is retired, and a Reservation Fee is credited to week 1
       // (applyReservationFeeCredit), never held as a deposit (card t315s1710).
-      const { error: upd } = await supabaseAdmin.from("rentals").update(patch as never).eq("id", row.id).eq("status", RESERVATION_STATUS);
+      const { error: upd } = await supabaseAdmin.from("rentals").update(patch as never).eq("id", row.id).in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation"]);
       if (!upd) {
         cleared += 1;
         // Free the reserved vehicle if nothing else holds it.
@@ -396,13 +509,10 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
           .from("rentals")
           .select("id")
           .eq("vehicle_id", row.vehicle_id)
-          .in("status", [RESERVATION_STATUS, "active"])
+          .in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation", "active"])
           .limit(1);
         if (!still.data?.length) {
-          const { readFleetCapacity, scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
-          const before = await readFleetCapacity(supabaseAdmin).catch(() => null);
-          await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).eq("status", "reserved");
-          scheduleCapacitySideEffects(supabaseAdmin, { vehicleId: row.vehicle_id, capacityBefore: before });
+          await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).in("status", ["reserved", "pending_reservation"]);
         }
       }
     }
@@ -494,7 +604,7 @@ export const recordReservationFee = createServerFn({ method: "POST" })
       const ins = await supabaseAdmin
         .from("payments")
         .insert({
-          type: "fee",
+          type: RESERVATION_ROW_TYPE,
           reason: RESERVATION_FEE_REASON,
           status: "paid",
           amount,
@@ -546,11 +656,13 @@ export const getOpenReservationForApplication = createServerFn({ method: "POST" 
     const { data: row, error } = await supabaseAdmin
       .from("rentals")
       .select(
-        "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id",
+        "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,weekly_rate,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id",
       )
       .eq("application_id", data.applicationId)
       .eq("status", RESERVATION_STATUS)
       .maybeSingle();
+    // A Pending Reservation is not returned here. The profile still shows
+    // Book Pickup (PR 517 hides that button when this reservation exists).
     if (error) {
       if (/reservation_/i.test(error.message)) return { reservation: null, settings, feeDisplayStatus: fee.status };
       throw new Error(error.message);
@@ -567,12 +679,12 @@ export const getOpenReservationForApplication = createServerFn({ method: "POST" 
 
 export const listVehiclesForReservation = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<Array<{ id: string; unit_number: string | null; year: number | null; make: string | null; model: string | null; status: string | null; weekly_rate: number | null }>> => {
+  .handler(async ({ context }): Promise<Array<{ id: string; unit_number: string | null; year: number | null; make: string | null; model: string | null; license_plate: string | null; vin: string | null; status: string | null; weekly_rate: number | null }>> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("vehicles")
-      .select("id,unit_number,year,make,model,status,weekly_rate,archived_at")
+      .select("id,unit_number,year,make,model,license_plate,vin,status,weekly_rate,archived_at")
       .is("archived_at", null)
       .in("status", ["available", "ready", "onboarding"])
       .order("unit_number", { ascending: true })
@@ -585,17 +697,19 @@ export const listVehiclesForReservation = createServerFn({ method: "GET" })
       .from("rentals")
       .select("vehicle_id")
       .in("vehicle_id", ids)
-      .in("status", ["active", "reserved"]);
+      .in("status", ["active", "reserved", "on_hold", "pending_reservation"]);
     if (busy.error) throw new Error(busy.error.message);
     const taken = new Set((busy.data ?? []).map((r) => r.vehicle_id));
     return (data ?? [])
-      .filter((v) => !taken.has(v.id))
+      .filter((v) => !taken.has(v.id) && !isForSaleVehicleStatus(v.status))
       .map((v) => ({
         id: v.id,
         unit_number: v.unit_number ?? null,
         year: v.year ?? null,
         make: v.make ?? null,
         model: v.model ?? null,
+        license_plate: v.license_plate ?? null,
+        vin: v.vin ?? null,
         status: v.status ?? null,
         weekly_rate: typeof v.weekly_rate === "number" ? v.weekly_rate : null,
       }));
@@ -604,12 +718,12 @@ export const listVehiclesForReservation = createServerFn({ method: "GET" })
 
 export const listApprovedForReservation = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<Array<{ id: string; full_name: string | null; email: string | null }>> => {
+  .handler(async ({ context }): Promise<Array<{ id: string; full_name: string | null; email: string | null; phone: string | null }>> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("applications")
-      .select("id,full_name,email,status,user_id")
+      .select("id,full_name,email,phone,status,user_id")
       .in("status", ["approved", "active"])
       .order("full_name", { ascending: true })
       .limit(500);
@@ -620,5 +734,10 @@ export const listApprovedForReservation = createServerFn({ method: "GET" })
     const taken = new Set((reserved.data ?? []).map((r) => r.application_id).filter(Boolean));
     return (data ?? [])
       .filter((a) => !taken.has(a.id))
-      .map((a) => ({ id: a.id, full_name: a.full_name ?? null, email: a.email ?? null }));
+      .map((a) => ({
+        id: a.id,
+        full_name: a.full_name ?? null,
+        email: a.email ?? null,
+        phone: a.phone ?? null,
+      }));
   });

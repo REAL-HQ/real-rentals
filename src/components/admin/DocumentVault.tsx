@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Trash2, ExternalLink, Lock, History, Loader2, AlertTriangle } from "lucide-react";
+import { Trash2, ExternalLink, Lock, History, Loader2, AlertTriangle, Archive, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { FileUploader } from "@/components/FileUploader";
 import {
@@ -13,6 +13,9 @@ import {
   confirmDocumentUpload,
   updateDocumentMeta,
   deleteDocument,
+  archiveDocument,
+  restoreDocument,
+  isMultiFileCategory,
   getMyVault,
   type VaultDocument,
   type DocCategory,
@@ -47,9 +50,13 @@ function expiryTone(d: VaultDocument): "expired" | "soon" | null {
 }
 
 /**
- * Shared document vault. Every upload remains visible by category, with the
- * newest file marked Latest and earlier files retained beneath it. Driver-sent
- * files are permanent records; staff cannot delete them from this vault.
+ * Shared document vault. A section can hold several active files (two pay
+ * stubs, a card per vehicle): every active file is listed, a new upload adds
+ * to them and never replaces one, and staff can archive a single file. Files
+ * archived or replaced on purpose sit under Previous Uploads, where staff can
+ * restore them. Single-record sections (agreements, applications) keep the
+ * newest as Latest. Driver-sent files are permanent records; staff cannot
+ * delete them from this vault.
  */
 export function DocumentVault({
   mode,
@@ -71,6 +78,8 @@ export function DocumentVault({
   const confirmUpload = useServerFn(confirmDocumentUpload);
   const patchMeta = useServerFn(updateDocumentMeta);
   const removeDoc = useServerFn(deleteDocument);
+  const archiveDoc = useServerFn(archiveDocument);
+  const restoreDoc = useServerFn(restoreDocument);
 
   const [fetchedDocs, setDocs] = useState<VaultDocument[]>([]);
   const [appId, setAppId] = useState<string | null>(applicationId ?? null);
@@ -101,6 +110,27 @@ export function DocumentVault({
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicationId, mode, controlled]);
+
+  async function archiveOne(d: VaultDocument) {
+    if (!confirm("Archive this file? It stays on record under Previous Uploads and can be restored.")) return;
+    try {
+      await archiveDoc({ data: { documentId: d.id } });
+      toast.success("File archived");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not archive");
+    }
+  }
+
+  async function restoreOne(d: VaultDocument) {
+    try {
+      await restoreDoc({ data: { documentId: d.id } });
+      toast.success("File restored");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not restore");
+    }
+  }
 
   async function uploadDoc(category: DocCategory, internal: boolean, file: File) {
     if (file.size > MAX_MB * 1024 * 1024) throw new Error(`Files must be under ${MAX_MB} MB`);
@@ -157,8 +187,12 @@ export function DocumentVault({
           const versions = docs
             .filter((d) => d.category === cat.key)
             .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
-          const doc = versions[0] ?? null;
-          const previous = versions.slice(1);
+          const multi = isMultiFileCategory(cat.key);
+          // Several active files for a multi-file section; the newest first.
+          const active = multi ? versions.filter((d) => d.is_current) : versions.slice(0, 1);
+          const doc = multi ? (active[0] ?? null) : (versions[0] ?? null);
+          const more = multi ? active.slice(1) : [];
+          const previous = multi ? versions.filter((d) => !d.is_current) : versions.slice(1);
           const tone = doc ? expiryTone(doc) : null;
           const title = DOC_TYPE_TITLES[cat.key] ?? cat.label;
           return (
@@ -169,7 +203,7 @@ export function DocumentVault({
                     <span className="text-[13px] font-medium text-[#111114]">{title}</span>
                     {doc ? (
                       <span className="inline-flex items-center rounded-full border border-[#BFE3CC] bg-[#EAF6EE] px-2 py-0.5 text-[10.5px] font-semibold text-[#1F8A4C]">
-                        Latest
+                        {multi ? (active.length === 1 ? "1 File" : `${active.length} Files`) : "Latest"}
                       </span>
                     ) : null}
                     {doc && !doc.visibility.includes("driver") ? (
@@ -239,11 +273,21 @@ export function DocumentVault({
                     <FileUploader
                       variant="inline"
                       label="+ Add"
+                      multiple={multi}
                       accept="image/*,application/pdf"
                       maxBytes={MAX_MB * 1024 * 1024}
                       context={title}
                       upload={(file) => uploadDoc(cat.key as DocCategory, false, file)}
                     />
+                  ) : null}
+                  {mode === "admin" && !readOnly && multi && doc && !doc.signed_agreement ? (
+                    <button
+                      onClick={() => void archiveOne(doc)}
+                      className="p-1.5 rounded-md hover:bg-[#F4F4F6] text-[#55555E]"
+                      title="Archive"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                    </button>
                   ) : null}
                   {mode === "admin" && !readOnly && doc && !STAFF_FILED_CATEGORIES.includes(cat.key) && !doc.signed_agreement && doc.uploaded_by_role !== "driver" ? (
                     <button
@@ -266,6 +310,34 @@ export function DocumentVault({
                 </div>
               </div>
 
+              {more.length ? (
+                <ul className="mt-2 ml-3 divide-y divide-[#EDEDF0] border-l border-[#EDEDF0] pl-3">
+                  {more.map((d) => (
+                    <li key={d.id} className="flex items-center justify-between gap-3 py-2">
+                      <div className="min-w-0 text-[11.5px] text-[#55555E]">
+                        <div className="truncate">{d.label || d.file_name || "Document"}</div>
+                        <div className="mt-0.5 text-[10.5px] text-[#77777F]">
+                          {fmtSize(d.size_bytes) ? `${fmtSize(d.size_bytes)} · ` : ""}Uploaded {fmtDateTime(d.created_at)}
+                          {!d.visibility.includes("driver") ? " · Team Only" : ""}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {d.url ? (
+                          <a href={d.url} target="_blank" rel="noreferrer" className="text-[11.5px] font-semibold text-[#D03020]">
+                            View
+                          </a>
+                        ) : null}
+                        {mode === "admin" && !readOnly && !d.signed_agreement ? (
+                          <button onClick={() => void archiveOne(d)} className="text-[11.5px] font-semibold text-[#55555E]" title="Archive">
+                            Archive
+                          </button>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
               {previous.length ? (
                 <div className="mt-3 ml-3 border-l border-[#EDEDF0] pl-3">
                   <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#77777F]">
@@ -282,6 +354,11 @@ export function DocumentVault({
                           <a href={d.url} target="_blank" rel="noreferrer" className="shrink-0 text-[11.5px] font-semibold text-[#D03020]">
                             View
                           </a>
+                        ) : null}
+                        {mode === "admin" && !readOnly && multi && !d.signed_agreement ? (
+                          <button onClick={() => void restoreOne(d)} className="shrink-0 inline-flex items-center gap-1 text-[11.5px] font-semibold text-[#55555E]" title="Restore">
+                            <RotateCcw className="w-3 h-3" /> Restore
+                          </button>
                         ) : null}
                       </li>
                     ))}

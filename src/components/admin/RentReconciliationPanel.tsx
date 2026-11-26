@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { getRentReconciliation } from "@/lib/rent-reconciliation.functions";
@@ -131,8 +132,9 @@ function Report({ report }: { report: RentReconciliationReport }) {
 }
 
 function Row({ row }: { row: RentRow }) {
+  const navigate = useNavigate();
   return (
-    <tr className="border-b align-top">
+    <tr {...rowNav(navigate, row.applicationId ? { tab: "drivers", id: row.applicationId } : row.vehicleId ? { tab: "vehicles", id: row.vehicleId } : null, "border-b align-top")}>
       <td className="py-2 pr-3">{row.applicationId ? <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }} className="underline">{row.renter}</Link> : row.renter}</td>
       <td className="py-2 pr-3">{row.vehicleId ? <Link to="/admin" search={{ tab: "vehicles", id: row.vehicleId }} className="underline">{row.vehicle}</Link> : row.vehicle}</td>
       <td className="py-2 pr-3">{row.statusLabel}</td>

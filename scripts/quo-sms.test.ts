@@ -414,6 +414,41 @@ describe("Quo webhook", () => {
     expect((await handleQuoWebhook(await signed(received("STOP")), { admin: db, processInbound })).status).toBe(503);
   });
 
+  test("QUO_WEBHOOK_KEY accepts a comma-separated list (one key per Quo webhook)", async () => {
+    const CALLS = "whsec_" + Buffer.from("calls-signing-secret-32-bytes-ok!!").toString("base64");
+    const SUMMARIES = "whsec_" + Buffer.from("summary-signing-secret-32-bytes!!!").toString("base64");
+    const OTHER = "whsec_" + Buffer.from("not-configured-secret-32-bytes!!!!").toString("base64");
+    expect(quo.parseQuoWebhookKeys(` ${SECRET} , ${CALLS},,${SUMMARIES} ,${CALLS}`)).toEqual([SECRET, CALLS, SUMMARIES]);
+    expect(quo.parseQuoWebhookKeys(undefined)).toEqual([]);
+    expect(quo.parseQuoWebhookKeys(" , ")).toEqual([]);
+    setEnv({ QUO_WEBHOOK_KEY: `${SECRET}, ${CALLS} ,${SUMMARIES}` });
+    const { handleQuoWebhook } = await import("@/lib/quo-webhook.server");
+    const seen: any[] = [];
+    const processInbound = async (a: any) => { seen.push(a); };
+    // Each configured key is accepted on its own.
+    expect((await handleQuoWebhook(await signed(received("a", "PNrZULvFMn", "ACk1")), { admin: db, processInbound })).status).toBe(200);
+    expect((await handleQuoWebhook(await signed(received("b", "PNrZULvFMn", "ACk2"), { secret: CALLS }), { admin: db, processInbound })).status).toBe(200);
+    expect((await handleQuoWebhook(await signed(received("c", "PNrZULvFMn", "ACk3"), { secret: SUMMARIES }), { admin: db, processInbound })).status).toBe(200);
+    expect(seen.map((x) => x.body)).toEqual(["a", "b", "c"]);
+    // A key not in the list is still refused, and nothing is read.
+    expect((await handleQuoWebhook(await signed(received("d", "PNrZULvFMn", "ACk4"), { secret: OTHER }), { admin: db, processInbound })).status).toBe(403);
+    expect(seen.length).toBe(3);
+    // A malformed entry does not break the valid ones.
+    setEnv({ QUO_WEBHOOK_KEY: `whsec_%%%not-base64%%%,${CALLS}` });
+    expect((await handleQuoWebhook(await signed(received("e", "PNrZULvFMn", "ACk5"), { secret: CALLS }), { admin: db, processInbound })).status).toBe(200);
+    // Only commas/blanks: treated as not configured.
+    setEnv({ QUO_WEBHOOK_KEY: " , " });
+    expect((await handleQuoWebhook(await signed(received("f", "PNrZULvFMn", "ACk6")), { admin: db, processInbound })).status).toBe(503);
+    // Direct helper: arrays and a single key (backward compatible).
+    const raw = '{"type":"call.completed"}';
+    const sig = await quo.signQuoWebhook(SUMMARIES, "wh_9", String(now), raw);
+    const h = { id: "wh_9", timestamp: String(now), signature: `v1,${sig}` };
+    expect(await quo.verifyQuoWebhook([SECRET, SUMMARIES], h, raw, now)).toBe(true);
+    expect(await quo.verifyQuoWebhook(SUMMARIES, h, raw, now)).toBe(true);
+    expect(await quo.verifyQuoWebhook([SECRET, CALLS], h, raw, now)).toBe(false);
+    expect(await quo.verifyQuoWebhook([], h, raw, now)).toBe(false);
+  });
+
   test("texts to either allowlisted line are accepted and tagged with that line", async () => {
     setEnv({ QUO_WEBHOOK_KEY: SECRET });
     const { handleQuoWebhook } = await import("@/lib/quo-webhook.server");

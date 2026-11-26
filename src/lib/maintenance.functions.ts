@@ -145,34 +145,258 @@ export const addServiceEvent = createServerFn({ method: "POST" })
 
 export const addManualReading = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({
-    vehicleId: z.string().uuid(), mileage: z.number().int().min(0).max(2_000_000), observedOn: isoDate,
-    note: z.string().trim().max(500).nullable().optional(),
-    supersedesId: z.string().uuid().nullable().optional(),
-    reason: z.string().trim().max(500).nullable().optional(),
-  }).parse(d))
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        vehicleId: z.string().uuid(),
+        mileage: z.number().int().min(0).max(1_999_999),
+        observedOn: isoDate,
+        note: z.string().trim().max(500).nullable().optional(),
+        supersedesId: z.string().uuid().nullable().optional(),
+        reason: z.string().trim().max(500).nullable().optional(),
+        photoPath: z
+          .string()
+          .regex(/^inbox\/odometer-[A-Za-z0-9._-]+$/)
+          .nullable()
+          .optional(),
+        photoName: z.string().trim().max(200).nullable().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     const { requireStaff } = await import("@/lib/roles.server");
     const actor = await requireStaff(context.userId);
-    if (data.observedOn > today()) return { ok: false as const, error: "The reading date can't be in the future." };
-    if (data.supersedesId && !data.reason) return { ok: false as const, error: "A correction needs a reason." };
+    if (data.observedOn > today())
+      return { ok: false as const, error: "The reading date can't be in the future." };
+    if (data.supersedesId && !data.reason)
+      return { ok: false as const, error: "A correction needs a reason." };
     const sb = await admin();
-    const { addOdometerReading } = await import("@/lib/maintenance.server");
+    const { addOdometerReading, attachInboxPhoto } = await import("@/lib/maintenance.server");
+    let documentId: string | null = null;
+    if (data.photoPath) {
+      try {
+        const photo = await attachInboxPhoto(sb, {
+          vehicleId: data.vehicleId,
+          path: data.photoPath,
+          fileName: data.photoName ?? null,
+          label: "Odometer Photo",
+          kind: "odometer_photo",
+          uploadedBy: actor.userId,
+          uploadedByRole: actor.role,
+        });
+        documentId = photo.id;
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: err instanceof Error ? err.message : "Could not save the photo.",
+        };
+      }
+    }
     const r = await addOdometerReading(sb, actor, {
-      vehicleId: data.vehicleId, mileage: data.mileage, observedOn: data.observedOn, sourceType: "manual",
-      note: [data.note, data.reason ? `Correction: ${data.reason}` : null].filter(Boolean).join(" — ") || null,
+      vehicleId: data.vehicleId,
+      mileage: data.mileage,
+      observedOn: data.observedOn,
+      sourceType: documentId ? "odometer_photo" : "manual",
+      documentId,
+      note:
+        [data.note, data.reason ? `Correction: ${data.reason}` : null]
+          .filter(Boolean)
+          .join(" — ") || null,
     });
     if (data.supersedesId && r.id) {
-      await sb.from("odometer_readings").update({ status: "superseded" }).eq("id", data.supersedesId).eq("vehicle_id", data.vehicleId);
-      await sb.from("odometer_readings").update({ supersedes_id: data.supersedesId } as any).eq("id", r.id);
+      await sb
+        .from("odometer_readings")
+        .update({ status: "superseded" })
+        .eq("id", data.supersedesId)
+        .eq("vehicle_id", data.vehicleId);
+      await sb
+        .from("odometer_readings")
+        .update({ supersedes_id: data.supersedesId } as any)
+        .eq("id", r.id);
     }
     await logAudit(actor, {
       action: data.supersedesId ? "odometer.corrected" : "odometer.recorded",
       summary: `${data.supersedesId ? "Corrected" : "Recorded"} mileage ${data.mileage.toLocaleString("en-US")} mi`,
-      entityType: "vehicle", entityId: data.vehicleId,
-      metadata: { reading_id: r.id, supersedes: data.supersedesId ?? null, reason: data.reason ?? null, status: r.status },
+      entityType: "vehicle",
+      entityId: data.vehicleId,
+      metadata: {
+        reading_id: r.id,
+        supersedes: data.supersedesId ?? null,
+        reason: data.reason ?? null,
+        status: r.status,
+      },
     });
-    return { ok: true as const, status: r.status };
+    return { ok: true as const, status: r.status, documentId };
+  });
+
+const dueMiles = z.number().int().min(0).max(1_999_999).nullable().optional();
+
+export const getVehicleMaintenanceTrack = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ vehicleId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { requireStaff } = await import("@/lib/roles.server");
+    await requireStaff(context.userId);
+    const sb = await admin();
+    const { loadVehicleMaintenance } = await import("@/lib/maintenance.server");
+    const view = await loadVehicleMaintenance(sb, data.vehicleId);
+    if (!view) return { ok: false as const, error: "Vehicle not found." };
+    return { ok: true as const, ...view };
+  });
+
+export const setNextServiceDue = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        vehicleId: z.string().uuid(),
+        nextDueMiles: dueMiles,
+        nextDueOn: isoDate.nullable().optional(),
+        notes: z.string().trim().max(2000).nullable().optional(),
+        intervalMiles: z.number().int().min(1).max(200_000).nullable().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { requireStaff } = await import("@/lib/roles.server");
+    const actor = await requireStaff(context.userId);
+    if (data.nextDueMiles === undefined && data.nextDueOn === undefined)
+      return { ok: false as const, error: "Enter a due mileage, a due date, or both." };
+    const sb = await admin();
+    const { saveOilNextDue } = await import("@/lib/maintenance.server");
+    try {
+      const saved = await saveOilNextDue(sb, {
+        vehicleId: data.vehicleId,
+        nextDueMiles: data.nextDueMiles,
+        nextDueOn: data.nextDueOn,
+        notes: data.notes,
+        intervalMiles: data.intervalMiles,
+      });
+      await logAudit(actor, {
+        action: "service_due.set",
+        summary:
+          `Set next oil service due${saved.row.next_due_miles != null ? ` at ${Number(saved.row.next_due_miles).toLocaleString("en-US")} mi` : ""}${saved.row.next_due_on ? ` on ${saved.row.next_due_on}` : ""}`.slice(
+            0,
+            300,
+          ),
+        entityType: "vehicle",
+        entityId: data.vehicleId,
+        metadata: {
+          schedule_id: saved.scheduleId,
+          next_due_miles: saved.row.next_due_miles,
+          next_due_on: saved.row.next_due_on,
+        },
+      });
+      return {
+        ok: true as const,
+        scheduleId: saved.scheduleId,
+        nextDueMiles: saved.row.next_due_miles ?? null,
+        nextDueOn: saved.row.next_due_on ?? null,
+      };
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: err instanceof Error ? err.message : "Could not save the next service due.",
+      };
+    }
+  });
+
+export const saveMonthlyInspection = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        vehicleId: z.string().uuid(),
+        lastDoneOn: isoDate.nullable().optional(),
+        nextDueOn: isoDate.nullable().optional(),
+        notes: z.string().trim().max(2000).nullable().optional(),
+        odometer: dueMiles,
+        photoPath: z
+          .string()
+          .regex(/^inbox\/inspection-[A-Za-z0-9._-]+$/)
+          .nullable()
+          .optional(),
+        photoName: z.string().trim().max(200).nullable().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { requireStaff } = await import("@/lib/roles.server");
+    const actor = await requireStaff(context.userId);
+    if (data.lastDoneOn && data.lastDoneOn > today())
+      return { ok: false as const, error: "Last Done cannot be in the future." };
+    if ((data.photoPath || data.odometer != null) && !data.lastDoneOn)
+      return { ok: false as const, error: "A photo or odometer is saved with Last Done." };
+    if (
+      data.lastDoneOn === undefined &&
+      data.nextDueOn === undefined &&
+      data.notes === undefined &&
+      !data.photoPath
+    ) {
+      return { ok: false as const, error: "Enter Last Done, Next Due, or Notes." };
+    }
+    const sb = await admin();
+    const { attachInboxPhoto, saveMonthlyInspection: saveMonthly } =
+      await import("@/lib/maintenance.server");
+    let documentId: string | null = null;
+    if (data.photoPath) {
+      try {
+        const photo = await attachInboxPhoto(sb, {
+          vehicleId: data.vehicleId,
+          path: data.photoPath,
+          fileName: data.photoName ?? null,
+          label: "Monthly Inspection",
+          kind: "inspection_photo",
+          uploadedBy: actor.userId,
+          uploadedByRole: actor.role,
+        });
+        documentId = photo.id;
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: err instanceof Error ? err.message : "Could not save the photo.",
+        };
+      }
+    }
+    try {
+      const saved = await saveMonthly(sb, actor, {
+        vehicleId: data.vehicleId,
+        lastDoneOn: data.lastDoneOn,
+        nextDueOn: data.nextDueOn,
+        notes: data.notes,
+        odometer: data.odometer,
+        documentId,
+        source: "manual",
+      });
+      await logAudit(actor, {
+        action: "monthly_inspection.recorded",
+        summary:
+          `Monthly inspection updated${saved.row.last_done_on ? ` (last done ${saved.row.last_done_on})` : ""}`.slice(
+            0,
+            300,
+          ),
+        entityType: "vehicle",
+        entityId: data.vehicleId,
+        metadata: {
+          schedule_id: saved.scheduleId,
+          record_id: saved.recordId,
+          document_id: documentId,
+        },
+      });
+      return {
+        ok: true as const,
+        scheduleId: saved.scheduleId,
+        recordId: saved.recordId,
+        lastDoneOn: saved.row.last_done_on ?? null,
+        nextDueOn: saved.row.next_due_on ?? null,
+        notes: saved.row.notes ?? null,
+      };
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: err instanceof Error ? err.message : "Could not save the monthly inspection.",
+      };
+    }
   });
 
 /** Staff confirm a flagged conflict as valid (evidence kept; nothing auto-corrected). */

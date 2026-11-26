@@ -140,6 +140,18 @@ describe("license photos read automatically (t352u item 3)", () => {
     expect(r.held).toBe("daily limit reached");
     expect(r.read).toBe(0);
   });
+  test("a second current license photo is analyzed too, not only the newest", async () => {
+    const { db, tables } = setup();
+    tables.documents.push({ id: "d0", driver_id: "a1", category: "license_front", is_current: true, review_status: "uploaded", storage_bucket: "license-uploads", storage_path: "a1/older.jpg", mime_type: "image/jpeg", created_at: hoursAgo(80) });
+    const seen: string[] = [];
+    const r = await autoReadLicenses(db, { limit: 2 }, deps(JSON.stringify({ is_license_front: true, dob: "1991-01-01", license_expiration: "2029-05-01", license_number: "054123456", license_state: "GA", confidence: 0.9 }), {
+      read: async () => { seen.push("read"); return { ok: true as const, text: JSON.stringify({ is_license_front: true, dob: "1991-01-01", license_expiration: "2029-05-01", license_number: "054123456", license_state: "GA", confidence: 0.9 }) }; },
+    }));
+    expect(r.candidates).toBe(2);
+    expect(r.read).toBe(2);
+    expect(tables.fleet_license_readings.map((row) => row.document_id).sort()).toEqual(["d0", "d1"]);
+    expect(seen).toHaveLength(2);
+  });
   test("not a license: recorded so it is not read again, nothing applied", async () => {
     const { db, tables } = setup();
     const r = await autoReadLicenses(db, {}, deps(JSON.stringify({ is_license_front: false })));

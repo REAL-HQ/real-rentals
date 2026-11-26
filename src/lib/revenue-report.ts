@@ -5,7 +5,7 @@ export async function readPaymentReport(db: any, filter: (q: any) => any) {
     'id,amount,balance_due,net_collected,refunded_amount,status,type,paid_date,due_date,driver_id', { count: 'exact' },
   )).order('id').range(from, to));
 }
-export const REVENUE_TYPES = ['rent', 'late_fee', 'other', 'toll', 'damage', 'fee'];
+export const REVENUE_TYPES = ['rent', 'late_fee', 'other', 'toll', 'damage', 'fee', 'reservation'];
 export function outstanding(row: any): number {
   const n = Number(row.balance_due ?? row.amount);
   if (!Number.isFinite(n) || n < 0) throw new Error('Invalid outstanding balance');

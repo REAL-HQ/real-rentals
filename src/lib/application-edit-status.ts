@@ -33,3 +33,26 @@ export function isApplicantEditableStatus(status: unknown): boolean {
   const raw = typeof status === "string" ? status.trim().toLowerCase() : "";
   return (APPLICANT_EDITABLE_STATUSES as readonly string[]).includes(raw);
 }
+
+/**
+ * Statuses whose secure link may still upload or replace documents.
+ *
+ * The editable statuses (minus "complete", which never took uploads), plus
+ * "approved": the Driver Portal now opens only at pickup (t466u), so between
+ * approval and pickup the secure link is the renter's only way to re-send a
+ * blurry license or a new insurance card. Approved renters get documents
+ * only — every other field stays locked (replaceApplicantDocument), and the
+ * server also refuses once a rental has started.
+ */
+export const DOCUMENT_UPLOAD_STATUSES = ["partial", "new", "reviewing", "approved"] as const;
+
+export function canUploadBeforePickupStatus(status: unknown): boolean {
+  const raw = typeof status === "string" ? status.trim().toLowerCase() : "";
+  return (DOCUMENT_UPLOAD_STATUSES as readonly string[]).includes(raw);
+}
+
+/** Approved, not picked up: the secure link opens a documents-only page. */
+export function isDocumentsOnlyStatus(status: unknown): boolean {
+  const raw = typeof status === "string" ? status.trim().toLowerCase() : "";
+  return raw === "approved";
+}

@@ -1,4 +1,4 @@
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -309,7 +309,7 @@ export function MessagesOverlay({
               <div className="text-[17px] font-semibold truncate text-[#111114]">
                 {person?.name ?? (loadingThread ? "Loading…" : "Conversation")}
               </div>
-              <div className="text-[12px] text-[#77777F] truncate ">{enumDisplayLabel(person?.status ?? "")}</div>
+              <div className="text-[12px] text-[#77777F] truncate ">{formatStatusLabel(person?.status ?? "")}</div>
             </div>
             <button aria-label="Conversation Info" onClick={() => { setShowInfo((v) => !v); setMobile("info"); }}
               title="Conversation Info"
@@ -450,7 +450,7 @@ export function MessagesOverlay({
       {tab === "rental" && thread?.rental ? (
         <dl className="p-5 space-y-4 text-[13px]">
           {([
-            ["Status", <span className="">{enumDisplayLabel(thread.rental.status)}</span>],
+            ["Status", <span className="">{formatStatusLabel(thread.rental.status)}</span>],
             ["Vehicle", thread.rental.vehicle ?? "—"],
             ["Unit", thread.rental.unitNumber ?? "—"],
             ["Start", thread.rental.start ? fmtDate(thread.rental.start + "T00:00") : "—"],
@@ -465,7 +465,7 @@ export function MessagesOverlay({
       <div className="p-5 text-center border-b border-[#EDEDF0]">
         <div className="mx-auto w-fit"><Avatar name={person.name} id={person.applicationId} size={56} /></div>
         <div className="mt-2 text-[15px] font-semibold">{person.name}</div>
-        <div className="text-[12px] text-[#9A9AA3] ">{enumDisplayLabel(person.status ?? "—")}</div>
+        <div className="text-[12px] text-[#9A9AA3] ">{formatStatusLabel(person.status ?? "—")}</div>
         <Link to="/admin" search={{ tab: "drivers", id: person.applicationId }} onClick={onClose}
           className="mt-3 inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-[#EDEDF0] text-[12px] font-medium hover:bg-[#FAFAFB]">
           {person.kind === "driver" ? "View Driver" : "View Applicant"} <ExternalLink className="w-3.5 h-3.5" />

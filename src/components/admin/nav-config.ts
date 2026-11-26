@@ -87,7 +87,7 @@ export type Group = (typeof GROUP_ORDER)[number];
 export const TABS: readonly TabDef[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard, minTier: "coordinator", group: "HOME", description: "Pipeline, Fleet And Revenue At A Glance" },
   { id: "drivers", label: "Drivers", icon: Users, minTier: "coordinator", group: "PEOPLE", description: "Manage Applicants, Active Renters And Driver Lifecycle" },
-  // Bookings: reservations (Booked), who is out (Active), and past rentals.
+  // Bookings: reservations (Reserved), who is out (Active), and past rentals.
   // Coordinator-visible so staff can open paperwork; the Active board stays
   // Manager+ on the server. Old ?tab=bookings links redirect here.
   {

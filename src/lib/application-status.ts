@@ -38,6 +38,7 @@
  */
 
 import type { StaffTier } from "@/lib/roles";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 export const APPLICATION_STATUS_CHOICES = [
   { value: "new", label: "New" },
@@ -69,7 +70,7 @@ export const APPLICATION_STATUS_LABELS: Record<string, string> = {
 export function applicationStatusLabel(value: string | null | undefined): string {
   const key = String(value ?? "").trim();
   if (!key) return "Select Status";
-  return APPLICATION_STATUS_LABELS[key] ?? key;
+  return APPLICATION_STATUS_LABELS[key] ?? formatStatusLabel(key);
 }
 
 /**
@@ -138,6 +139,25 @@ export function closureReasonLabel(value: unknown): string {
 /** Owner and Manager. A Coordinator can close; reopening a Closed row is not theirs. */
 export function canReopenClosedApplication(tier: StaffTier): boolean {
   return tier === "owner" || tier === "manager";
+}
+
+/**
+ * Whether this staff tier may set the application to Declined from the
+ * profile. Mirrors updateApplicationLifecycle: active rentals and Active
+ * stay on the rental workflow, and a Coordinator cannot move a decided
+ * application (approved, suspended, active, complete, duplicate).
+ */
+export function canDeclineApplication(
+  current: string | null | undefined,
+  tier: StaffTier | null | undefined,
+  activeRental: boolean,
+): boolean {
+  if (activeRental) return false;
+  const stored = String(current ?? "").trim();
+  if (!stored || stored === "declined" || stored === "active") return false;
+  if (applicationStatusChoiceDisabled(stored, "declined", tier)) return false;
+  if (tier === "coordinator" && !["partial", "new", "reviewing", "closed"].includes(stored)) return false;
+  return true;
 }
 
 /**

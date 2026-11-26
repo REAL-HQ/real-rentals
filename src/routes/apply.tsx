@@ -25,6 +25,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { PhoneLink } from "@/components/site/PhoneLink";
 import { applicantPhoneForSubmit, formatUsPhoneInput } from "@/lib/us-phone";
 import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
+import { applySubmitErrorMessage, dismissKeyboard } from "@/lib/apply-submit-error";
 
 const CLAIM_STASH = "rr_waitlist_claim";
 
@@ -308,11 +309,14 @@ function ContactStep({
 }) {
   const navigate = useNavigate();
   const savePartial = useServerFn(savePartialApplication);
-  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number; fresh?: boolean } | null>(null);
+  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number; fresh?: boolean; maskedEmailOnFile?: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [hp, setHp] = useState("");
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", sms_consent: false });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Stays on screen next to Continue until the next try; a toast alone sat
+  // behind the phone keyboard or over the button and vanished in 4 seconds.
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [market, setMarket] = useState<{ id: string; name: string; state: string | null } | null>(null);
 
   useEffect(() => {
@@ -365,6 +369,8 @@ function ContactStep({
 
   async function submit() {
     if (hp) return;
+    dismissKeyboard();
+    setSubmitError(null);
     if (!validate()) {
       toast.error("Please fix the highlighted fields.");
       return;
@@ -392,13 +398,23 @@ function ContactStep({
       if (!data.token) {
         // We matched an application that already exists. The link goes to the
         // address on that record, not to whoever filled this form in.
-        setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120, fresh: "fresh" in data && data.fresh === true });
+        const review = data.linkStatus === "review";
+        setReturning({
+          email: review ? "" : form.email,
+          status: data.linkStatus ?? "sent",
+          retryAfterSeconds: data.retryAfterSeconds ?? 120,
+          fresh: "fresh" in data && data.fresh === true,
+          maskedEmailOnFile: "maskedEmailOnFile" in data && typeof data.maskedEmailOnFile === "string" ? data.maskedEmailOnFile : undefined,
+        });
         return;
       }
       markStepOneJustSubmitted();
       navigate({ to: "/thank-you", search: { t: data.token } });
-    } catch (e: any) {
-      toast.error(e?.message ?? "Could not save. Please try again.");
+    } catch (e: unknown) {
+      console.error("[apply] step 1 save failed", e);
+      const message = applySubmitErrorMessage(e);
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -421,7 +437,7 @@ function ContactStep({
 
         {returning !== null ? (
           <div className="mt-8">
-            <WelcomeBack email={returning.email} initial={returning} fresh={returning.fresh} onBack={() => setReturning(null)} />
+            <WelcomeBack email={returning.status === "review" ? undefined : returning.email} maskedEmailOnFile={returning.maskedEmailOnFile} initial={returning} fresh={returning.fresh} onBack={() => setReturning(null)} />
           </div>
         ) : (
         <div className="mt-8 rounded-2xl bg-soft p-6 md:p-8">
@@ -447,6 +463,11 @@ function ContactStep({
             data-testid="contact-continue"
             style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
           >
+            {submitError ? (
+              <p role="alert" data-testid="apply-submit-error" className="mb-3 rounded-lg border border-real-red/40 bg-white px-3 py-2 text-sm text-real-red">
+                {submitError}
+              </p>
+            ) : null}
             <button
               type="button"
               onClick={submit}

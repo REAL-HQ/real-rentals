@@ -306,7 +306,8 @@ export async function issueResumeToken(
     throw new Error("A resume link cannot last 72 hours.");
   }
   if (opts.ttlMs != null) assertAboveRecoveryWindow(opts.ttlMs);
-  // Approved/active applicants use /login → portal. Card links stay allowed.
+  // Active renters (picked up) use /login → portal. Approved renters keep the
+  // secure link until pickup for documents (t466u). Card links stay allowed.
   // Soft on missing status column / test harnesses that only mock token rows —
   // call sites (openResumeLink, requestApplicationLink) still divert those apps.
   try {
@@ -316,7 +317,7 @@ export async function issueResumeToken(
       .eq("id", applicationId)
       .maybeSingle();
     if (!error && isPortalHandoffStatus((appRow as { status?: string } | null)?.status)) {
-      throw new Error("This application is approved. Sign in to the driver portal instead.");
+      throw new Error("This rental has started. Sign in to the driver portal instead.");
     }
   } catch (e) {
     if (e instanceof Error && /Sign in to the driver portal/.test(e.message)) throw e;

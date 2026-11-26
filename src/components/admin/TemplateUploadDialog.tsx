@@ -11,6 +11,7 @@ import { extractDocx, extractPdf, kindOf, MAX_TEMPLATE_BYTES, TEMPLATE_ACCEPT } 
 import { analyzeAgreement, applyMappings, wordingPreserved, TARGET_OPTIONS, targetId, type Analysis, type Detection, type Target } from "@/lib/agreement-import";
 import { acknowledgmentsOf } from "@/lib/agreement-library";
 import { writeTerms } from "@/lib/agreement-builder";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 const sel = "h-8 w-full rounded-md border bg-background px-1.5 text-[12px]";
 
@@ -138,7 +139,7 @@ export function TemplateUploadDialog({ onClose }: { onClose: () => void }) {
   const preview = (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b bg-card px-3 py-2 text-[12px]">
-        <span className="rounded bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">PREVIEW — SAMPLE FIELDS</span>
+        <span className={`rounded ${DANGER_BADGE} px-2 py-0.5 font-semibold`}>PREVIEW — SAMPLE FIELDS</span>
         {rendering && <span className="text-muted-foreground">Updating…</span>}
       </div>
       <div className="min-h-0 flex-1 overflow-auto bg-muted/40" data-testid="upload-preview">

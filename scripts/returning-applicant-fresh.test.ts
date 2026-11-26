@@ -85,6 +85,16 @@ mock.module("@/lib/portal-handoff", () => ({
 mock.module("@/lib/step-one-email.server", () => ({ sendStepOneThankYouEmail: async () => (sent.push("step1"), { ok: true }) }));
 mock.module("@/lib/fleet-webhook.server", () => ({ dispatchFleetWebhooks: async () => ({}) }));
 
+const alerts: { args: Record<string, unknown> }[] = [];
+let alertMode: "ok" | "throw" = "ok";
+mock.module("@/lib/phone-match-alert.server", () => ({
+  sendPhoneMatchEmailDiffersAlert: async (_admin: unknown, args: Record<string, unknown>) => {
+    alerts.push({ args });
+    if (alertMode === "throw") throw new Error("alert down");
+    return { status: "sent" };
+  },
+}));
+
 const mod = await import("@/lib/applications.functions");
 const save = mod.savePartialApplication as unknown as (a: { data: any }) => Promise<any>;
 const { returningAction } = await import("@/lib/returning-applicant");
@@ -103,6 +113,8 @@ const old = (status: string, extra: Row = {}) => {
 beforeEach(() => {
   db = { applications: [], applicant_autoclose: [], application_identity_reviews: [] };
   sent = []; tokens = []; seq = 0;
+  alerts.length = 0;
+  alertMode = "ok";
 });
 
 describe("returningAction", () => {
@@ -191,10 +203,37 @@ describe("savePartialApplication with a returning email", () => {
     expect(r.token).toBeNull();
   });
 
-  test("phone-only match with a different email: still staff review, nothing created or sent", async () => {
-    old("closed", { email: "someone.else@example.com" });
+  test("phone-only match with a different email: still staff review, nothing created or sent to the applicant", async () => {
+    const onFile = "someone.else@example.com";
+    old("closed", { email: onFile });
     const r = await save({ data: form() });
     expect(r.linkStatus).toBe("review");
+    expect(r.maskedEmailOnFile).toBe("s••••••••••e@example.com");
+    expect(JSON.stringify(r)).not.toContain(onFile);
+    expect(JSON.stringify(r)).not.toContain("someone.else");
+    expect(JSON.stringify(r)).not.toContain("8135550199");
+    expect(db.applications).toHaveLength(1);
+    expect(sent).toEqual([]);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].args).toMatchObject({
+      leadId: "old-app",
+      applicantName: "Pat Example",
+      newEmail: EMAIL,
+      phoneLast4: "0199",
+    });
+    expect(JSON.stringify(alerts[0].args)).not.toContain("8135550199");
+    expect(JSON.stringify(alerts[0].args)).not.toContain(onFile);
+  });
+
+  test("phone-only match still returns review when the team alert throws", async () => {
+    alertMode = "throw";
+    const onFile = "someone.else@example.com";
+    old("closed", { email: onFile });
+    const r = await save({ data: form() });
+    expect(r.linkStatus).toBe("review");
+    expect(r.token).toBeNull();
+    expect(r.maskedEmailOnFile).toBe("s••••••••••e@example.com");
+    expect(JSON.stringify(r)).not.toContain(onFile);
     expect(db.applications).toHaveLength(1);
     expect(sent).toEqual([]);
   });

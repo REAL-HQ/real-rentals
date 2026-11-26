@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getDriverStatement } from "@/lib/driver-statement.functions";
 import { statementToCsv, type DriverStatementReport } from "@/lib/driver-statement";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 /**
  * Read-only. Download CSV builds a file in the browser from the rows already
@@ -69,7 +70,7 @@ export function DriverStatement({ driverId }: { driverId: string }) {
                         <td className="py-2 pr-3">{row.date ?? "—"}</td>
                         <td className="py-2 pr-3">{row.description}</td>
                         <td className="py-2 pr-3">{money(row.amountCents, row.currency)}</td>
-                        <td className="py-2 pr-3">{row.status}</td>
+                        <td className="py-2 pr-3">{formatStatusLabel(row.status)}</td>
                         <td className="py-2 pr-3">{money(row.runningPaid)}</td>
                         <td className="py-2 pr-3">{money(row.runningRefunded)}</td>
                         <td className="py-2">{money(row.runningOutstanding)}</td>

@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { useMemo, useEffect, useState } from "react";
+import { dailyRateLabel } from "@/lib/rent-standing";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { useServerFn } from "@tanstack/react-start";
 import { CalendarCheck, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "./ui";
 import { AdminTableScroll } from "./AdminTableScroll";
-import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
+import { VehicleCell } from "./VehicleCell";
+import { OPEN_COLUMN, ROW_MENU_COLUMN } from "./open-column";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,16 +17,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  etDateISO,
   formatBoardDate,
   formatWeeklyRate,
   paymentStatusLabel,
   weeksInLabel,
   type ActiveRentalRow,
 } from "@/lib/active-rentals";
+import { activeLengthDays, orderByLength, owesAmount, type BookingsListMode, type RentalLengthOrder } from "@/lib/rental-length-order";
+import { RentalLengthSort } from "./RentalLengthSort";
 import { listActiveRentals } from "@/lib/active-rentals.functions";
 import { getRentalLateFees, type RentalLateFeeStatus } from "@/lib/rent-reminders.functions";
 import { RecordPaymentDialog, WaiveLateFeeDialog, lateFeeLabel } from "./RentPaymentActions";
 import { OverdueStatus } from "./OverdueStatus";
+import { ManageLateFeesDialog } from "./ManageLateFeesDialog";
 import { ReturnFlowDialog } from "./ReturnFlowDialog";
 import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
 
@@ -53,19 +60,30 @@ function isAbortError(e: unknown): boolean {
   );
 }
 
-export function ActiveRentalsPanel() {
+export function ActiveRentalsPanel({
+  previewRows,
+  initialLengthOrder = "default",
+  initialFilter = "all",
+}: {
+  previewRows?: ActiveRentalRow[];
+  initialLengthOrder?: BookingsListMode;
+  initialFilter?: (typeof FILTERS)[number]["id"];
+} = {}) {
+  const navigate = useNavigate();
   const fetchBoard = useServerFn(listActiveRentals);
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
-  const [rows, setRows] = useState<ActiveRentalRow[]>([]);
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>(initialFilter);
+  const [lengthOrder, setLengthOrder] = useState<BookingsListMode>(initialLengthOrder);
+  const [rows, setRows] = useState<ActiveRentalRow[]>(previewRows ?? []);
   const [loaded, setLoaded] = useState({ payments: true, issues: true, incidents: true, documents: true });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!previewRows);
   const fetchFees = useServerFn(getRentalLateFees);
   const [fees, setFees] = useState<Map<string, RentalLateFeeStatus>>(new Map());
-  const [feesLoaded, setFeesLoaded] = useState(false);
+  const [feesLoaded, setFeesLoaded] = useState(!!previewRows);
   const [reload, setReload] = useState(0);
-  const [dialog, setDialog] = useState<{ kind: "pay" | "waive" | "return"; row: ActiveRentalRow } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "pay" | "waive" | "return" | "fees"; row: ActiveRentalRow } | null>(null);
 
   useEffect(() => {
+    if (previewRows) return;
     let alive = true;
     setFeesLoaded(false);
     fetchFees()
@@ -82,9 +100,10 @@ export function ActiveRentalsPanel() {
     return () => {
       alive = false;
     };
-  }, [fetchFees, reload]);
+  }, [fetchFees, reload, previewRows]);
 
   useEffect(() => {
+    if (previewRows) return;
     let alive = true;
     setLoading(true);
     fetchBoard({ data: {} })
@@ -108,13 +127,20 @@ export function ActiveRentalsPanel() {
     return () => {
       alive = false;
     };
-  }, [fetchBoard, reload]);
+  }, [fetchBoard, reload, previewRows]);
 
-  const visible = rows.filter((row) => {
-    if (filter === "overdue") return (row.overdueDays ?? 0) > 0;
-    if (filter === "issues") return (row.openIssues ?? 0) > 0;
-    return true;
-  });
+  const today = etDateISO();
+  const owesCount = rows.filter((row) => owesAmount(row.rentOwed)).length;
+  const lengthSort: RentalLengthOrder = lengthOrder === "owes" ? "default" : lengthOrder;
+  const visible = useMemo(() => {
+    const filtered = rows.filter((row) => {
+      if (lengthOrder === "owes" && !owesAmount(row.rentOwed)) return false;
+      if (filter === "overdue") return (row.overdueDays ?? 0) > 0;
+      if (filter === "issues") return (row.openIssues ?? 0) > 0;
+      return true;
+    });
+    return orderByLength(filtered, (row) => activeLengthDays(row.startDate, today), lengthSort);
+  }, [rows, filter, lengthOrder, lengthSort, today]);
 
   return (
     <div className="space-y-4" data-testid="active-rentals">
@@ -135,9 +161,12 @@ export function ActiveRentalsPanel() {
             </button>
           ))}
         </div>
-        <span className="text-sm text-muted-foreground">
-          {visible.length} Active Rental{visible.length === 1 ? "" : "s"}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">
+            {visible.length} Active Rental{visible.length === 1 ? "" : "s"}
+          </span>
+          <RentalLengthSort value={lengthOrder} onChange={setLengthOrder} owesCount={owesCount} />
+        </div>
       </div>
 
       {!loaded.payments || !loaded.issues || !loaded.incidents || !loaded.documents ? (
@@ -164,7 +193,7 @@ export function ActiveRentalsPanel() {
         />
       ) : (
         <AdminTableScroll className="mt-4 rounded-2xl border border-[#EDEDF0] bg-white">
-          {/* Fits ~1000px content width at 1280 / 100% zoom: no min-width, merged cells, sticky Open. */}
+          {/* Fits ~1000px content width at 1280 / 100% zoom: no min-width, merged cells. */}
           <table className="w-full table-fixed text-left text-sm" data-testid="active-rentals-table">
             <thead className="text-[11px] font-semibold text-[#55555E]">
               <tr className="border-b border-[#EDEDF0]">
@@ -173,59 +202,83 @@ export function ActiveRentalsPanel() {
                 <th className="w-[14%] px-2 py-2.5 font-semibold">Started</th>
                 <th className="w-[10%] px-2 py-2.5 font-semibold">Rate</th>
                 <th className="w-[16%] px-2 py-2.5 font-semibold">Due</th>
-                <th className="w-[12%] px-2 py-2.5 font-semibold">Overdue</th>
-                <th className="w-[10%] px-2 py-2.5 font-semibold text-right sticky right-0 bg-white">Open</th>
+                <th className="w-[12%] px-2 py-2.5 font-semibold">Status</th>
+                <th className={`${OPEN_COLUMN} py-2.5 font-semibold`}>Open</th>
+                <th className={`${ROW_MENU_COLUMN} py-2.5`} aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
               {visible.map((row) => {
-                const [vehicleName, ...vehicleDetails] = (row.vehicleLabel || "Unknown").split(" · ");
+                const vehiclePlate = (row.vehicleLabel || "").split(" · ").slice(1).join(" · ") || null;
                 const fee = fees.get(row.id);
-                const lateDue = (fee?.lateFee ?? 0) > 0 && !fee?.waived;
+                // Late only shows beside an overdue badge: a rental the shared rent standing calls
+                // Current (rent paid on any row, or a daily plan) never carries a Late amount.
+                const lateDue = (fee?.lateFee ?? 0) > 0 && !fee?.waived && (row.overdueDays ?? 0) > 0;
                 return (
-                  <tr key={row.id} className="border-b border-[#EDEDF0] last:border-0" data-testid="active-rental-row">
+                  <tr
+                    key={row.id}
+                    className={`border-b border-[#EDEDF0] last:border-0 ${ROW_OPEN_CLASS}`}
+                    data-testid="active-rental-row"
+                    {...rowOpenProps(() => void navigate({ to: "/admin", search: { tab: "bookings", view: "past", id: row.id } as never }))}
+                  >
                     <td className="px-2 py-2 align-middle font-medium text-[#111114]">
                       <span className="block truncate">{row.driverName}</span>
                     </td>
                     <td className="px-2 py-2 align-middle text-[#111114]">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="block h-8 w-11 shrink-0 overflow-hidden rounded-md border border-border bg-soft">
-                          <VehicleStaffPhoto path={row.thumbnailPath ?? null} name={vehicleName} className="h-full w-full object-cover" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium leading-tight">{vehicleName}</span>
-                          {vehicleDetails.length ? (
-                            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{vehicleDetails.join(" · ")}</span>
-                          ) : null}
-                        </span>
-                      </div>
+                      <VehicleCell
+                        vehicleId={row.vehicleId}
+                        vehicle={{ label: row.vehicleLabel, plate: vehiclePlate, vinLast6: row.vehicleVinLast6, unitNumber: row.vehicleUnit }}
+                        thumbnailPath={row.thumbnailPath ?? null}
+                      />
                     </td>
                     <td className="px-2 py-2 align-middle">
                       <span className="block whitespace-nowrap">{formatBoardDate(row.startDate)}</span>
                       <span className="block text-xs text-muted-foreground">{weeksInLabel(row.weeksIn)}</span>
                     </td>
-                    <td className="px-2 py-2 align-middle whitespace-nowrap">{formatWeeklyRate(row.weeklyRate)}</td>
+                    <td className="px-2 py-2 align-middle whitespace-nowrap" data-testid="rate-cell">
+                      {row.cadence === "daily" && row.dailyRate ? (
+                        <>
+                          <span className="block">{dailyRateLabel(row.dailyRate)}</span>
+                          <span className="block text-xs text-muted-foreground">Weekly {formatWeeklyRate(row.weeklyRate)}</span>
+                        </>
+                      ) : (
+                        formatWeeklyRate(row.weeklyRate)
+                      )}
+                    </td>
                     <td className="px-2 py-2 align-middle">
                       <span className="block whitespace-nowrap">{formatBoardDate(row.nextPaymentDue) || "No Due Date"}</span>
                       <span className="block text-xs text-muted-foreground">
                         {paymentStatusLabel(row.lastPaymentStatus, row.paymentsLoaded)}
                         {row.lastPaymentViaStripe ? " · Stripe" : ""}
                       </span>
+                      {(row.rentOwed ?? 0) > 0 ? (
+                        <span className="block text-xs font-medium text-[#111114]" data-testid="rent-owed">
+                          Owes {formatWeeklyRate(row.rentOwed ?? 0)}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-2 py-2 align-middle">
-                      <OverdueStatus days={row.overdueDays} />
-                      {lateDue ? (
-                        <span className="mt-1 block text-xs font-medium text-[#D03020]" data-testid="late-fee">
-                          Late {lateFeeLabel(fee, feesLoaded)}
-                        </span>
+                      {fee ? (
+                        // Manager and above (the late fee read is manager-only): opens Manage Late Fees, never the row.
+                        <button
+                          type="button"
+                          data-no-row-click
+                          data-testid="late-fee-cell"
+                          aria-label={`Manage Late Fees For ${row.driverName}`}
+                          title="Manage Late Fees"
+                          className="-m-1 rounded-md p-1 text-left hover:bg-[#F5F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/40"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDialog({ kind: "fees", row });
+                          }}
+                        >
+                          <OverdueCellBody row={row} fee={fee} feesLoaded={feesLoaded} lateDue={lateDue} today={today} />
+                        </button>
                       ) : (
-                        <span className="sr-only" data-testid="late-fee">
-                          {lateFeeLabel(fee, feesLoaded)}
-                        </span>
+                        <OverdueCellBody row={row} fee={fee} feesLoaded={feesLoaded} lateDue={lateDue} today={today} />
                       )}
                     </td>
-                    <td className="px-2 py-2 align-middle sticky right-0 bg-white">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className={`${OPEN_COLUMN} py-2`}>
                         <Link
                           to="/admin"
                           search={{ tab: "bookings", view: "past", id: row.id }}
@@ -233,6 +286,8 @@ export function ActiveRentalsPanel() {
                         >
                           Open
                         </Link>
+                    </td>
+                    <td className={`${ROW_MENU_COLUMN} py-2`}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
@@ -262,10 +317,13 @@ export function ActiveRentalsPanel() {
                             {fees.get(row.id)?.mode === "manual" ? (
                               <DropdownMenuItem onSelect={() => setDialog({ kind: "pay", row })}>Record Payment</DropdownMenuItem>
                             ) : null}
+                            {fees.get(row.id) ? (
+                              <DropdownMenuItem onSelect={() => setDialog({ kind: "fees", row })}>Manage Late Fees</DropdownMenuItem>
+                            ) : null}
                             {fees.get(row.id)?.owing ? (
                               <DropdownMenuItem onSelect={() => setDialog({ kind: "waive", row })}>Waive Late Fee</DropdownMenuItem>
                             ) : null}
-                            {fees.get(row.id)?.mode === "manual" || fees.get(row.id)?.owing ? <DropdownMenuSeparator /> : null}
+                            {fees.get(row.id) ? <DropdownMenuSeparator /> : null}
                             {RETURN_FLOW_ENABLED ? (
                               <DropdownMenuItem onSelect={() => setDialog({ kind: "return", row })}>Return</DropdownMenuItem>
                             ) : null}
@@ -285,7 +343,6 @@ export function ActiveRentalsPanel() {
                             ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
                     </td>
                   </tr>
                 );
@@ -317,6 +374,17 @@ export function ActiveRentalsPanel() {
           }}
         />
       ) : null}
+      {dialog?.kind === "fees" ? (
+        <ManageLateFeesDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) setDialog(null);
+          }}
+          rentalId={dialog.row.id}
+          driverName={dialog.row.driverName}
+          onChanged={() => setReload((n) => n + 1)}
+        />
+      ) : null}
       {dialog?.kind === "waive" ? (
         <WaiveLateFeeDialog
           open
@@ -331,4 +399,29 @@ export function ActiveRentalsPanel() {
       ) : null}
     </div>
   );
+}
+
+function OverdueCellBody({ row, fee, feesLoaded, lateDue, today }: { row: ActiveRentalRow; fee: RentalLateFeeStatus | undefined; feesLoaded: boolean; lateDue: boolean; today: string }) {
+  return (
+    <>
+      <OverdueStatus days={row.overdueDays} due={row.nextPaymentDue} today={today} />
+      {lateDue ? (
+        <span className="mt-1 block text-xs font-medium text-[#D03020]" data-testid="late-fee">
+          Late {lateFeeLabel(fee, feesLoaded)}
+        </span>
+      ) : fee && fee.forgiven > 0 ? (
+        <span className="mt-1 block text-xs text-muted-foreground" data-testid="late-fee">
+          Forgiven {lateFeeLabelMoney(fee.forgiven)}
+        </span>
+      ) : (
+        <span className="sr-only" data-testid="late-fee">
+          {lateFeeLabel(fee, feesLoaded)}
+        </span>
+      )}
+    </>
+  );
+}
+
+function lateFeeLabelMoney(n: number): string {
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }

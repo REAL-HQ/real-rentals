@@ -328,7 +328,7 @@ function TemplateLibrary({ company, issues }: { company: Record<string, any>; is
       setPdf(r.pdfBase64);
     } catch (e: any) { toast.error(e?.message ?? "Could not build the preview"); }
   }
-  const otherOf = (t: LibraryTemplate) => LIBRARY.find((x) => x.key !== t.key)!;
+  const otherOf = (t: LibraryTemplate) => (t.compareWith ? LIBRARY.find((x) => x.key === t.compareWith) : undefined) ?? LIBRARY.find((x) => x.key !== t.key)!;
   return (
     <div className="space-y-3" data-testid="template-library">
       {uploading && <TemplateUploadDialog onClose={() => setUploading(false)} />}
@@ -355,13 +355,16 @@ function TemplateLibrary({ company, issues }: { company: Record<string, any>; is
           <div key={t.key} className="space-y-2 rounded-xl border bg-card p-4 text-[13px]">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0"><p className="font-semibold">{t.name}</p><p className="text-muted-foreground">Version {t.displayVersion}</p></div>
-              <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium">{DRAFT_STATUS_LABEL}</span>
+              {t.retired
+                ? <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium" title={t.retired.reason}>Retired {t.retired.at}</span>
+                : <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium">{DRAFT_STATUS_LABEL}</span>}
             </div>
             <dl className="grid grid-cols-[40%_1fr] gap-y-0.5 text-[12px]">
               <dt className="text-muted-foreground">Insurance</dt><dd>{t.insuranceIncluded ? "Insurance Included" : t.insuranceRequired ? "Insurance Required" : "No Insurance Required"}</dd>
               <dt className="text-muted-foreground">Initials</dt><dd>{acknowledgmentsOf(t.body).length} Acknowledgments</dd>
               <dt className="text-muted-foreground">Values</dt><dd className={missingTerms(termsOf(t), t.source).filter((k) => k !== "reservation_line").length + openCount(t) ? "text-destructive" : ""}>{missingTerms(termsOf(t), t.source).filter((k) => k !== "reservation_line").length} Missing · {openCount(t)} Open{drafts[t.key]?.length ? ` · Draft #${drafts[t.key].at(-1)!.n} saved ${fmtDate(drafts[t.key].at(-1)!.savedAt)}` : ""}</dd>
               <dt className="text-muted-foreground">Source</dt><dd className="break-all">{t.sourceFile}</dd>
+              {t.retired && <><dt className="text-muted-foreground">Status</dt><dd>{t.retired.reason}</dd></>}
               <dt className="text-muted-foreground">Fingerprint</dt><dd className="font-mono text-[11px]" title={fps[t.key]}>{fps[t.key] ? `${fps[t.key].slice(0, 16)}…` : "…"}</dd>
             </dl>
             <div className="flex flex-wrap gap-2">

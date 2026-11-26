@@ -61,7 +61,10 @@ type Deps = {
   release?: (sb: any, day: string) => Promise<void>;
 };
 
-/** License photos with no reading yet, on applications still missing at least one license field. */
+/**
+ * Every current, not-rejected license front that has not been read yet.
+ * A second photo is read too. The newest one is not the only one analyzed.
+ */
 export async function licenseAutoReadCandidates(admin: any, opts: { applicationIds?: string[] } = {}): Promise<{ app: any; doc: any }[]> {
   let dq = admin
     .from("documents")
@@ -72,15 +75,14 @@ export async function licenseAutoReadCandidates(admin: any, opts: { applicationI
   if (opts.applicationIds?.length) dq = dq.in("driver_id", opts.applicationIds);
   const { data: docs, error } = await dq;
   if (error) throw new Error(`documents: ${error.message}`);
-  // Newest current, not-rejected license front per applicant.
-  const latest = new Map<string, any>();
+  const photos: any[] = [];
   for (const d of (docs ?? []) as any[]) {
     if (!d.driver_id || d.is_current === false || d.review_status === "rejected") continue;
-    if (!latest.has(d.driver_id)) latest.set(d.driver_id, d);
+    photos.push(d);
   }
-  if (!latest.size) return [];
-  const ids = [...latest.keys()];
-  const docIds = [...latest.values()].map((d) => d.id);
+  if (!photos.length) return [];
+  const ids = [...new Set(photos.map((d) => d.driver_id as string))];
+  const docIds = photos.map((d) => d.id);
   const chunks = <T,>(xs: T[]) => Array.from({ length: Math.ceil(xs.length / 100) }, (_, i) => xs.slice(i * 100, i * 100 + 100));
   const apps: any[] = [];
   const reads: any[] = [];
@@ -95,13 +97,11 @@ export async function licenseAutoReadCandidates(admin: any, opts: { applicationI
     reads.push(...(data ?? []));
   }
   const readDocs = new Set(reads.map((r) => r.document_id));
+  const byApp = new Map(apps.map((a) => [a.id, a]));
   const out: { app: any; doc: any }[] = [];
-  for (const a of apps) {
-    if (a.deleted_at) continue;
-    const doc = latest.get(a.id);
-    if (!doc || readDocs.has(doc.id)) continue;
-    const missing = LICENSE_FIELDS.some((f) => a[f] == null || String(a[f]).trim() === "");
-    if (!missing) continue;
+  for (const doc of photos) {
+    const a = byApp.get(doc.driver_id);
+    if (!a || a.deleted_at || readDocs.has(doc.id)) continue;
     out.push({ app: a, doc });
   }
   // Oldest upload first, so the backfill works through the list in order.

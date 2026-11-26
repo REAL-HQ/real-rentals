@@ -17,7 +17,7 @@ export const MISSING_COST_SOURCES = [
   "Acquisition, lender, and payoff are owner finance and are not read on this report.",
 ] as const;
 
-const REVENUE_TYPES = new Set(["rent", "late_fee", "other", "toll", "damage", "fee"]);
+const REVENUE_TYPES = new Set(["rent", "late_fee", "other", "toll", "damage", "fee", "reservation"]);
 const PAID_STATUSES = new Set(["paid", "refunded"]);
 const CANCELLED = new Set(["cancelled", "canceled", "void", "voided"]);
 

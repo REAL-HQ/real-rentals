@@ -6,6 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmptyState } from "./ui";
 import { Building2 } from "lucide-react";
 import { fmtDateTime } from "@/lib/date-format";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
+import { OwnerVehiclePhotoGrid } from "./owner-vehicle-photos";
 
 const STATUSES = ["new", "reviewing", "call_scheduled", "approved", "enrolled", "declined"];
 
@@ -50,15 +52,15 @@ export function FleetOwnersPanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {STATUSES.map((s) => <SelectItem key={s} value={s}>{formatStatusLabel(s)}</SelectItem>)}
                 </SelectContent>
               </Select>
               <button onClick={() => remove(f.id)} className="rounded-md border border-[#EDEDF0] px-3 py-1.5 text-xs hover:bg-[#D03020] hover:text-white hover:border-[#D03020] transition-colors duration-150">Delete</button>
             </div>
           </div>
           {f.photo_urls && f.photo_urls.length > 0 && (
-            <div className="mt-3 grid grid-cols-3 md:grid-cols-6 gap-2">
-              {f.photo_urls.map((path, idx) => <SignedPhoto key={idx} path={path} index={idx} />)}
+            <div className="mt-3">
+              <OwnerVehiclePhotoGrid paths={f.photo_urls} />
             </div>
           )}
           <textarea defaultValue={f.notes || ""} onBlur={(e) => update(f.id, { notes: e.target.value })}
@@ -74,22 +76,5 @@ export function FleetOwnersPanel() {
         />
       )}
     </div>
-  );
-}
-
-function SignedPhoto({ path, index }: { path: string; index: number }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let active = true;
-    supabase.storage.from("owner-vehicle-photos").createSignedUrl(path, 3600).then(({ data }) => {
-      if (active && data?.signedUrl) setUrl(data.signedUrl);
-    });
-    return () => { active = false; };
-  }, [path]);
-  if (!url) return <div className="aspect-square rounded-md bg-white border border-border" />;
-  return (
-    <a href={url} target="_blank" rel="noreferrer" className="block aspect-square rounded-md overflow-hidden bg-white border border-border">
-      <img src={url} alt={`Vehicle ${index + 1}`} className="w-full h-full object-cover" />
-    </a>
   );
 }

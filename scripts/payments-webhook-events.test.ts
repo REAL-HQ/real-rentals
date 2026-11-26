@@ -102,6 +102,44 @@ const pi = (over: Row = {}): Row => ({
 const ok = async (r: Response) => { assert.equal(r.status, 200); return r; };
 
 describe("payments webhook — simulated Stripe events", () => {
+  it("a $0 trial invoice changes nothing and sends nothing", async () => {
+    const db = fakeDb({
+      rentals: [{ id: RENTAL, application_id: "app1", status: "active", stripe_subscription_id: "sub_regina", payment_status: "past_due", next_payment_due: "2026-11-16" }],
+      payments: [],
+      notifications: [],
+    });
+    const before = JSON.parse(JSON.stringify(db._state));
+    const invoice = {
+      id: "in_1UevF3",
+      number: "BUKZ1ZXD-0007",
+      status: "paid",
+      amount_paid: 0,
+      amount_due: 0,
+      total: 0,
+      billing_reason: "subscription_update",
+      subscription: "sub_regina",
+      customer: "cus_regina",
+      created: 1763899020,
+      period_end: 1763899020,
+      lines: { data: [{ amount: 0, description: "Trial period for Weekly Rent" }] },
+    };
+    const info = console.info;
+    const logs: unknown[][] = [];
+    console.info = (...args: unknown[]) => { logs.push(args); };
+    try {
+      await ok(await postVerifiedPaymentWebhook({ type: "invoice.paid", data: { object: invoice } }, db, "live"));
+      await ok(await postVerifiedPaymentWebhook({ type: "invoice.payment_succeeded", data: { object: invoice } }, db, "live"));
+    } finally {
+      console.info = info;
+    }
+    assert.deepEqual(db._state, before);
+    assert.equal(db._state.payments.length, 0);
+    assert.equal((db._state.notifications ?? []).length, 0);
+    assert.equal(db._state.rentals[0].payment_status, "past_due");
+    assert.equal(db._state.rentals[0].next_payment_due, "2026-11-16");
+    assert.ok(logs.some((line) => String(line[0]).includes("ignored zero or trial invoice")));
+  });
+
   it("a paid $50 Reservation Fee (Checkout after signing) is marked paid and holds the reserved car right away", async () => {
     const db = fakeDb({
       payments: [{ id: P1, driver_id: "app1", type: "fee", reason: "reservation_fee", status: "unpaid", amount: 50, balance_due: 50, notes: "reservation_fee:ag1", failure_reason: null, notified_status: null, rental_id: null }],

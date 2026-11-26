@@ -27,10 +27,12 @@ const doc = (category: string) => ({
 describe("Driver checklist alignment", () => {
   it("places insurance setup after the signed agreement and reservation payment before inspection", () => {
     const requirements = activationRequirements(facts);
-    const items = driverNextStepRequirements(requirements, "pending");
+    const terms = { key: "terms_confirmed", label: "Terms Confirmed", met: true, enforcement: "advisory" } as const;
+    const items = driverNextStepRequirements(requirements, "pending", terms);
+    // t493u: Reservation Paid, then Insurance Quote, then Insurance Setup; Screening with the verification items.
     expect(items.map((item) => item.key)).toEqual([
-      "interview", "license_documents", "gig_profile", "income", "insurance_quote", "screening",
-      "approved", "signed_agreement", "insurance_verified", "reservation_paid", "inspection", "pickup", "rental_active",
+      "interview", "license_documents", "gig_profile", "income", "screening",
+      "approved", "terms_confirmed", "signed_agreement", "reservation_paid", "insurance_quote", "insurance_verified", "inspection", "pickup", "rental_active",
     ]);
     expect(items.map((item) => item.key)).toEqual(NEXT_STEP_REQUIREMENT_KEYS);
     expect(items.find((item) => item.key === "inspection")?.label).toBe("Pickup Inspection");
@@ -51,23 +53,25 @@ describe("Driver checklist alignment", () => {
     expect(activationRequirements({ ...facts, documents: [doc("income")] }).find((item) => item.key === "income")?.met).toBe(true);
   });
 
-  it("Insurance Quote and Screening each require both a saved check-off and their own file", () => {
-    for (const key of ["insurance_quote", "screening"] as const) {
-      expect(activationRequirements({ ...facts, documents: [doc(key)] }).find((item) => item.key === key)?.met).toBe(false);
-      expect(activationRequirements({ ...facts, evidence: { [key]: "collected" } }).find((item) => item.key === key)?.met).toBe(false);
-      expect(activationRequirements({ ...facts, documents: [doc(key)], evidence: { [key]: "collected" } }).find((item) => item.key === key)?.met).toBe(true);
-    }
+  it("Insurance Quote completes with the quote file; a check-off alone is Applied, not complete", () => {
+    const find = (f: DriverReadinessFacts) => activationRequirements(f).find((item) => item.key === "insurance_quote");
+    expect(find({ ...facts, documents: [doc("insurance_quote")] })?.met).toBe(true);
+    expect(find({ ...facts, evidence: { insurance_quote: "collected" } })?.met).toBe(false);
+    expect(find(facts)?.met).toBe(false);
   });
 
-  it("aggregate Screening turns Green only when both evidence rows are complete", () => {
-    const incomplete = activationRequirements({
-      ...facts, documents: [doc("insurance_quote"), doc("screening")], evidence: { insurance_quote: "collected" },
-    });
-    expect(screeningRequirementsComplete(incomplete)).toBe(false);
-    const complete = activationRequirements({
-      ...facts, documents: [doc("insurance_quote"), doc("screening")], evidence: { insurance_quote: "collected", screening: "collected" },
-    });
-    expect(screeningRequirementsComplete(complete)).toBe(true);
+  it("Screening needs a check-off and its file before approval, and is complete once approved", () => {
+    const pre = { ...facts, status: "new" };
+    const find = (f: DriverReadinessFacts) => activationRequirements(f).find((item) => item.key === "screening");
+    expect(find({ ...pre, documents: [doc("screening")] })?.met).toBe(false);
+    expect(find({ ...pre, evidence: { screening: "collected" } })?.met).toBe(false);
+    expect(find({ ...pre, documents: [doc("screening")], evidence: { screening: "collected" } })?.met).toBe(true);
+    expect(find(facts)).toMatchObject({ met: true, detail: "Approved" });
+  });
+
+  it("lifecycle Screening follows the Screening row only (the quote is an insurance step)", () => {
+    expect(screeningRequirementsComplete(activationRequirements({ ...facts, status: "new", documents: [doc("insurance_quote")], evidence: { insurance_quote: "collected" } }))).toBe(false);
+    expect(screeningRequirementsComplete(activationRequirements(facts))).toBe(true);
   });
 
   it("saves a file-free inspection check-off as Yellow, never Passed", () => {
@@ -84,7 +88,8 @@ describe("Driver checklist alignment", () => {
     const source = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
     for (const key of ["interview", "approved", "inspection", "pickup", "rental_active"]) expect(source).toContain(`r.key === "${key}"`);
     expect(source).toContain("screening: screeningComplete");
-    expect(source).toContain("documentsReceived: !vaultLoading && collectedDocuments.collected");
+    expect(source).toContain("documentsReceived: !vaultLoading && (missingRequiredCategories(vaultDocs).length === 0 || stepperReadiness.documentsReceived)");
+    expect(source).toContain("documents: stepperReadiness.documentsTone");
     expect(source).toContain("agreement: agreementEvidenceTone");
     expect(source).toContain("inspection: inspectionEvidenceTone");
   });

@@ -109,10 +109,18 @@ export function buildPortalNotices(input: PortalNoticeInput, now = new Date()): 
     }
   }
 
+  // A section can hold several active files. Warn about an expiring file only
+  // when no other usable file in the same section is still good.
+  const goodByCategory = new Set<string>();
+  for (const doc of docs ?? []) {
+    if (doc.review_status === "rejected") continue;
+    if (!documentExpiryTone(doc.expires_at, now.getTime())) goodByCategory.add(doc.category ?? "");
+  }
   for (const doc of docs ?? []) {
     if (doc.review_status === "rejected") continue;
     const tone = documentExpiryTone(doc.expires_at, now.getTime());
     if (!tone) continue;
+    if (goodByCategory.has(doc.category ?? "")) continue;
     const label = categoryLabel(doc.category ?? "");
     const when = fmtDate(dateOnly(doc.expires_at) ?? doc.expires_at);
     notices.push({

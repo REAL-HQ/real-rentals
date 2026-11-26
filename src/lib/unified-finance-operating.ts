@@ -13,7 +13,7 @@ import { calendarDate } from "./unified-finance-vehicles";
  * Customer compensation has no credit ledger and no compensation-note source.
  */
 
-const WAIVED = new Set(["rent", "late_fee", "other", "toll", "damage", "fee"]);
+const WAIVED = new Set(["rent", "late_fee", "other", "toll", "damage", "fee", "reservation"]);
 
 export const COMPENSATION_GAPS = ["No Customer Credit Source", "No Compensation Notes"] as const;
 

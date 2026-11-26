@@ -6,6 +6,8 @@
  * An approved/active application sends people to /login instead of the wizard.
  */
 
+import { isMaskedEmailHint } from "@/lib/email-on-file-mask";
+
 export type ThankYouView = "wait" | "missing" | "expired" | "wizard" | "approved";
 
 export function thankYouView(
@@ -61,8 +63,19 @@ export function maskEmail(email: string | null | undefined): string {
  *
  * Only used when the submitted email matched the record (statuses sent /
  * recent / failed / requested). A phone-only match ("review") still uses the
- * neutral panel with an email box, because the address on file is different.
+ * email box, left empty, with a masked hint of the address on file. The full
+ * address is never sent to the browser.
  */
+
+export const PHONE_MATCH_EMAIL_DIFFERS_HEADING = "Use The Email You Applied With";
+
+export function phoneMatchEmailDiffersBody(masked: string | null | undefined): string {
+  if (masked && isMaskedEmailHint(masked)) {
+    return `The secure link only goes to the email you used when you first applied: ${masked}. Enter that email below. If you no longer use it, our team will reach out to help.`;
+  }
+  return "The secure link only goes to the email you used when you first applied. If you applied with a different email, enter that one below. If you no longer use it, our team will reach out to help.";
+}
+
 export type ReturningStatus = "sent" | "recent" | "failed" | "requested";
 
 export const RETURNING_HEADING = "Welcome Back";

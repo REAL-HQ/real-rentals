@@ -23,7 +23,10 @@ function fakeDb(seed: Record<string, Row[]> = {}, opts: { missing?: string[]; un
     const f: ((r: Row) => boolean)[] = [];
     const q: any = {
       select: () => q, insert: (r: Row) => { op = "insert"; payload = r; return q; }, update: (r: Row) => { op = "update"; payload = r; return q; },
-      eq: (c: string, v: any) => { f.push((r) => r[c] === v); return q; }, is: (c: string, v: any) => { f.push((r) => (r[c] ?? null) === v); return q; },
+      eq: (c: string, v: any) => { f.push((r) => r[c] === v); return q; },
+      neq: (c: string, v: any) => { f.push((r) => r[c] !== v); return q; },
+      ilike: (c: string, v: string) => { const re = new RegExp("^" + String(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$", "i"); f.push((r) => re.test(String(r[c] ?? ""))); return q; },
+      is: (c: string, v: any) => { f.push((r) => (r[c] ?? null) === v); return q; },
       in: (c: string, v: any[]) => { f.push((r) => v.includes(r[c])); return q; }, lt: (c: string, v: any) => { f.push((r) => Number(r[c] ?? 0) < v); return q; },
       limit: () => q, order: () => q,
       maybeSingle: () => { single = true; return q; }, single: () => { single = true; return q; },
@@ -105,7 +108,13 @@ describe("charge after signing", () => {
     expect(a).toMatchObject({ mode: "payment", customer: "cus_1", payment_intent_data: { setup_future_usage: "off_session", metadata: { reason: "reservation_fee", applicationId: "app1", agreementId: "ag1" } } });
     expect(a.line_items[0].price_data).toMatchObject({ unit_amount: 5000, currency: "usd", product_data: { name: "Reservation Fee (applied to your first week)" } });
     expect(a.payment_intent_data.metadata.paymentIds).toBe(db.state.payments[0].id);
-    expect(db.state.payments[0]).toMatchObject({ type: "fee", reason: "reservation_fee", amount: 50, status: "unpaid" });
+    // Benefits recap on the hosted checkout (left side description + above the Pay button).
+    expect(a.line_items[0].price_data.product_data.description).toBe("Car For Gig Work · Any Gig Platform · Insurance Included · Unlimited Miles · Maintenance Included · Repair Swaps");
+    expect(a.custom_text.submit.message).toBe("Your $50 Reservation Fee holds your car and is applied to your first week's rent. You get: Car For Gig Work, Any Gig Platform, Insurance Included, Unlimited Miles, Maintenance Included, and Repair Swaps.");
+    const recap = `${a.line_items[0].price_data.product_data.description} ${a.custom_text.submit.message}`;
+    expect(recap).not.toMatch(/refund|deposit|review|broker|carrier|text a real person/i);
+    expect(a.custom_text.submit.message.length).toBeLessThanOrEqual(1200);
+    expect(db.state.payments[0]).toMatchObject({ type: "reservation", reason: "reservation_fee", amount: 50, status: "unpaid" });
     expect(db.state.rentals[0].reservation_deposit_status).toBe("pending"); // not held until paid
     expect(db.state.agreements[0].metadata.reservation_fee_checkout.url).toBe((o as any).url);
     expect(rf.reservationFeePayLink(o)).toEqual({ url: (o as any).url, amount: 50 });
@@ -119,7 +128,7 @@ describe("charge after signing", () => {
     const db = fakeDb(seed({ card: false })); 
     const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: null, ...noAudit });
     expect(o.status).toBe("no_card");
-    expect(db.state.payments[0]).toMatchObject({ type: "fee", reason: "reservation_fee", amount: 50, status: "unpaid" });
+    expect(db.state.payments[0]).toMatchObject({ type: "reservation", reason: "reservation_fee", amount: 50, status: "unpaid" });
   });
   test("the payments webhook saves the Reservation Fee card on file and holds the car once paid", () => {
     const wh = readFileSync("src/routes/api/public/payments/webhook.ts", "utf8");
@@ -150,7 +159,7 @@ describe("charge after signing", () => {
     expect(readFileSync("src/lib/reservation-fee.server.ts", "utf8")).not.toMatch(/off_session: true/);
   });
   test("a fee already paid holds the car and is never charged again", async () => {
-    const db = fakeDb({ ...seed(), rentals: [{ id: "r1", application_id: "app1", status: "reserved", reservation_deposit_status: "pending" }], payments: [{ id: "p1", driver_id: "app1", type: "fee", reason: "reservation_fee", status: "paid", amount: 50, notes: "reservation_fee:ag1" }] }); const s = stripe();
+    const db = fakeDb({ ...seed(), rentals: [{ id: "r1", application_id: "app1", status: "reserved", reservation_deposit_status: "pending" }], payments: [{ id: "p1", driver_id: "app1", type: "reservation", reason: "reservation_fee", status: "paid", amount: 50, notes: "reservation_fee:ag1" }] }); const s = stripe();
     const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, ...noAudit });
     expect(o.status).toBe("already_paid");
     expect(s.calls.length + s.sessions.length).toBe(0);
@@ -242,6 +251,7 @@ describe("late pickup release", () => {
     expect(db.state.applications[0].vehicle_id).toBeNull();
     expect(db.state.payments[0]).toMatchObject({ status: "paid" });
     expect(db.state.payments[0].notes).toMatch(/kept:late_pickup:r1/);
+    expect(db.state.renter_credits ?? []).toHaveLength(0);
     expect(x.alerts.map((a) => a.kind)).toEqual(["late_pickup"]);
     expect(JSON.stringify(x.alerts)).not.toMatch(/5555550100/);
     expect(x.sms[0].body).toBe("Real Rentals: We held your car until 30 minutes after your 10:00 AM ET pickup, and it has now been released. Your $50 Reservation Fee is non-refundable for a missed pickup. To rebook, reply here or call (888) 833-8280. Reply STOP to opt out.");
@@ -250,6 +260,17 @@ describe("late pickup release", () => {
     expect(x.alerts[0].title).toMatch(/^PICKUP RELEASED: .+ - Rebook If Needed$/);
     expect(x.alerts[0].lines.join(" ")).toMatch(/30\+ minutes late for the 10:00 AM ET pickup/);
     expect(lp.latePickupEmail({ firstName: "T", time: "10:00", feeKept: 50 }).html).toMatch(/until 30 minutes after your 10:00 AM ET pickup/);
+  });
+  test("automatic credit mode saves a credit after the fee is kept, and the renter text does not mention it", async () => {
+    const db = fakeDb(lateSeed()); const x = io();
+    await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:31:00Z"), creditPolicy: { mode: "auto", days: 90 } });
+    expect(db.state.rentals[0].status).toBe("cancelled");
+    expect(db.state.renter_credits).toHaveLength(1);
+    expect(db.state.renter_credits[0]).toMatchObject({ application_id: "app1", source_payment_id: "p1", amount: 50, status: "available" });
+    expect(Date.parse(db.state.renter_credits[0].expires_at) - Date.parse("2026-11-20T15:31:00Z")).toBe(90 * 86_400_000);
+    expect(db.state.payments[0].notes).toMatch(/credit:next_rental:r1/);
+    expect(x.sms[0].body).not.toMatch(/credit/i);
+    expect(JSON.stringify(x.alerts)).not.toMatch(/credit/i);
   });
   test("the rep started the pickup checklist: never released", async () => {
     const db = fakeDb(lateSeed({ pickup_handovers: [{ rental_id: "r1" }] })); const x = io();

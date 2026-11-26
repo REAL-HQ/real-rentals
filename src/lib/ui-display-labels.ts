@@ -5,7 +5,7 @@ export const UI_ENUM_LABELS: Readonly<Record<string, string>> = {
   all: "All", active: "Active", inactive: "Inactive", archived: "Archived", available: "Available",
   onboarding: "Needs Setup", pending: "Pending", approved: "Approved", rejected: "Rejected",
   new: "New", draft: "Draft", open: "Open", closed: "Closed", cancelled: "Cancelled", canceled: "Canceled",
-  prospect: "Prospect", paused: "Paused", completed: "Completed", retired: "Retired", sold: "Sold",
+  prospect: "Prospect", paused: "Paused", completed: "Completed", retired: "Retired", sold: "Sold", for_sale: "For Sale",
   in_claim: "In Claim", repairing: "Repairing", written_off: "Written Off", in_progress: "In Progress",
   accident: "Accident", damage: "Damage", theft: "Theft", vandalism: "Vandalism", breakdown: "Breakdown", tow: "Tow",
   minor: "Minor", moderate: "Moderate", major: "Major", total_loss: "Total Loss",
@@ -26,4 +26,50 @@ export const UI_ENUM_LABELS: Readonly<Record<string, string>> = {
 };
 export function enumDisplayLabel(value: string | null | undefined): string {
   return value == null ? "—" : Object.prototype.hasOwnProperty.call(UI_ENUM_LABELS, value) ? UI_ENUM_LABELS[value] : value;
+}
+
+/** Display labels for toll_charges.charge_type. Stored values stay snake_case. */
+const CHARGE_TYPE_LABELS: Readonly<Record<string, string>> = {
+  toll: "Toll",
+  citation: "Citation",
+  red_light: "Red Light Camera",
+  speeding: "Speeding",
+  parking: "Parking",
+  impound: "Impound",
+  admin_fee: "Admin Fee",
+  ticket: "Ticket",
+  other: "Other",
+};
+
+/** Title Case for a charge type. Unknown values are labeled, never rewritten in storage. */
+export function chargeTypeLabel(value: string | null | undefined): string {
+  if (value == null) return "—";
+  const key = String(value).trim();
+  if (!key) return "—";
+  if (Object.prototype.hasOwnProperty.call(CHARGE_TYPE_LABELS, key)) return CHARGE_TYPE_LABELS[key];
+  return key
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+const STATUS_SPECIAL: Readonly<Record<string, string>> = {
+  past_due: "Past Due", no_show: "No Show", in_progress: "In Progress", on_rent: "Rented", onboarding: "Needs Setup",
+  not_started: "Not Started", needs_review: "Needs Review", in_review: "In Review", ok: "OK", sms: "SMS", ach: "ACH", id: "ID", mvr: "MVR",
+};
+/** Display-only Title Case for status values ("partially_paid" -> "Partially Paid"). Never use the result as a stored or submitted value. */
+export function formatStatusLabel(value: string | null | undefined): string {
+  if (value == null) return "—";
+  const raw = String(value).trim();
+  if (!raw) return "—";
+  const key = raw.toLowerCase().replace(/[\s-]+/g, "_");
+  if (Object.prototype.hasOwnProperty.call(STATUS_SPECIAL, key)) return STATUS_SPECIAL[key];
+  if (Object.prototype.hasOwnProperty.call(UI_ENUM_LABELS, key)) return UI_ENUM_LABELS[key];
+  return raw
+    .replace(/[_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((w) => (w === w.toUpperCase() && w.length > 1 && /[A-Z]/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(" ");
 }

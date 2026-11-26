@@ -51,7 +51,7 @@ describe("wiring", () => {
     expect(hook.match(/alertTeamPaymentFailed\(/g)?.length).toBe(3);
   });
   it("Collections card sums outstanding, not net_collected", () => {
-    expect(overview).toContain('.select("amount, balance_due, driver_id")');
+    expect(overview).toContain('.select("amount, balance_due, driver_id, type, reason, notes, status")');
     expect(overview).toContain("setOverdueAmt(sumOutstanding(overdueRows))");
   });
 });

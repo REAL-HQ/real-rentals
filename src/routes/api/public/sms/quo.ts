@@ -9,6 +9,10 @@ import { createFileRoute } from "@tanstack/react-router";
 // message.undelivered, call.completed, call.missed, call.recording.completed,
 // call.voicemail.completed and call.transcript.completed (call.summary.completed
 // optional), and save the returned whsec_… key as the QUO_WEBHOOK_KEY secret.
+// Quo makes a separate webhook (and signing key) per resource type, e.g. one
+// for messages, one for calls, one for call summaries, one for transcripts:
+// put every key in QUO_WEBHOOK_KEY separated by commas
+// (whsec_a,whsec_b,whsec_c,whsec_d). Each delivery must match one of them.
 //
 // Every delivery is signature-checked (HMAC-SHA256 over id.timestamp.body,
 // 5-minute replay window) before anything is read. Accepted lines come from

@@ -169,6 +169,7 @@ function mapRental(
     stripeSubscriptionId: text(row.stripe_subscription_id),
     applicationId,
     driverName: app?.fullName ?? "Driver",
+    vehicleId: text(row.vehicle_id) || null,
     vehicleLabel: vehicleLabel(vehicle),
   };
 }

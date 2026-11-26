@@ -10,7 +10,7 @@ export const FORECAST_PAGE_CAP = "Record Page Cap Reached. The Forecast Is Not S
 export const WEEK_COUNT = 4;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const INACTIVE = new Set(["archived", "sold", "retired"]);
+const INACTIVE = new Set(["archived", "sold", "retired", "for_sale"]);
 
 export type ForecastRental = {
   id: string;

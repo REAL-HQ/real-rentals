@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getRentAging } from "@/lib/rent-aging.functions";
 import { formatMoney, rentAgingToCsv, type AgingReport, type AgingRow } from "@/lib/rent-aging";
@@ -86,8 +87,9 @@ function Report({ report }: { report: AgingReport }) {
 }
 
 function AgingLine({ row }: { row: AgingRow }) {
+  const navigate = useNavigate();
   return (
-    <tr className="border-b align-top">
+    <tr {...rowNav(navigate, row.renterHref ? searchFromHref(row.renterHref) : row.rentalHref ? searchFromHref(row.rentalHref) : null, "border-b align-top")}>
       <td className="py-2 pr-3">{row.renterHref ? <Link to="/admin" search={searchFromHref(row.renterHref)} className="underline">{row.renterName}</Link> : row.renterName}</td>
       <td className="py-2 pr-3">{row.rentalHref ? <Link to="/admin" search={searchFromHref(row.rentalHref)} className="underline">{row.rentalLabel}</Link> : row.rentalLabel}</td>
       <td className="py-2 pr-3 whitespace-nowrap">{formatMoney(row.amountDue)}</td>

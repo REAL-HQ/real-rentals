@@ -23,6 +23,8 @@ export const confirmStaffTermsMoveForward = createServerFn({ method: "POST" })
     z.object({
       applicationId: z.string().uuid(),
       retry: z.boolean().optional(),
+      /** Only when the record has none; saved into the blank record. */
+      licenseNumber: z.string().max(40).optional(),
       terms: z.object({
         weekly_rate: z.union([z.number(), z.string()]),
         reservation_fee: z.union([z.number(), z.string()]),
@@ -35,14 +37,15 @@ export const confirmStaffTermsMoveForward = createServerFn({ method: "POST" })
     const actor = await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { confirmStaffTerms } = await import("@/lib/staff-terms.server");
-    const r = await confirmStaffTerms(supabaseAdmin, { applicationId: data.applicationId, terms: data.terms, actor, retry: data.retry === true });
+    const r = await confirmStaffTerms(supabaseAdmin, { applicationId: data.applicationId, terms: data.terms, actor, retry: data.retry === true, licenseNumber: data.licenseNumber ?? null });
     // The webhook payload stays server-side; the browser gets the outcome.
     return r.ok
-      ? { ok: true as const, duplicate: r.duplicate, retried: r.retried, eventId: r.eventId, delivery: r.delivery }
+      ? { ok: true as const, duplicate: r.duplicate, retried: r.retried, eventId: r.eventId, delivery: r.delivery, saved: r.saved ?? {} }
       : {
         ok: false as const,
         error: r.error,
         mismatches: (r.mismatches ?? []).map((m) => ({ field: m.field, confirmed: m.confirmed == null ? null : String(m.confirmed), agreement: m.agreement == null ? null : String(m.agreement) })),
         blockers: r.blockers ?? [],
+        saved: r.saved ?? {},
       };
   });

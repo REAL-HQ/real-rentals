@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Shield } from "lucide-react";
 import { getRenterPolicyStatus, setRenterPolicyDeclined } from "@/lib/reservation-fee-refund.functions";
 import { reservationFeeRefundedDetail } from "@/lib/reservation-fee-refund";
+import { DANGER_BADGE_BORDERED } from "@/lib/badge-tone";
 
 /**
  * Marks the Renter Policy (the policy we arrange) as declined. Separate from
@@ -64,7 +65,7 @@ export function RenterPolicyStatusCard({
       <div className="flex items-center gap-2 border-b border-border px-4 py-3">
         <Shield className="h-4 w-4 text-muted-foreground" />
         <div className="text-sm font-semibold">Renter Policy</div>
-        <span className={`ml-2 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${status === "declined" ? "border-red-200 bg-red-50 text-red-800" : "border-[#EDEDF0] bg-[#FAFAFB] text-[#55555E]"}`}>
+        <span className={`ml-2 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${status === "declined" ? DANGER_BADGE_BORDERED : "border-[#EDEDF0] bg-[#FAFAFB] text-[#55555E]"}`}>
           {label}
         </span>
       </div>

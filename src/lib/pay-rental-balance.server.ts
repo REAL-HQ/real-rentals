@@ -35,12 +35,21 @@ export async function payRentalBalanceCore(
       return { error: 'A payment is still being confirmed by Stripe. Please don\'t pay again; your balance updates once it is confirmed.' };
     if (!rows.length) return { error: 'Nothing is owed on this rental.' };
     if (cents !== Math.round(data.amountCents)) return { error: 'Your balance changed. Refresh and try again.' };
+    let chargeMetadata: Record<string, string> = {};
+    if (typeof d.admin?.from === "function") {
+      try {
+        const { chargeMetadataForRental } = await import("@/lib/stripe-charge-metadata.server");
+        chargeMetadata = await chargeMetadataForRental(d.admin, data.rentalId, "rent");
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Stripe payment metadata is incomplete." };
+      }
+    }
     const res = await d.collectRows(d.admin, d.stripe(), rows, {
       rentalId: data.rentalId,
       customerId: rental.stripe_customer_id,
       paymentMethodId: rental.stripe_payment_method_id,
       description: 'Rent balance payment',
-      metadata: { rentalId: data.rentalId, reason: 'rent', source: 'driver_portal' },
+      metadata: { rentalId: data.rentalId, reason: 'rent', source: 'driver_portal', ...chargeMetadata },
     });
     if ('error' in res) {
       if (res.outcome === 'unconfirmed')

@@ -1,4 +1,5 @@
 import { fmtDate } from "@/lib/date-format";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { readContactStatus } from "@/lib/contact-status";
 import type { ContactStatusState } from "@/lib/contact-status";
 import type { ApprovedNotRentingRow } from "@/lib/booking-funnel";
@@ -68,7 +69,7 @@ export function ApprovedNotRentingList({
           {rows.map((r) => {
             const changedAt = readContactStatus(r.contact).state.changedAt;
             return (
-              <tr key={r.id} className="border-b border-border last:border-0">
+              <tr key={r.id} className={`border-b border-border last:border-0 ${ROW_OPEN_CLASS}`} {...rowOpenProps(() => onOpen(r.id))}>
                 <td className="px-3 py-2.5">
                   <button
                     type="button"

@@ -17,6 +17,7 @@
  * phone numbers are never read.
  */
 import { fleetAdmin, fleetJson, fleetRequestBody, type FleetDeps } from "@/lib/fleet-api.server";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import { evaluateGps, matchVehicle, type GpsFinding, type GpsReading, type GpsVehicle } from "@/lib/gps-alerts";
 import type { TeamAlertDeps } from "@/lib/team-alerts.server";
 
@@ -37,7 +38,7 @@ export async function handleGpsReadings(request: Request, deps: GpsDeps = {}): P
 
   const v = await admin.from("vehicles").select("id,license_plate,unit_number,gps_device_id,status,year,make,model,archived_at").is("archived_at", null).limit(500);
   if (v.error) return fleetJson(503, { ok: false, error: "Database unavailable." });
-  const cars: GpsVehicle[] = ((v.data ?? []) as any[]).map((c) => ({
+  const cars: GpsVehicle[] = ((v.data ?? []) as any[]).filter((c) => !isForSaleVehicleStatus(c.status)).map((c) => ({
     id: c.id, license_plate: c.license_plate ?? null, unit_number: c.unit_number ?? null, gps_device_id: c.gps_device_id ?? null, status: c.status ?? null,
     label: [c.unit_number, [c.year, c.make, c.model].filter(Boolean).join(" "), c.license_plate].filter(Boolean).join(" · "),
   }));

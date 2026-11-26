@@ -1,4 +1,6 @@
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { VehicleOrLabel } from "./VehicleCell";
+import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { AppSelect } from "@/components/ui/app-select";
 import { useContext, useEffect, useState, createContext, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -191,7 +193,8 @@ export function IncidentsPanel({ seedIssueId = null, embedded = false }: { seedI
             return (
               <div
                 key={r.id}
-                className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm p-4"
+                className={`rounded-2xl border border-[#EDEDF0] bg-white shadow-sm p-4 ${ROW_OPEN_CLASS}`}
+                {...rowOpenProps(() => setEditing(r))}
               >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
@@ -208,7 +211,7 @@ export function IncidentsPanel({ seedIssueId = null, embedded = false }: { seedI
                               : "pending"
                         }
                       >
-                        {enumDisplayLabel(r.status)}
+                        {formatStatusLabel(r.status)}
                       </StatusPill>
                       {r.severity !== "minor" ? (
                         <StatusPill tone={r.severity === "total_loss" ? "red" : "amber"}>
@@ -219,7 +222,7 @@ export function IncidentsPanel({ seedIssueId = null, embedded = false }: { seedI
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {fmtDateTime(r.occurred_at)} ·{" "}
-                      {r.vehicle_label ?? "unknown vehicle"}
+                      <VehicleOrLabel vehicleId={r.vehicle_id} label={r.vehicle_label ?? "unknown vehicle"} size="sm" />
                       {r.driver_name ? ` · ${r.driver_name}` : " · no renter assigned"}
                       {r.location ? ` · ${r.location}` : ""}
                     </p>

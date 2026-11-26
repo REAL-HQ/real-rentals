@@ -100,16 +100,15 @@ async function handle(request: Request): Promise<Response> {
   } catch (err) {
     console.error("[license-auto-read] failed", err);
   }
-  let waitlistNotices: unknown = null;
+  // Lead alerts stuck at "sending" over 10 minutes: link to Resend's webhook
+  // if the alert went out, otherwise resend it exactly once. Inert until
+  // migration 20261122200000 is applied.
+  let leadAlertSweep: unknown = null;
   try {
-    const { processWaitlistNotices, readFleetCapacity, enrollApprovedApplicants } = await import("@/lib/fleet-capacity.server");
-    const capacity = await readFleetCapacity(supabaseAdmin);
-    let enrolled = 0;
-    if (capacity === 0) enrolled = await enrollApprovedApplicants(supabaseAdmin);
-    const processed = await processWaitlistNotices(supabaseAdmin);
-    waitlistNotices = { capacity, enrolled, ...processed };
+    const { sweepStuckLeadAlerts } = await import("@/lib/lead-alert-sweep.server");
+    leadAlertSweep = await sweepStuckLeadAlerts(supabaseAdmin);
   } catch (err) {
-    console.error("[capacity-waitlist] cron failed", err);
+    console.error("[lead-alert-sweep] failed", err);
   }
-  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments, creditRetry, licenseAutoRead, waitlistNotices });
+  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments, creditRetry, licenseAutoRead, leadAlertSweep });
 }

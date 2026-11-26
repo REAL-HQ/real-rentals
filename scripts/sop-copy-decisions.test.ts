@@ -16,8 +16,9 @@ const read = (f: string) => readFileSync(f, "utf8");
 describe("copy", () => {
   test("D7 activation says Active, never 'reserved for you'", () => {
     const s = read("src/lib/rentals.functions.ts");
-    expect(s).toContain("subject: `Your ${vehicleLabel} Rental Is Active`");
-    expect(s).toContain("REAL RENTALS: Hi ${firstName}, your ${vehicleLabel} rental is now active. Check your email to set up your driver portal and see your payment schedule. Reply STOP to opt out.");
+    // t466u: the portal login now arrives only in the one welcome email, once the
+    // pickup payment is paid (portal-welcome.server.ts), not at activation.
+    expect(s).toContain("REAL RENTALS: Hi ${firstName}, your ${vehicleLabel} rental is now active. Your driver portal login comes by email once your rental is paid. Reply STOP to opt out.");
     expect(s).not.toMatch(/is reserved for you|Is Reserved For You/);
   });
   test("D8 helper line under Upload Documents", () => {
@@ -36,9 +37,10 @@ describe("copy", () => {
   test("D23 the thank-you email names no rideshare app", () => {
     expect(read("src/lib/step-one-email.server.ts")).not.toMatch(/Uber|Lyft/);
   });
-  test("D13 portal invite: P36 wording, license spelled the US way", () => {
+  test("D13 pickup booked email: P36 wording, license spelled the US way, no login (t466u)", () => {
     const e = read("src/lib/email.server.ts");
-    const inv = e.slice(e.indexOf("export async function sendPortalInviteEmail"), e.indexOf("export async function sendAgreementEmail"));
+    const inv = e.slice(e.indexOf("export async function sendPickupBookedEmail"), e.indexOf("export async function sendPortalWelcomeEmail"));
+    expect(inv).toContain("Once your rental is paid at pickup, we'll email your driver portal login.");
     for (const t of ["Your pickup is booked.", "Before You Come", "Bring your driver's license.", "If you're 30+ minutes late, the car may go to another driver.", "Your insurance card is handed to you at pickup, not before.", "Set up your rideshare account after pickup, once your rental is paid.", "Reservation Fee goes toward your first week's rent.", "Your Pickup Is Booked: "]) expect(inv).toContain(t);
     expect(inv).not.toMatch(/licence/);
   });

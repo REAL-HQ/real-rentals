@@ -17,6 +17,7 @@ import {
 } from "@/lib/partner.functions";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { requestEmailSignup } from "@/lib/auth-signup.functions";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 export const Route = createFileRoute("/partner")({
   head: () => ({ meta: [{ title: "Partner Portal — REAL RENTALS" }, { name: "robots", content: "noindex" }] }),
@@ -206,7 +207,7 @@ function Badge({ label, status }: { label: string; status: "pending" | "passed" 
     return <span className="inline-flex items-center gap-1 rounded-md bg-green-100 text-green-800 px-2 py-0.5 text-[11px]"><Check className="w-3 h-3" />{label}</span>;
   }
   if (status === "failed") {
-    return <span className="inline-flex items-center gap-1 rounded-md bg-red-100 text-red-800 px-2 py-0.5 text-[11px]">{label} · Failed</span>;
+    return <span className={`inline-flex items-center gap-1 rounded-md ${DANGER_BADGE} px-2 py-0.5 text-[11px]`}>{label} · Failed</span>;
   }
   return <span className="inline-flex items-center gap-1 rounded-md bg-muted text-muted-foreground px-2 py-0.5 text-[11px]"><Clock className="w-3 h-3" />{label} · Pending</span>;
 }

@@ -85,12 +85,15 @@ describe("billed vs collected series", () => {
 
 describe("lead priority filters and sort", () => {
   it("surfaces new/interested before overdue in All page order", () => {
-    expect(LEAD_ALL_PAGE_ORDER.slice(0, 3)).toEqual(["new", "interested", "overdue"]);
+    expect(LEAD_ALL_PAGE_ORDER.slice(0, 4)).toEqual(["new", "incomplete", "interested", "overdue"]);
     expect(leadFilterBuckets("follow_up_due")).toEqual(["overdue", "today"]);
+    expect(leadFilterBuckets("incomplete")).toEqual(["incomplete"]);
     expect(leadFilterBuckets("interested")).toEqual(["interested"]);
     expect(LEAD_FILTER_LABELS.all).toBe("All");
+    expect(LEAD_FILTER_LABELS.incomplete).toBe("Incomplete");
     expect(leadBucketSort("new")).toEqual({ primary: "created_at", ascending: false });
-    expect(leadBucketSort("overdue").ascending).toBe(true);
+    expect(leadBucketSort("incomplete")).toEqual({ primary: "created_at", ascending: false });
+    expect(leadBucketSort("overdue").ascending).toBe(false);
   });
 });
 
@@ -112,5 +115,17 @@ describe("Overview wiring", () => {
     expect(leads).toContain("ReadinessStatePill");
     expect(cardCopy).toContain("Applied");
     expect(cardCopy).toContain("Last contact");
+  });
+
+  it("puts Revenue, Collections, Service, then Active Renters above Lead Priorities", () => {
+    const overview = readFileSync("src/components/admin/OverviewPanel.tsx", "utf8");
+    const grid = 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4';
+    expect(overview.indexOf("<OverviewToday")).toBeLessThan(overview.indexOf(grid));
+    expect(overview.indexOf(grid)).toBeLessThan(overview.indexOf("<LeadPriorities"));
+    const block = overview.slice(overview.indexOf(grid), overview.indexOf("<LeadPriorities"));
+    const order = ["<RevenueCard", 'eyebrow="Collections"', 'eyebrow="Service"', 'eyebrow="Active Renters"']
+      .map((marker) => block.indexOf(marker));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 });

@@ -72,6 +72,16 @@ When FLEET approves and sends its own approval text (P12), it passes
 site does not send the Approval Confirmation email. Without that flag the email
 goes as before.
 
+## FLEET decline
+
+FLEET may decline with `POST /api/public/fleet/applicant-decision` and
+`{"decision":"decline","reason":"..."}`. The reason is required and is saved
+on the profile Notes. The site sends the decline email and text unless
+`"skip_notify": true`, which FLEET sets when it is sending its own apology.
+Omitting the flag sends both. A profile note that is not a decision is
+`POST /api/public/fleet/profile-note`. See docs/fleet-applicant-review.md.
+Age rules for approve are unchanged.
+
 ## Reservation Fee and deposit wording (Dolmar, t309u)
 
 - Never call the $50 Reservation Fee a "deposit", in any text, call or email.

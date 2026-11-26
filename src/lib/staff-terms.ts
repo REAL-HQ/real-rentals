@@ -114,3 +114,74 @@ export function termsConfirmedRequirement(state: StaffTermsState | null | undefi
 export function moveForwardEnabled(opts: { approved: boolean; isManager: boolean; agreementSigned: boolean; busy?: boolean }): boolean {
   return opts.approved && opts.isManager && !opts.agreementSigned && !opts.busy;
 }
+
+/**
+ * Confirm Terms collects these and saves them to the applicant before the
+ * agreement check runs, so a blocker about one of them is not something staff
+ * have to "fix first" elsewhere once the dialog has a value for it (Rosa,
+ * Nov 18: Jonathon Boykins' dialog listed Vehicle assignment, Weekly rate,
+ * plate, payment schedule and balance due while she had just filled them in).
+ * payment_amount / balance_due only ever block here because the weekly rate
+ * is missing: Move Forward sends with Weekly + Card Autopay + Damage Waiver
+ * Declined (withAutoSendDefaults).
+ */
+export type ConfirmTermsDialogValues = {
+  weekly: string;
+  start: string;
+  deposit: string;
+  vehicleId: string;
+  /** The chosen car's plate as listed in the picker. */
+  vehiclePlate?: string | null;
+  /** The car the records name today (prefill), if any. */
+  recordVehicleId?: string | null;
+  licenseNumber?: string;
+};
+
+export function dialogOutstandingBlockers<B extends { field: string }>(blockers: B[], v: ConfirmTermsDialogValues): B[] {
+  const weeklyOk = (money(v.weekly) ?? 0) > 0;
+  const startOk = /^\d{4}-\d{2}-\d{2}$/.test(v.start.trim());
+  const depositOk = v.deposit.trim() === "" || money(v.deposit) !== null;
+  const vehicleOk = UUID.test(v.vehicleId.trim());
+  const otherCar = vehicleOk && v.vehicleId.toLowerCase() !== String(v.recordVehicleId ?? "").toLowerCase();
+  const plateOk = vehicleOk && String(v.vehiclePlate ?? "").trim() !== "";
+  const licenceOk = String(v.licenseNumber ?? "").trim() !== "";
+  return blockers.filter((b) => {
+    switch (b.field) {
+      case "vehicle": return !vehicleOk;
+      case "license_plate": return !plateOk;
+      // These describe the car on the record; choosing a different one is re-checked on Confirm.
+      case "vehicle_vin":
+      case "vehicle_color": return !otherCar;
+      case "weekly_rate":
+      case "payment_amount":
+      case "balance_due": return !weeklyOk;
+      case "contract_start_date":
+      case "contract_end_date":
+      case "min_term_end": return !startOk;
+      case "deposit_amount": return !depositOk;
+      case "license_number": return !licenceOk;
+      default: return true;
+    }
+  });
+}
+
+const usd2 = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * The v1.14 payment rows Move Forward's agreement prints, from what is in the
+ * dialog: paid weekly by card autopay, Damage Waiver declined, and the
+ * balance due at pickup = first week less the Reservation Fee.
+ */
+export function confirmTermsPaymentSummary(weekly: string, reservation: string): { schedule: string; method: string; damageWaiver: string; balanceDue: string | null } {
+  const w = money(weekly);
+  const fee = money(reservation) ?? 0;
+  const balanceDue = w != null && w > 0 && fee <= w ? usd2(Math.round((w - fee) * 100) / 100) : null;
+  return { schedule: "Weekly", method: "Card Autopay", damageWaiver: "Declined", balanceDue };
+}
+
+/** Optional licence number typed in Confirm Terms; saved only into a blank record. */
+export function parseLicenseNumber(raw: unknown): string | null {
+  const s = String(raw ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+  if (!s) return null;
+  return /^[A-Z0-9][A-Z0-9 -]{3,29}$/.test(s) ? s : null;
+}

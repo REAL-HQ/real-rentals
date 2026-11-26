@@ -196,6 +196,39 @@ for (const [phase, n] of [["active", 2], ["completed", 1], ["cancelled", 1]]) {
 seed();
 ok((await list({ phase: "../../etc" })).rows.length === 4, "an unknown phase falls back to every rental, not none");
 
+// ======================================================= past swaps
+console.log("\\na cancelled rental ended by a swap is Swap, with the swap date and a length");
+{
+  seed();
+  const R5 = "11111111-0000-4000-8000-000000000005";
+  S.tables.rentals.push({
+    id: R5, status: "cancelled", start_date: "2026-11-19", end_date: null, created_at: "2026-11-19T15:00:00Z",
+    vehicle_id: V1, driver_id: U1, application_id: A1, weekly_rate: 350, payment_status: "current",
+  });
+  S.tables.rental_vehicle_swaps = [{
+    id: "55555555-5555-4555-8555-555555555555", swap_number: 1000, status: "completed",
+    rental_id: R1, application_id: A1, from_vehicle_id: V1,
+    completed_at: "2026-11-21T16:00:00Z", reason_code: "replacement", reason: "The car would not start",
+  }];
+  const past = await list({ scope: "past", phase: "all" });
+  const swapped = byId(past.rows, R5);
+  ok(swapped.phase === "swap", `the leftover rental reads Swap (${swapped.phase})`);
+  ok(swapped.endDate === "2026-11-21", `the end is the swap completion date (${swapped.endDate})`);
+  ok(swapped.lengthLabel === "2 Days", `the length is 2 Days (${swapped.lengthLabel})`);
+  ok(swapped.status === "cancelled", "the stored status is still cancelled");
+  ok(past.counts.swap === 1 && past.counts.cancelled === 1 && past.counts.completed === 1,
+    `chips split Swap from Cancelled (${JSON.stringify(past.counts)})`);
+  ok(!past.rows.some((x) => x.phase === "active"), "Past still hides active rentals");
+  const onlySwap = await list({ scope: "past", phase: "swap" });
+  ok(onlySwap.rows.length === 1 && onlySwap.rows[0].id === R5, "the Swap chip returns only that rental");
+  const onlyCancelled = await list({ scope: "past", phase: "cancelled" });
+  ok(onlyCancelled.rows.length === 1 && onlyCancelled.rows[0].id === R3 && onlyCancelled.rows[0].phase === "cancelled",
+    "the Cancelled chip no longer includes the swap");
+  const finished = byId(past.rows, R2);
+  ok(finished.lengthLabel === "92 Days (13 Weeks 1 Day)", `a recorded end still has a length (${finished.lengthLabel})`);
+  ok(!byId(past.rows, R1), "the continuing active rental is not on Past");
+}
+
 // ======================================================= search
 console.log("\\nthe search finds a person or a car");
 seed();
@@ -207,6 +240,29 @@ ok((await list({ q: "1HGCM82633A004352" })).rows.length === 1, "by VIN");
 const none = await list({ q: "nobody-by-that-name" });
 ok(none.rows.length === 0 && none.total === 0, "a search that matches nobody returns nothing");
 ok(none.counts.active === 0, "  and the counts agree rather than reporting the whole fleet");
+
+console.log("\\nlength order is the whole filtered set, then the page");
+{
+  seed();
+  const R6 = "11111111-0000-4000-8000-000000000006";
+  S.tables.rentals.push({
+    id: R6, status: "ended", start_date: "2026-11-01", end_date: "2026-11-02", created_at: "2026-11-20T10:00:00Z",
+    vehicle_id: V2, driver_id: U2, application_id: A2, weekly_rate: 280, payment_status: "current",
+  });
+  const recent = await list({ scope: "completed", sort: "recent", pageSize: 1, page: 1 });
+  ok(recent.rows[0].id === R6, `default order is still newest first (${recent.rows[0]?.id})`);
+  const longest = await list({ scope: "completed", sort: "recent", length: "longest", pageSize: 1, page: 1 });
+  ok(longest.rows[0].id === R2 && longest.total === 2,
+    `longest page 1 is the 92-day rental, across both rows (${longest.rows[0]?.id}, total ${longest.total})`);
+  const longest2 = await list({ scope: "completed", length: "longest", pageSize: 1, page: 2 });
+  ok(longest2.rows[0].id === R6 && longest2.total === 2, "page 2 is the remaining 1-day rental");
+  const shortest = await list({ scope: "completed", length: "shortest", pageSize: 1, page: 1 });
+  ok(shortest.rows[0].id === R6, "shortest page 1 is the 1-day rental");
+  const named = await list({ scope: "completed", q: "omar", length: "longest" });
+  ok(named.rows.map((x) => x.id).join(",") === [R2, R6].join(","), "search still applies, then longest");
+  const missed = await list({ scope: "completed", q: "RR-001", length: "longest" });
+  ok(missed.rows.length === 0 && missed.total === 0, "a search that misses stays empty");
+}
 
 console.log("\\none vehicle's rentals");
 seed();
