@@ -1,5 +1,5 @@
 import { VehicleOrLabel } from "./VehicleCell";
-import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
+import { chargeTypeLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -263,10 +263,6 @@ export function ChargesPanel() {
         />
       ) : (
         <div className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm overflow-hidden">
-          <div className="grid grid-cols-2 gap-2 border-b border-[#EDEDF0] bg-[#FAFAFB] px-3 py-2 text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">
-            <span>Agency Deadline</span>
-            <span>Pay By</span>
-          </div>
           <ul className="divide-y divide-[#EDEDF0]">
             {rows.map((r) => {
               const total = r.amount + r.admin_fee;
@@ -287,7 +283,7 @@ export function ChargesPanel() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm ">
-                        {enumDisplayLabel(r.charge_type)}
+                        {chargeTypeLabel(r.charge_type)}
                       </span>
                       <StatusPill
                         status={
@@ -304,7 +300,7 @@ export function ChargesPanel() {
                       </StatusPill>
                       {r.source === "import" ? (
                         <span className="text-[10px] tracking-wide text-[#9A9AA3]">
-                          imported
+                          Imported
                         </span>
                       ) : null}
                       {flags.overdue ? <SolidPill label="Overdue" bg="#D03020" fg="#FFFFFF" /> : null}
@@ -318,12 +314,13 @@ export function ChargesPanel() {
                         <SolidPill label="Transferred" bg="#55555E" fg="#FFFFFF" />
                       ) : null}
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {fmtDateTime(r.occurred_at)} ·{" "}
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+                      <span>{fmtDateTime(r.occurred_at)}</span>
+                      <span>·</span>
                       <VehicleOrLabel vehicleId={r.vehicle_id} label={r.vehicle_label ?? "unknown vehicle"} size="sm" />
-                      {r.location ? ` · ${r.location}` : ""}
-                      {r.agency ? ` · ${r.agency}` : ""}
-                    </p>
+                      {r.location ? <span>· {r.location}</span> : null}
+                      {r.agency ? <span>· {r.agency}</span> : null}
+                    </div>
                     <p className="mt-0.5 text-xs">
                       {r.driver_name ? (
                         <span className="text-[#111114]">Billed to {r.driver_name}</span>
@@ -336,81 +333,6 @@ export function ChargesPanel() {
                         <span className="text-[#9A9AA3]"> · ref {r.reference_number}</span>
                       ) : null}
                     </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-1">
-                      {!r.rental_id ? (
-                        <button
-                          onClick={async () => {
-                            try {
-                              const res = await reattribute({ data: { id: r.id } });
-                              toast[res.attributed ? "success" : "error"](
-                                res.attributed
-                                  ? "Matched to a renter"
-                                  : "Still no rental covers that time",
-                              );
-                              load();
-                            } catch (e) {
-                              toast.error(e instanceof Error ? e.message : "Retry failed");
-                            }
-                          }}
-                          className="text-[11px] font-semibold text-[#D03020] px-1.5"
-                        >
-                          Retry Match
-                        </button>
-                      ) : null}
-                      {open && r.escalation !== "disputed" && r.status !== "disputed" ? (
-                        <button
-                          type="button"
-                          onClick={() => setPendingEscalation({ id: r.id, escalation: "disputed" })}
-                          className="text-[11px] font-semibold text-[#55555E] px-1.5"
-                        >
-                          Mark Disputed
-                        </button>
-                      ) : null}
-                      {open && r.escalation !== "affidavit_filed" ? (
-                        <button
-                          type="button"
-                          onClick={() => setPendingEscalation({ id: r.id, escalation: "affidavit_filed" })}
-                          className="text-[11px] font-semibold text-[#55555E] px-1.5"
-                        >
-                          File Affidavit (Transfer To Renter)
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => setDetailId(r.id)}
-                        className="text-[11px] font-semibold text-[#111114] px-1.5"
-                      >
-                        Details
-                      </button>
-                      {r.status !== "rebilled" && r.status !== "paid" ? (
-                        <>
-                          <button
-                            onClick={async () => {
-                              await setStatus({ data: { id: r.id, status: "written_off" } });
-                              toast.success("Written off");
-                              load();
-                            }}
-                            className="text-[11px] text-[#55555E] px-1.5"
-                          >
-                            Write Off
-                          </button>
-                          <button
-                            onClick={async () => {
-                              if (!confirm("Delete this charge?")) return;
-                              try {
-                                await remove({ data: { id: r.id } });
-                                load();
-                              } catch (e) {
-                                toast.error(e instanceof Error ? e.message : "Could not delete");
-                              }
-                            }}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[#55555E] hover:text-[#D03020]"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm font-semibold tabular-nums">{money(total)}</div>
@@ -428,6 +350,82 @@ export function ChargesPanel() {
                     onAgencyDue={(value) => saveChargeDates(r, { agencyDueDate: value })}
                     onPayBy={(value) => saveChargeDates(r, { renterPayBy: value })}
                   />
+                  <div className="flex flex-col gap-1.5 text-[#111114] sm:flex-row sm:flex-wrap sm:items-center" data-testid="charge-actions">
+                    {!r.rental_id ? (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await reattribute({ data: { id: r.id } });
+                            toast[res.attributed ? "success" : "error"](
+                              res.attributed
+                                ? "Matched to a renter"
+                                : "Still no rental covers that time",
+                            );
+                            load();
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : "Retry failed");
+                          }
+                        }}
+                        className={actionClass + " text-[#D03020]"}
+                      >
+                        Retry Match
+                      </button>
+                    ) : null}
+                    {open && r.escalation !== "disputed" && r.status !== "disputed" ? (
+                      <button
+                        type="button"
+                        onClick={() => setPendingEscalation({ id: r.id, escalation: "disputed" })}
+                        className={actionClass}
+                      >
+                        Mark Disputed
+                      </button>
+                    ) : null}
+                    {open && r.escalation !== "affidavit_filed" ? (
+                      <button
+                        type="button"
+                        onClick={() => setPendingEscalation({ id: r.id, escalation: "affidavit_filed" })}
+                        className={actionClass}
+                      >
+                        File Affidavit (Transfer To Renter)
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setDetailId(r.id)}
+                      className={actionClass}
+                    >
+                      Details
+                    </button>
+                    {r.status !== "rebilled" && r.status !== "paid" ? (
+                      <>
+                        <button
+                          onClick={async () => {
+                            await setStatus({ data: { id: r.id, status: "written_off" } });
+                            toast.success("Written off");
+                            load();
+                          }}
+                          className={actionClass}
+                        >
+                          Write Off
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm("Delete this charge?")) return;
+                            try {
+                              await remove({ data: { id: r.id } });
+                              load();
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : "Could not delete");
+                            }
+                          }}
+                          className={actionClass + " gap-1.5"}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Delete
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
                 </li>
               );
             })}
@@ -456,7 +454,7 @@ export function ChargesPanel() {
       ) : null}
       {detail ? (
         <ModalShell onClose={() => setDetailId(null)} size="md" label="Charge Detail">
-          <ModalHeader title="Charge Detail" onClose={() => setDetailId(null)} subtitle={enumDisplayLabel(detail.charge_type)} />
+          <ModalHeader title="Charge Detail" onClose={() => setDetailId(null)} subtitle={chargeTypeLabel(detail.charge_type)} />
           <ModalBody>
             <DeadlinePair
               testId="charge-detail-deadlines"
@@ -516,6 +514,9 @@ export function ChargesPanel() {
   );
 }
 
+const actionClass =
+  "inline-flex min-h-8 w-full items-center justify-center rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1 text-center text-[11px] font-semibold leading-tight sm:w-auto";
+
 function SolidPill({ label, bg, fg }: { label: string; bg: string; fg: string }) {
   return (
     <span
@@ -557,19 +558,33 @@ function DeadlineColumn({
   value: string | null | undefined;
   onChange: (value: string | null) => void;
 }) {
+  const [editing, setEditing] = useState(false);
   const shown = value ? fmtDate(value) : "Not Set";
   return (
-    <label className="block min-w-0">
+    <div className="min-w-0">
       <span className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">{label}</span>
-      <span className="mt-1 block text-sm font-medium text-[#111114]">{shown}</span>
-      <input
-        type="date"
-        aria-label={label}
-        value={(value ?? "").slice(0, 10)}
-        onChange={(e) => onChange(e.target.value || null)}
-        className="mt-1 w-full min-w-0 rounded-md border border-[#EDEDF0] bg-white px-2 py-1 text-xs text-[#111114]"
-      />
-    </label>
+      {editing ? (
+        <input
+          type="date"
+          aria-label={label}
+          autoFocus
+          value={(value ?? "").slice(0, 10)}
+          onChange={(e) => {
+            onChange(e.target.value || null);
+            setEditing(false);
+          }}
+          onBlur={() => setEditing(false)}
+          className="mt-1 w-full min-w-0 rounded-md border border-[#EDEDF0] bg-white px-2 py-1 text-xs text-[#111114]"
+        />
+      ) : (
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className={`text-sm font-medium ${value ? "text-[#111114]" : "text-[#55555E]"}`}>{shown}</span>
+          <button type="button" onClick={() => setEditing(true)} className="text-[11px] font-semibold text-[#111114]">
+            Edit
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

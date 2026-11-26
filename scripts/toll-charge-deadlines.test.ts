@@ -11,6 +11,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY ??= "dummy";
 import { oneOffIdentity, type OneOffIdentity } from "../src/lib/one-off-payment.ts";
 import { insertMatchedOneOff } from "../src/lib/one-off-payment.server.ts";
 import { linkPaidTollCharge } from "../src/lib/toll-charge-sync.server.ts";
+import { chargeTypeLabel } from "../src/lib/ui-display-labels.ts";
 import { mapHeaders, parseTollStatement } from "../src/lib/toll-import.ts";
 import {
   AGENCY_DUE_SOON_DAYS,
@@ -350,6 +351,16 @@ describe("staff and portal dates", () => {
     assert.match(pair, /grid-cols-2/);
     assert.match(pair, /Agency Deadline/);
     assert.match(pair, /Pay By/);
+    assert.match(panel, /\bEdit\b/);
+    assert.equal(panel.includes("bg-[#FAFAFB] px-3 py-2"), false);
+    assert.match(panel, /data-testid="charge-actions"/);
+    assert.match(panel, /flex flex-col gap-1\.5/);
+    assert.match(panel, /sm:flex-row sm:flex-wrap/);
+    assert.equal(chargeTypeLabel("citation"), "Citation");
+    assert.equal(chargeTypeLabel("red_light"), "Red Light Camera");
+    assert.equal(chargeTypeLabel("admin_fee"), "Admin Fee");
+    assert.equal(chargeTypeLabel("school_zone_ticket"), "School Zone Ticket");
+    assert.equal(panel.includes("enumDisplayLabel(r.charge_type)"), false);
 
     const portal = readFileSync("src/routes/portal.tsx", "utf8");
     const start = portal.indexOf("function MyChargesCard");

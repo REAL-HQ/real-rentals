@@ -40,11 +40,11 @@ async function assertStaff(_supabase: any, userId: string) {
 export const CHARGE_TYPES = [
   { value: "toll", label: "Toll" },
   { value: "citation", label: "Citation" },
-  { value: "red_light", label: "Red light camera" },
+  { value: "red_light", label: "Red Light Camera" },
   { value: "speeding", label: "Speeding" },
   { value: "parking", label: "Parking" },
   { value: "impound", label: "Impound" },
-  { value: "admin_fee", label: "Admin fee" },
+  { value: "admin_fee", label: "Admin Fee" },
   { value: "other", label: "Other" },
 ] as const;
 
