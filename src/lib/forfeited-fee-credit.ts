@@ -114,6 +114,56 @@ export type KeptFeePayment = {
 
 export type KeptFeeOffer = { rentalId: string; paymentId: string };
 
+/** A renter credit that can be shown on a Cancelled booking row. */
+export type CancelledRentalCredit = {
+  id: string;
+  applicationId: string;
+  sourceRentalId: string | null;
+  amount: number;
+  status: string;
+  expiresAt: string | null;
+  createdAt: string | null;
+};
+
+function creditId(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function creditRank(credit: CancelledRentalCredit, now: Date): number {
+  if (credit.status === "available" && !creditExpired(credit.expiresAt, now)) return 0;
+  if (credit.status === "available") return 1;
+  if (credit.status === "applied") return 2;
+  return 3;
+}
+
+/**
+ * The credit for one Cancelled row. A source_rental_id match wins. When none
+ * exists, a credit for the same driver with no source rental is the fallback.
+ * A credit tied to a different rental stays on that rental. Void credits are
+ * ignored. One driver can still match more than one row.
+ */
+export function creditForCancelledRental(
+  rental: { id: string; applicationId?: string | null },
+  credits: readonly CancelledRentalCredit[],
+  now = new Date(),
+): CancelledRentalCredit | null {
+  const rentalId = creditId(rental.id);
+  const applicationId = creditId(rental.applicationId);
+  const live = credits.filter((credit) => credit.status !== "void");
+  const byRental = rentalId ? live.filter((credit) => creditId(credit.sourceRentalId) === rentalId) : [];
+  const pool = byRental.length
+    ? byRental
+    : applicationId
+      ? live.filter((credit) => creditId(credit.applicationId) === applicationId && !creditId(credit.sourceRentalId))
+      : [];
+  if (!pool.length) return null;
+  return [...pool].sort((a, b) => {
+    const rank = creditRank(a, now) - creditRank(b, now);
+    if (rank !== 0) return rank;
+    return String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""));
+  })[0];
+}
+
 /**
  * Cancelled rows whose kept Reservation Fee has no live credit.
  * `liveCreditPaymentIds` is every non-void credit's source payment.

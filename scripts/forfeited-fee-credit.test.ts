@@ -9,9 +9,11 @@ import {
   creditDaysLeft,
   creditExpired,
   creditExpiresAt,
+  creditForCancelledRental,
   keptFeeOffers,
   keptFeeRentalId,
   readForfeitedFeeCreditSettings,
+  type CancelledRentalCredit,
 } from "../src/lib/forfeited-fee-credit";
 
 const RENTAL = "11111111-0000-4000-8000-0000000000aa";
@@ -66,6 +68,39 @@ describe("forfeited fee credit policy", () => {
       { rentalId: OTHER, paymentId: "pay-3" },
     ]);
     expect(keptFeeOffers([RENTAL], payments, new Set(["pay-1"]))).toEqual([]);
+  });
+
+  test("a cancelled row matches its source rental, then a credit with no source rental", () => {
+    const now = new Date("2026-11-26T16:00:00Z");
+    const fabio = "057edf3f-1111-4000-8000-000000000001";
+    const jonathon = "303a7ae5-2222-4000-8000-000000000002";
+    const appFabio = "aaaaaaaa-0000-4000-8000-0000000000aa";
+    const appJon = "bbbbbbbb-0000-4000-8000-0000000000bb";
+    const credit = (over: Partial<CancelledRentalCredit> & Pick<CancelledRentalCredit, "id" | "applicationId" | "status">): CancelledRentalCredit => ({
+      sourceRentalId: null,
+      amount: 50,
+      expiresAt: "2027-02-23T15:00:00Z",
+      createdAt: "2026-11-01T15:00:00Z",
+      ...over,
+    });
+    const credits = [
+      credit({ id: "fabio", applicationId: appFabio, sourceRentalId: fabio, status: "available", expiresAt: "2027-02-23T15:00:00Z" }),
+      credit({ id: "jon", applicationId: appJon, sourceRentalId: jonathon, status: "available", expiresAt: "2027-02-17T15:00:00Z" }),
+      credit({ id: "voided", applicationId: appFabio, sourceRentalId: fabio, status: "void", createdAt: "2026-11-20T15:00:00Z" }),
+      credit({ id: "loose", applicationId: appFabio, sourceRentalId: null, status: "available", createdAt: "2026-11-02T15:00:00Z" }),
+      credit({ id: "applied", applicationId: appJon, sourceRentalId: "cccccccc-0000-4000-8000-0000000000cc", status: "applied" }),
+      credit({ id: "other-rental", applicationId: appJon, sourceRentalId: "dddddddd-0000-4000-8000-0000000000dd", status: "available" }),
+    ];
+    expect(creditForCancelledRental({ id: fabio, applicationId: appFabio }, credits, now)?.id).toBe("fabio");
+    expect(creditForCancelledRental({ id: jonathon, applicationId: appJon }, credits, now)?.id).toBe("jon");
+    expect(creditForCancelledRental({ id: "eeeeeeee-0000-4000-8000-0000000000ee", applicationId: appFabio }, credits, now)?.id).toBe("loose");
+    expect(creditForCancelledRental({ id: "cccccccc-0000-4000-8000-0000000000cc", applicationId: appJon }, credits, now)?.id).toBe("applied");
+    expect(creditForCancelledRental({ id: "ffffffff-0000-4000-8000-0000000000ff", applicationId: "99999999-0000-4000-8000-000000000099" }, credits, now)).toBeNull();
+    const both = [
+      credit({ id: "old-applied", applicationId: appFabio, sourceRentalId: fabio, status: "applied", createdAt: "2026-11-20T15:00:00Z" }),
+      credit({ id: "still-open", applicationId: appFabio, sourceRentalId: fabio, status: "available", createdAt: "2026-11-01T15:00:00Z" }),
+    ];
+    expect(creditForCancelledRental({ id: fabio, applicationId: appFabio }, both, now)?.id).toBe("still-open");
   });
 
   test("the migration file adds expiry and the default policy and is not applied from here", () => {

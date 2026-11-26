@@ -4,6 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   FORFEITED_FEE_CREDIT_MODES,
   readForfeitedFeeCreditSettings,
+  type CancelledRentalCredit,
   type ForfeitedFeeCreditSettings,
 } from "@/lib/forfeited-fee-credit";
 
@@ -47,12 +48,24 @@ export const saveForfeitedFeeCreditSettings = createServerFn({ method: "POST" })
 
 export const listKeptFeeCreditOffers = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ rentalIds: z.array(z.string().uuid()).max(100) }).parse(d))
-  .handler(async ({ context, data }): Promise<{ mode: ForfeitedFeeCreditSettings["mode"]; offers: { rentalId: string; paymentId: string }[] }> => {
+  .inputValidator((d: unknown) =>
+    z.object({
+      rentalIds: z.array(z.string().uuid()).max(100),
+      applicationIds: z.array(z.string().uuid()).max(100).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }): Promise<{
+    mode: ForfeitedFeeCreditSettings["mode"];
+    offers: { rentalId: string; paymentId: string }[];
+    credits: CancelledRentalCredit[];
+  }> => {
     const { requireStaff } = await import("@/lib/roles.server");
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { loadKeptFeeOffers } = await import("@/lib/forfeited-fee-credit.server");
-    const found = await loadKeptFeeOffers(supabaseAdmin, data.rentalIds);
-    return { mode: found.settings.mode, offers: found.offers };
+    const { loadCancelledRentalCredits, loadKeptFeeOffers } = await import("@/lib/forfeited-fee-credit.server");
+    const [found, credits] = await Promise.all([
+      loadKeptFeeOffers(supabaseAdmin, data.rentalIds),
+      loadCancelledRentalCredits(supabaseAdmin, data.rentalIds, data.applicationIds ?? []),
+    ]);
+    return { mode: found.settings.mode, offers: found.offers, credits };
   });
