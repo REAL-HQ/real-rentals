@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { ApprovedDriverCombobox } from "@/components/admin/ApprovedDriverCombobox";
+import type { ApprovedDriverOption } from "@/lib/approved-driver-picker";
 import {
   createReservation,
   listApprovedForReservation,
@@ -64,7 +65,7 @@ export function ReserveCarDialog({
   const [slots, setSlots] = useState<PickupSlot[]>([]);
   const [fieldRep, setFieldRep] = useState<string | null>(null);
   const [vehicles, setVehicles] = useState<Array<{ id: string; unit_number: string | null; year: number | null; make: string | null; model: string | null; license_plate?: string | null; vin?: string | null; status: string | null }>>([]);
-  const [people, setPeople] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
+  const [people, setPeople] = useState<ApprovedDriverOption[]>([]);
   const [personId, setPersonId] = useState(applicationId ?? "");
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [pickupDate, setPickupDate] = useState(easternParts(new Date()).date);
@@ -175,14 +176,7 @@ export function ReserveCarDialog({
         <div className="grid gap-3">
           {!applicationId ? (
             <Field label="Approved Driver">
-              <AppSelect className={input} value={personId} onChange={(e) => setPersonId(e.target.value)} aria-label="Approved Driver">
-                <option value="">Select…</option>
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.full_name || p.email || p.id}
-                  </option>
-                ))}
-              </AppSelect>
+              <ApprovedDriverCombobox people={people} value={personId} onChange={setPersonId} />
             </Field>
           ) : null}
           <Field label="Vehicle">

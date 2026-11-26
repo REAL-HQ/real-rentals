@@ -716,12 +716,12 @@ export const listVehiclesForReservation = createServerFn({ method: "GET" })
 
 export const listApprovedForReservation = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<Array<{ id: string; full_name: string | null; email: string | null }>> => {
+  .handler(async ({ context }): Promise<Array<{ id: string; full_name: string | null; email: string | null; phone: string | null }>> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("applications")
-      .select("id,full_name,email,status,user_id")
+      .select("id,full_name,email,phone,status,user_id")
       .in("status", ["approved", "active"])
       .order("full_name", { ascending: true })
       .limit(500);
@@ -732,5 +732,10 @@ export const listApprovedForReservation = createServerFn({ method: "GET" })
     const taken = new Set((reserved.data ?? []).map((r) => r.application_id).filter(Boolean));
     return (data ?? [])
       .filter((a) => !taken.has(a.id))
-      .map((a) => ({ id: a.id, full_name: a.full_name ?? null, email: a.email ?? null }));
+      .map((a) => ({
+        id: a.id,
+        full_name: a.full_name ?? null,
+        email: a.email ?? null,
+        phone: a.phone ?? null,
+      }));
   });
