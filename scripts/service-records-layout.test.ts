@@ -25,7 +25,7 @@ mock.module("@/integrations/supabase/client", () => ({
   supabase: { from: () => ({ select: () => ({ order: async () => ({ data: [], error: null }) }) }) },
 }));
 
-const { MaintenancePanel, recordCount } = await import("../src/components/admin/MaintenancePanel.tsx");
+const { MaintenancePanel, recordCount, serviceCost } = await import("../src/components/admin/MaintenancePanel.tsx");
 
 const vehicles = [
   vehicle("v1", 2018, "Nissan", "Altima", 84210),
@@ -43,6 +43,15 @@ describe("service records layout", () => {
     assert.equal(recordCount(1), "1 Record");
     assert.equal(recordCount(0), "0 Records");
     assert.equal(recordCount(3), "3 Records");
+  });
+
+  it("formats a recorded cost with two decimals and leaves a blank cost as an em dash", () => {
+    assert.equal(serviceCost(89.5), "$89.50");
+    assert.equal(serviceCost(240), "$240.00");
+    assert.equal(serviceCost(1250.5), "$1,250.50");
+    assert.equal(serviceCost(0), "—");
+    assert.equal(serviceCost(null), "—");
+    assert.equal(serviceCost(undefined), "—");
   });
 
   it("keeps the status select inside a padded cell and title-cases the page", () => {
@@ -70,6 +79,10 @@ describe("service records layout", () => {
     assert.match(html, />Repair</);
     assert.match(html, />Inspection</);
     assert.match(html, /Full synthetic/);
+    assert.match(html, /\$89\.50/);
+    assert.match(html, /\$240\.00/);
+    assert.doesNotMatch(html, /\$89\.5</);
+    assert.doesNotMatch(html, />\$240</);
     const statusHeader = html.indexOf(">Status<");
     const itemHeader = html.indexOf(">Item<");
     const categoryHeader = html.indexOf(">Category<");

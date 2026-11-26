@@ -72,6 +72,13 @@ export function recordCount(n: number): string {
   return n === 1 ? "1 Record" : `${n} Records`;
 }
 
+/** A recorded cost, or an em dash when nothing was entered. */
+export function serviceCost(amount: number | null | undefined): string {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n === 0) return "—";
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
 const CATEGORY_LABEL: Record<string, string> = {
   routine: "Routine",
   repair: "Repair",
@@ -404,7 +411,7 @@ export function MaintenancePanel({
                   <td className="px-3 py-2"><span className="block truncate">{r.item}</span></td>
                   <td className="px-3 py-2">{categoryLabel(r.category)}</td>
                   <td className="whitespace-nowrap px-3 py-2">{r.due_date ? fmtDate(r.due_date) : "—"}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{r.total_cost ? `$${r.total_cost}` : "—"}</td>
+                  <td className="whitespace-nowrap px-3 py-2">{serviceCost(r.total_cost)}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground"><span className="block break-words">{r.notes}</span></td>
                 </tr>
               ))}
