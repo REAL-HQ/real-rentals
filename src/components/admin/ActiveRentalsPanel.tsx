@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { dailyRateLabel } from "@/lib/rent-standing";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
@@ -17,12 +17,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  etDateISO,
   formatBoardDate,
   formatWeeklyRate,
   paymentStatusLabel,
   weeksInLabel,
   type ActiveRentalRow,
 } from "@/lib/active-rentals";
+import { activeLengthDays, orderByLength, type RentalLengthOrder } from "@/lib/rental-length-order";
+import { RentalLengthSort } from "./RentalLengthSort";
 import { listActiveRentals } from "@/lib/active-rentals.functions";
 import { getRentalLateFees, type RentalLateFeeStatus } from "@/lib/rent-reminders.functions";
 import { RecordPaymentDialog, WaiveLateFeeDialog, lateFeeLabel } from "./RentPaymentActions";
@@ -57,10 +60,19 @@ function isAbortError(e: unknown): boolean {
   );
 }
 
-export function ActiveRentalsPanel({ previewRows }: { previewRows?: ActiveRentalRow[] } = {}) {
+export function ActiveRentalsPanel({
+  previewRows,
+  initialLengthOrder = "default",
+  initialFilter = "all",
+}: {
+  previewRows?: ActiveRentalRow[];
+  initialLengthOrder?: RentalLengthOrder;
+  initialFilter?: (typeof FILTERS)[number]["id"];
+} = {}) {
   const navigate = useNavigate();
   const fetchBoard = useServerFn(listActiveRentals);
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>(initialFilter);
+  const [lengthOrder, setLengthOrder] = useState<RentalLengthOrder>(initialLengthOrder);
   const [rows, setRows] = useState<ActiveRentalRow[]>(previewRows ?? []);
   const [loaded, setLoaded] = useState({ payments: true, issues: true, incidents: true, documents: true });
   const [loading, setLoading] = useState(!previewRows);
@@ -117,11 +129,15 @@ export function ActiveRentalsPanel({ previewRows }: { previewRows?: ActiveRental
     };
   }, [fetchBoard, reload, previewRows]);
 
-  const visible = rows.filter((row) => {
-    if (filter === "overdue") return (row.overdueDays ?? 0) > 0;
-    if (filter === "issues") return (row.openIssues ?? 0) > 0;
-    return true;
-  });
+  const today = etDateISO();
+  const visible = useMemo(() => {
+    const filtered = rows.filter((row) => {
+      if (filter === "overdue") return (row.overdueDays ?? 0) > 0;
+      if (filter === "issues") return (row.openIssues ?? 0) > 0;
+      return true;
+    });
+    return orderByLength(filtered, (row) => activeLengthDays(row.startDate, today), lengthOrder);
+  }, [rows, filter, lengthOrder, today]);
 
   return (
     <div className="space-y-4" data-testid="active-rentals">
@@ -142,9 +158,12 @@ export function ActiveRentalsPanel({ previewRows }: { previewRows?: ActiveRental
             </button>
           ))}
         </div>
-        <span className="text-sm text-muted-foreground">
-          {visible.length} Active Rental{visible.length === 1 ? "" : "s"}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">
+            {visible.length} Active Rental{visible.length === 1 ? "" : "s"}
+          </span>
+          <RentalLengthSort value={lengthOrder} onChange={setLengthOrder} />
+        </div>
       </div>
 
       {!loaded.payments || !loaded.issues || !loaded.incidents || !loaded.documents ? (

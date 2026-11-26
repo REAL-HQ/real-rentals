@@ -1,5 +1,5 @@
 import { VehicleCell } from "./VehicleCell";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
@@ -29,6 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { endedLengthDays, orderByLength, type RentalLengthOrder } from "@/lib/rental-length-order";
+import { RentalLengthSort } from "./RentalLengthSort";
 
 // Bookings: every rental, in one list.
 //
@@ -91,6 +93,7 @@ export function BookingsPanel({
   scope = "all",
   onCounts,
   previewRows,
+  initialLengthOrder = "default",
 }: {
   externalSearch?: string;
   openId?: string | null;
@@ -102,8 +105,10 @@ export function BookingsPanel({
   onCounts?: (counts: { completed: number; cancelled: number; swap: number }) => void;
   /** Skip the server read and render these rows. The alignment test uses this. */
   previewRows?: BookingRow[];
+  initialLengthOrder?: RentalLengthOrder;
 } = {}) {
   const navigate = useNavigate();
+  const [lengthOrder, setLengthOrder] = useState<RentalLengthOrder>(initialLengthOrder);
 
   // List state lives in the URL so refresh, back and shared links keep it.
   const q = listState.q ?? "";
@@ -169,6 +174,7 @@ export function BookingsPanel({
     phase,
     scope,
     sort,
+    length: lengthOrder,
     page,
     pageSize: BOOKING_LIST_PAGE_SIZE,
     ...(vehicleFilter ? { vehicleId: vehicleFilter } : {}),
@@ -179,21 +185,29 @@ export function BookingsPanel({
     placeholderData: keepPreviousData,
     enabled: !previewRows,
   });
-  const previewResult: BookingListResult | undefined = previewRows
-    ? {
-        rows: previewRows,
-        total: previewRows.length,
-        page: 1,
-        pageSize: BOOKING_LIST_PAGE_SIZE,
-        counts: {
-          active: 0,
-          completed: previewRows.filter((r) => r.phase === "completed").length,
-          cancelled: previewRows.filter((r) => r.phase === "cancelled").length,
-          swap: previewRows.filter((r) => r.phase === "swap").length,
-        },
-        canSeeMoney: true,
-      }
-    : undefined;
+  const orderedPreview = useMemo(
+    () =>
+      previewRows
+        ? orderByLength(previewRows, (row) => endedLengthDays(row.startDate, row.endDate), lengthOrder)
+        : undefined,
+    [previewRows, lengthOrder],
+  );
+  const previewResult: BookingListResult | undefined =
+    previewRows && orderedPreview
+      ? {
+          rows: orderedPreview,
+          total: orderedPreview.length,
+          page: 1,
+          pageSize: BOOKING_LIST_PAGE_SIZE,
+          counts: {
+            active: 0,
+            completed: previewRows.filter((r) => r.phase === "completed").length,
+            cancelled: previewRows.filter((r) => r.phase === "cancelled").length,
+            swap: previewRows.filter((r) => r.phase === "swap").length,
+          },
+          canSeeMoney: true,
+        }
+      : undefined;
   const result = previewResult ?? listQuery.data;
   useEffect(() => {
     if (!result?.counts || !onCounts) return;
@@ -230,6 +244,13 @@ export function BookingsPanel({
               {scope === "cancelled" && swapCount > 0 ? ` · ${swapCount} Swap` : ""}
             </span>
           )}
+          <RentalLengthSort
+            value={lengthOrder}
+            onChange={(next) => {
+              setLengthOrder(next);
+              if (page !== 1) setList({});
+            }}
+          />
           <Select value={sort} onValueChange={(v) => setList({ sort: v })}>
             <SelectTrigger
               className="h-9 w-[150px] max-lg:shrink-0 bg-white text-foreground text-sm"

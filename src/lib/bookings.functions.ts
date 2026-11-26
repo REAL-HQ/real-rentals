@@ -53,6 +53,7 @@ import {
   type RentalSpan,
   type SwapRecord,
 } from "@/lib/swap-ended-rental";
+import { endedLengthCandidates, orderByLength, pageOf } from "@/lib/rental-length-order";
 
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
 
@@ -93,6 +94,7 @@ const listInput = (d: unknown) =>
       scope: z.enum(["past", "all", "completed", "cancelled"]).optional().default("all"),
       vehicleId: z.string().uuid().optional(),
       sort: z.string().max(20).optional().default("recent"),
+      length: z.enum(["default", "longest", "shortest"]).optional().default("default"),
       page: z.number().int().min(1).max(100000).optional().default(1),
       pageSize: z.number().int().min(1).max(100).optional().default(BOOKING_LIST_PAGE_SIZE),
     })
@@ -278,24 +280,48 @@ export const listBookings = createServerFn({ method: "POST" })
       return { rows: [], total: 0, page: data.page, pageSize: data.pageSize, counts, canSeeMoney };
     }
 
+    // Length order covers the whole filtered set, then the page is a slice of
+    // that order. Sorting only the current page would hide a long rental that
+    // the newest-first query had not fetched yet.
+    const lengthOrder = data.length === "longest" || data.length === "shortest" ? data.length : "default";
+    let lengthPageIds: string[] | null = null;
+    let lengthTotal: number | null = null;
+    if (lengthOrder !== "default") {
+      const matched = endedLengthCandidates(
+        spans,
+        (span) => presentRentalSpan(span, swapById.get(span.id) ?? null),
+        { statusFilter, scope, phase, showsEnded },
+      );
+      const ordered = orderByLength(matched, (row) => row.days, lengthOrder);
+      lengthTotal = ordered.length;
+      lengthPageIds = pageOf(ordered, data.page, data.pageSize).map((row) => row.id);
+      if (!lengthPageIds.length) {
+        return { rows: [], total: lengthTotal, page: data.page, pageSize: data.pageSize, counts, canSeeMoney };
+      }
+    }
+
     let query = scoped(
       sb
         .from("rentals")
         .select(canSeeMoney ? RENTAL_WITH_MONEY : RENTAL_OPERATIONAL, { count: "exact" }),
     );
-    if (statusFilter) query = query.in("status", statusFilter as string[]);
-    if (phase === "swap") query = query.in("id", swapIds);
-    else if (scope === "past" && phase === "cancelled" && swapIds.length) {
-      query = query.not("id", "in", `(${swapIds.join(",")})`);
-    }
-    // Deterministic secondary key keeps pages stable across equal values.
-    if (sort === "oldest")
-      query = query.order("created_at", { ascending: true, nullsFirst: false });
-    else query = query.order("created_at", { ascending: false, nullsFirst: false });
-    query = query.order("id", { ascending: true });
-
     const from = (data.page - 1) * data.pageSize;
-    const { data: rentals, count } = await query.range(from, from + data.pageSize - 1);
+    if (lengthPageIds) {
+      query = query.in("id", lengthPageIds);
+    } else {
+      if (statusFilter) query = query.in("status", statusFilter as string[]);
+      if (phase === "swap") query = query.in("id", swapIds);
+      else if (scope === "past" && phase === "cancelled" && swapIds.length) {
+        query = query.not("id", "in", `(${swapIds.join(",")})`);
+      }
+      // Deterministic secondary key keeps pages stable across equal values.
+      if (sort === "oldest")
+        query = query.order("created_at", { ascending: true, nullsFirst: false });
+      else query = query.order("created_at", { ascending: false, nullsFirst: false });
+      query = query.order("id", { ascending: true });
+      query = query.range(from, from + data.pageSize - 1);
+    }
+    const { data: rentals, count } = await query;
     const rows = (rentals ?? []) as unknown as Array<Record<string, unknown>>;
 
     const appIds = [...new Set(rows.map((r) => r.application_id).filter(Boolean))] as string[];
@@ -370,16 +396,19 @@ export const listBookings = createServerFn({ method: "POST" })
       return row;
     });
 
-    // Sorting by a person or a car is sorting by a value that is not on the
-    // rentals row; the page is already chosen, so it is ordered here.
-    if (sort === "driver")
+    if (lengthPageIds) {
+      const rank = new Map(lengthPageIds.map((id, index) => [id, index]));
+      out.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+    } else if (sort === "driver") {
+      // A person or a car is not on the rentals row; the page is already chosen.
       out.sort((a, b) => (a.driverName ?? "~").localeCompare(b.driverName ?? "~"));
-    if (sort === "vehicle")
+    } else if (sort === "vehicle") {
       out.sort((a, b) => (a.unitNumber ?? "~").localeCompare(b.unitNumber ?? "~"));
+    }
 
     return {
       rows: out,
-      total: count ?? 0,
+      total: lengthTotal ?? count ?? 0,
       page: data.page,
       pageSize: data.pageSize,
       counts,
