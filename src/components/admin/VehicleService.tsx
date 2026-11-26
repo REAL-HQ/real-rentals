@@ -328,7 +328,7 @@ function AddServiceDialog({ vehicleId, canCost, onClose, onSaved }: { vehicleId:
               <Field label="Labor"><input inputMode="decimal" className={inputCls} value={f.labor} onChange={set("labor")} /></Field>
               <Field label="Parts"><input inputMode="decimal" className={inputCls} value={f.parts} onChange={set("parts")} /></Field>
               <Field label="Tax"><input inputMode="decimal" className={inputCls} value={f.tax} onChange={set("tax")} /></Field>
-              <Field label="Total"><input inputMode="decimal" className={inputCls} value={f.total} onChange={set("total")} placeholder="Blank = sum of known" /></Field>
+              <Field label="Total"><input inputMode="decimal" className={inputCls} value={f.total} onChange={set("total")} placeholder="Blank = Sum Of Known" /></Field>
               <Field label="Paid By"><AppSelect aria-label="Paid By" className={inputCls} value={f.method} onChange={set("method")}><option value="">Unknown</option>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>)}</AppSelect></Field>
             </FormGrid>
             <div className="text-[12px] text-muted-foreground">A completed service with a cost is added to Expenses once, linked to this record.</div>
