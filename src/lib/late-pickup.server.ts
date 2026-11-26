@@ -12,7 +12,10 @@
  *      nothing else holds it, and the applicant's car assignment cleared so it
  *      can go to the next person;
  *   3. keep the fee: a paid Reservation Fee stays paid and is marked kept (it
- *      is never credited to a later week);
+ *      is never credited to a later week). When forfeited-fee credit mode is
+ *      auto, that kept fee is also saved as a staff-only renter credit. Case
+ *      by case and off leave the credit for staff. The renter text does not
+ *      mention a credit;
  *   4. tell staff: one team alert (email team@drivereal.com + text to the field
  *      rep, src/lib/team-alerts.server.ts);
  *   5. tell the renter: one text from the main line (email if they cannot get
@@ -43,6 +46,8 @@ export type LatePickupDeps = {
   audit?: (e: any) => Promise<void>;
   feeEnabled?: boolean;
   dryRun?: boolean;
+  /** Skips the settings read. Absent reads app_settings (default: case by case). */
+  creditPolicy?: { mode: "auto" | "case_by_case" | "off"; days: number };
 };
 
 export function latePickupSms(f: { time: string; feeKept: number | null }): string {
@@ -126,7 +131,7 @@ export async function runLatePickups(admin: Admin, deps: LatePickupDeps = {}): P
     const rel = await admin.from("rentals").update({ status: "cancelled" }).eq("id", r.id).eq("status", "reserved").select("id");
     if (!(rel?.data ?? []).length) { await admin.from("renter_reminder_sends").update({ status: "skipped", detail: "no longer reserved" }).eq("key", key); continue; }
     if (r.vehicle_id) {
-      const still = await admin.from("rentals").select("id").eq("vehicle_id", r.vehicle_id).in("status", ["reserved", "on_hold", "active"]).limit(1);
+      const still = await admin.from("rentals").select("id").eq("vehicle_id", r.vehicle_id).in("status", ["reserved", "on_hold", "pending_reservation", "active"]).limit(1);
       if (!(still?.data ?? []).length) await admin.from("vehicles").update({ status: "available" }).eq("id", r.vehicle_id).eq("status", "reserved");
       if (r.application_id) await admin.from("applications").update({ vehicle_id: null }).eq("id", r.application_id).eq("vehicle_id", r.vehicle_id).eq("status", "approved");
     }
@@ -139,6 +144,20 @@ export async function runLatePickups(admin: Admin, deps: LatePickupDeps = {}): P
       if (fee) {
         feeKept = fee.amount;
         await admin.from("payments").update({ notes: `${fee.notes} kept:late_pickup:${r.id}` }).eq("id", fee.id);
+        let policy = deps.creditPolicy;
+        if (!policy) {
+          try {
+            const { loadForfeitedFeeCreditSettings } = await import("@/lib/forfeited-fee-credit.server");
+            policy = await loadForfeitedFeeCreditSettings(admin);
+          } catch {
+            policy = { mode: "case_by_case", days: 90 };
+          }
+        }
+        // Auto saves the credit after the kept mark. The renter text above does not mention it.
+        if (policy.mode === "auto") {
+          const { convertFeeToCredit } = await import("@/lib/rental-hold.server");
+          await convertFeeToCredit(admin, { paymentId: fee.id, reason: "Late Pickup Reservation Fee Kept As Credit" }, { creditDays: policy.days, now: () => now });
+        }
       }
     }
     const audit = deps.audit ?? (async (e: any) => (await import("@/lib/audit.server")).logAudit(null, e));

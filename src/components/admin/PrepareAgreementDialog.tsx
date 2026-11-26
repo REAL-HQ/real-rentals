@@ -14,8 +14,11 @@ import { readAgreementLicense, readWrittenAgreement } from "@/lib/agreement-lice
 import { LIBRARY, DRAFT_STATUS_LABEL, OWNER_APPROVED_LIBRARY, acknowledgmentsOf } from "@/lib/agreement-library";
 import { HOME_ADDRESS_LABEL, missingHomeAddressParts } from "@/lib/agreement-home-address";
 import { DANGER_BADGE } from "@/lib/badge-tone";
+import { listStaffAdditionalDrivers } from "@/lib/additional-drivers.functions";
+import { prepDriversFromApproved } from "@/lib/additional-drivers";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
+type Note = { field: string; label: string; why: string };
 type Res = {
   body: string | null;
   pdfBase64: string | null;
@@ -23,6 +26,7 @@ type Res = {
   canSend: boolean;
   sendRefusal: string | null;
   blockers: Blocker[];
+  notes?: Note[];
   companyMissing?: string[];
   merge: Record<string, string>;
   values: AgreementDetails;
@@ -60,6 +64,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const doSend = useServerFn(sendAgreement);
   const doReadLicense = useServerFn(readAgreementLicense);
   const doReadAgreement = useServerFn(readWrittenAgreement);
+  const loadExtraDrivers = useServerFn(listStaffAdditionalDrivers);
   // Weekly by card autopay is how every rental is paid today (and what Move
   // Forward / FLEET sends); staff can change either. The Damage Waiver stays
   // unanswered until staff record the renter's choice.
@@ -80,11 +85,27 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const [regen, setRegen] = useState(0);
   // The Reservation Fee switch preselects Required (once); staff can still change it.
   const [feeDefaulted, setFeeDefaulted] = useState(false);
+  const [driversPrefilled, setDriversPrefilled] = useState(false);
   const key = useMemo(() => JSON.stringify({ prep, templateKey }), [prep, templateKey]);
   function chooseTemplate(k: string) {
     // Switching templates invalidates the previous preview and its fingerprint.
     setRes(null); setReviewedKey(""); setCompanyAck(false); setTemplateKey(k);
   }
+
+  useEffect(() => {
+    if (driversPrefilled) return;
+    let live = true;
+    void loadExtraDrivers({ data: { applicationId } }).then((res) => {
+      if (!live) return;
+      setDriversPrefilled(true);
+      const listed = prepDriversFromApproved(res.rows);
+      if (!listed.length) return;
+      setPrep((current) => current.drivers.mode !== "none" || current.drivers.list.length
+        ? current
+        : { ...current, drivers: { mode: "listed", list: listed } });
+    }).catch(() => { if (live) setDriversPrefilled(true); });
+    return () => { live = false; };
+  }, [applicationId, driversPrefilled, loadExtraDrivers]);
 
   useEffect(() => {
     let stale = false;
@@ -243,12 +264,17 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
           {res.blockers.map((b, i) => <p key={i}>- {b.label}: {b.why}{fix(b)}</p>)}
         </div>
       )}
+      {res && (res.notes?.length ?? 0) > 0 && (
+        <div className="space-y-1 rounded-md border px-3 py-2 text-[12px] text-muted-foreground" data-testid="prep-notes">
+          {res.notes!.map((n, i) => <p key={i}>{n.label}: {n.why}</p>)}
+        </div>
+      )}
       {res?.sendRefusal && <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px]">{res.sendRefusal}</p>}
 
       <Section title="Agreement Template">
         <label className="flex cursor-pointer items-start gap-2 rounded-md border p-2">
           <input type="radio" className="mt-0.5" checked={templateKey === ""} onChange={() => chooseTemplate("")} />
-          <span><span className="font-medium">Current Agreement In Use</span><br /><span className="text-muted-foreground">{templateKey === "" && res?.template?.label ? res.template.label : "The template Send uses today (Vehicle Rental Agreement v1.16, Insurance Included)."}</span></span>
+          <span><span className="font-medium">Current Agreement In Use</span><br /><span className="text-muted-foreground">{templateKey === "" && res?.template?.label ? res.template.label : "The template Send uses today (Vehicle Rental Agreement v1.17, Insurance Included)."}</span></span>
         </label>
         {LIBRARY.filter((t) => !t.retired).map((t) => (
           <label key={t.key} className="flex cursor-pointer items-start gap-2 rounded-md border p-2">
@@ -397,7 +423,8 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
             {row("Amount Due Each Payment", m.payment_amount)}
             {row("Balance Due At Pickup", m.balance_due)}
           </dl>
-          <p className="text-[11px] text-muted-foreground">Balance Due is the first payment less the Reservation Fee. Change the Reservation Fee above and the weekly rate under Rental Details.</p>
+          {m._driver_fee_note ? <p className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-950" role="status">{m._driver_fee_note}</p> : null}
+          <p className="text-[11px] text-muted-foreground">Balance Due At Pickup is the first payment less the Reservation Fee. Amount Due Each Payment includes the Weekly Rate, each approved Additional Driver, and the Damage Waiver when it is accepted.</p>
         </Section>
       )}
 

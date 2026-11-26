@@ -12,6 +12,7 @@ import {
   type ActiveVehicleRow,
   type ApplicationStatusEvent,
 } from "@/lib/application-status";
+import { PHASE_STATUSES, bookingOutcomeApplicationIds } from "@/lib/bookings-list";
 
 /**
  * Who closed or reopened this application.
@@ -44,7 +45,34 @@ export type DriverActiveSets = {
   authoritativeIds: string[];
   /** A rentals row is still status active. Used to tell a stored Active from a missing rental. */
   openRentalIds: string[];
+  /** Applications with a rental on the Bookings Completed tab. */
+  completedBookingIds: string[];
+  /** Applications with a rental on the Bookings Cancelled tab. */
+  cancelledBookingIds: string[];
+  /** The outcome read failed. Counts stay unknown instead of looking like zero. */
+  bookingOutcomesFailed: boolean;
 };
+
+const BOOKING_OUTCOME_STATUSES = [...PHASE_STATUSES.completed, ...PHASE_STATUSES.cancelled];
+
+/** Completed and cancelled rentals already stored. Paged so a long history is not cut at 1000. */
+async function readBookingOutcomes(admin: { from: (table: string) => any }): Promise<{ completed: string[]; cancelled: string[] }> {
+  const rows: { application_id: string | null; status: string | null }[] = [];
+  const pageSize = 1000;
+  for (let from = 0; from < 20000; from += pageSize) {
+    const { data, error } = await admin
+      .from("rentals")
+      .select("application_id,status")
+      .in("status", BOOKING_OUTCOME_STATUSES)
+      .order("id")
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const batch = (data ?? []) as { application_id: string | null; status: string | null }[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return bookingOutcomeApplicationIds(rows);
+}
 
 /**
  * Staff read of Active evidence. Selects existing rows. Does not insert,
@@ -55,12 +83,21 @@ export const listDriverActiveSets = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<DriverActiveSets> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: rentalRows, error } = await supabaseAdmin
-      .from("rentals")
-      .select("id,application_id,status,vehicle_id,pickup_reading_id")
-      .eq("status", "active");
+    const [activeRead, outcomeRead] = await Promise.all([
+      supabaseAdmin.from("rentals").select("id,application_id,status,vehicle_id,pickup_reading_id").eq("status", "active"),
+      readBookingOutcomes(supabaseAdmin).then(
+        (outcomes) => ({ outcomes, failed: false }),
+        () => ({ outcomes: { completed: [] as string[], cancelled: [] as string[] }, failed: true }),
+      ),
+    ]);
+    const { data: rentalRows, error } = activeRead;
     if (error) throw new Error(error.message);
     const rentals = (rentalRows ?? []) as ActiveRentalRow[];
+    const booking = {
+      completedBookingIds: outcomeRead.outcomes.completed,
+      cancelledBookingIds: outcomeRead.outcomes.cancelled,
+      bookingOutcomesFailed: outcomeRead.failed,
+    };
     const openRentalIds = openRentalApplicationIds(rentals);
     // Pickup mileage and a collected payment are optional on the installed
     // activate_rental_tx. Existing renters stay in the filter, and a payments
@@ -70,6 +107,7 @@ export const listDriverActiveSets = createServerFn({ method: "GET" })
       return {
         authoritativeIds: activeFilterApplicationIds({ rentals, recordRentalEnabled: false }),
         openRentalIds,
+        ...booking,
       };
     }
     const vehicleIds = [...new Set(rentals.map((rental) => rental.vehicle_id).filter((id): id is string => !!id))];
@@ -97,5 +135,6 @@ export const listDriverActiveSets = createServerFn({ method: "GET" })
         recordRentalEnabled: true,
       }),
       openRentalIds,
+      ...booking,
     };
   });

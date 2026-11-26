@@ -49,12 +49,18 @@ export const VEHICLE_STATUSES = [
   { value: "maintenance", label: "Maintenance" },
   { value: "unavailable", label: "Unavailable" },
   { value: "reserved", label: "Reserved" },
+  { value: "pending_reservation", label: "Pending Reservation" },
   { value: "archived", label: "Archived" },
   { value: "sold", label: "Sold" },
+  { value: "for_sale", label: "For Sale" },
   { value: "retired", label: "Retired" },
 ] as const;
 
-/** States in which a vehicle has left the working fleet. */
+/**
+ * States in which a vehicle has left the working fleet. For Sale is not one
+ * of them: it stays on the admin list and in the fleet snapshot, and it does
+ * not stamp archived_at. Availability still treats it like Sold and Retired.
+ */
 const INACTIVE_STATUSES = ["archived", "sold", "retired"];
 
 // ------------------------------------------------------------ unit numbers

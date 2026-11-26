@@ -50,8 +50,10 @@ check(
 );
 check(!declaration.includes("process.env") && !declaration.includes("email.server") && !declaration.includes("sendSms") && !declaration.includes("sendEmail"), "the draft module does not read an env flag or a sender");
 
-const overdue = lib.leadFollowUpDraft(row({}), today);
+const overdue = lib.leadFollowUpDraft(row({ contact_follow_up_on: "2026-10-19" }), today);
 check(overdue?.bucket === "overdue" && overdue.label === "Overdue Follow-Up", "an overdue follow-up gets a draft");
+const grace = lib.leadFollowUpDraft(row({ contact_follow_up_on: "2026-10-20" }), today);
+check(grace?.bucket === "today" && grace.label === "Due Today", "a follow-up one day past stays out of overdue");
 check(overdue.subject === "Following Up On Your Application", "the overdue subject is fixed wording");
 check(overdue.body.startsWith("Hi Sam,") && overdue.body.includes("REAL RENTALS") && !overdue.body.includes("approved") && !overdue.body.includes("reserved"), "the draft does not promise a car or an approval");
 check(!JSON.stringify(overdue).includes("SECRET") && !JSON.stringify(overdue).includes("staff@example.com") && !JSON.stringify(overdue).includes("5550100"), "the draft leaves out the note, the staff address, and the phone");

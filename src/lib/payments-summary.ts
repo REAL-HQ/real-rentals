@@ -4,6 +4,7 @@
 // always agree. Collections rows (status 'collections') are never Overdue.
 import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 import { collectionsTotal, type CollectionItemLike } from "@/lib/collections";
+import { isReservationRow } from "@/lib/payment-category";
 import { onlyLateFeesLeft, type StandingPayment } from "@/lib/rent-standing";
 
 /** Statuses the Overdue filter and the Overdue Now card count (no 'collections'). */
@@ -20,6 +21,7 @@ export type SummaryPayment = {
   rental_id?: string | null;
   type?: string | null;
   reason?: string | null;
+  notes?: string | null;
   status?: string | null;
   amount?: number | string | null;
   balance_due?: number | string | null;
@@ -71,8 +73,34 @@ export function rowOwed(p: SummaryPayment): number {
   return p.balance_due == null || p.balance_due === "" ? num(p.amount) : num(p.balance_due);
 }
 
+/**
+ * A $0.00 row, such as the invoice Stripe writes when a subscription is paused.
+ * Hidden from the Payments list. It owes nothing, so Outstanding is unchanged.
+ */
+export function isZeroMoneyRow(p: { amount?: unknown; balance_due?: unknown }): boolean {
+  return num(p.amount) === 0 && rowOwed(p as SummaryPayment) === 0;
+}
+
+/**
+ * A Reservation Fee that is not paid, refunded, void or waived. Checkout leaves
+ * the row unpaid while the renter still holds the car; that is a pending hold,
+ * not money owed. isReservationRow reads type, reason and notes.
+ */
+const RESERVATION_FEE_SETTLED = new Set(["paid", "refunded", "void", "waived"]);
+export function isUnpaidReservationFee(row: { type?: unknown; reason?: unknown; notes?: unknown; status?: unknown }): boolean {
+  if (!isReservationRow(row)) return false;
+  return !RESERVATION_FEE_SETTLED.has(String(row.status ?? "").trim().toLowerCase());
+}
+
+/** Holds in this set: total still on the rows, and how many rows. Not part of Outstanding. */
+export function awaitingReservationFee(payments: readonly SummaryPayment[]): { total: number; count: number } {
+  const rows = payments.filter((p) => isUnpaidReservationFee(p));
+  return { total: r2(rows.reduce((s, p) => s + rowOwed(p), 0)), count: rows.length };
+}
+
 /** True when the row counts toward Outstanding (owed status, not paid on another row). */
 export function countsAsOwed(p: SummaryPayment, coveredIds: ReadonlySet<string>): boolean {
+  if (isUnpaidReservationFee(p)) return false;
   return OWED_STATUSES.has(String(p.status ?? "")) && (!coveredIds.has(p.id) || feesOnlyLeft(p));
 }
 
@@ -82,6 +110,7 @@ export function feesOnlyLeft(p: SummaryPayment): boolean {
 }
 
 export function isOverdueRow(p: SummaryPayment): boolean {
+  if (isUnpaidReservationFee(p)) return false;
   return OVERDUE_STATUSES.has(String(p.status ?? ""));
 }
 

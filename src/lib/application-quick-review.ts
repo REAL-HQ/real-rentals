@@ -126,12 +126,6 @@ function money(value: number): string {
   return `$${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
-function newest(docs: QuickReviewDocumentRow[], category: string): QuickReviewDocumentRow | null {
-  const hits = docs.filter((doc) => doc.category === category && doc.isCurrent);
-  hits.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
-  return hits[0] ?? null;
-}
-
 function categoryLabel(category: string, stored: string | null): string | null {
   return DOC_CATEGORIES.find((item) => item.key === category)?.label ?? text(stored);
 }
@@ -222,15 +216,11 @@ export function applicationQuickReview(input: {
   push("Card On File", last4 ? `····${last4}` : null);
 
   const documents: QuickReviewDocument[] = [];
-  const shownCategory = new Set<string>();
   const ordered = [...input.documents].filter((doc) => doc.isCurrent && doc.category !== "verification_recording");
   ordered.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
   for (const doc of ordered) {
-    const multi = doc.category === "trip_history" || doc.category === "other";
-    if (!multi && shownCategory.has(doc.category)) continue;
     const label = categoryLabel(doc.category, doc.label);
     if (!label) continue;
-    shownCategory.add(doc.category);
     const tone = documentExpiryTone(doc.expiresAt, now);
     documents.push({
       id: doc.id,
@@ -245,18 +235,20 @@ export function applicationQuickReview(input: {
   for (const key of REQUIRED_KEYS) {
     const label = categoryLabel(key, null);
     if (!label) continue;
-    const doc = newest(input.documents.filter((row) => row.category !== "verification_recording"), key);
-    if (doc?.reviewStatus === "rejected") {
-      missing.push({ id: key, label, detail: "Needs Replacement" });
-      continue;
-    }
-    const onFile = Boolean(doc) || applicationFile(key, input);
+    const rows = input.documents.filter((row) => row.category === key && row.isCurrent);
+    const usable = rows.filter((row) => row.reviewStatus !== "rejected");
+    const onFile = usable.length > 0 || applicationFile(key, input);
     if (!onFile) {
-      missing.push({ id: key, label, detail: "Not Received" });
+      missing.push({
+        id: key,
+        label,
+        detail: rows.some((row) => row.reviewStatus === "rejected") ? "Needs Replacement" : "Not Received",
+      });
       continue;
     }
-    const tone = doc ? documentExpiryTone(doc.expiresAt, now) : null;
-    if (tone === "expired") missing.push({ id: key, label, detail: EXPIRY_LABEL.expired });
+    // Any current file that is not rejected and not expired satisfies the section.
+    const fresh = usable.some((row) => documentExpiryTone(row.expiresAt, now) !== "expired");
+    if (usable.length > 0 && !fresh) missing.push({ id: key, label, detail: EXPIRY_LABEL.expired });
   }
 
   if (!input.interviewCompletedAt) missing.push({ id: "interview", label: "Interview Complete", detail: "" });

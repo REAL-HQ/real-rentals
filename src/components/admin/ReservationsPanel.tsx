@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -8,12 +8,13 @@ import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { EmptyState } from "./ui";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { VehicleCell } from "./VehicleCell";
+import { OPEN_COLUMN, ROW_MENU_COLUMN } from "./open-column";
 import {
   cancelReservation,
   listReservations,
   recordReservationFee,
 } from "@/lib/reservations.functions";
-import { reservationFeeLabel, type ReservationRow } from "@/lib/reservations";
+import { reservationFeeLabel, reservationOwes, type ReservationRow } from "@/lib/reservations";
 import { MANUAL_METHODS, easternParts } from "@/lib/rent-reminders";
 import { fmtDate, formatReservationTime } from "@/lib/date-format";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -29,6 +30,11 @@ import { OnHoldBadge, PutOnHoldDialog, ResumeHoldDialog } from "./OnHoldDialogs"
 import { RenterCreditsCard } from "./RenterCreditsCard";
 import { convertReservationFeeToCredit } from "@/lib/rental-hold.functions";
 import { isOnHoldStatus } from "@/lib/rental-hold";
+import { isPendingReservationStatus, PENDING_RESERVATION_LABEL, WAITING_ON_INSURANCE_CARD } from "@/lib/pending-reservation";
+import { releaseReservationHold } from "@/lib/reservations.functions";
+import { etDateISO } from "@/lib/active-rentals";
+import { heldLengthDays, orderByLength, type BookingsListMode, type RentalLengthOrder } from "@/lib/rental-length-order";
+import { RentalLengthSort } from "./RentalLengthSort";
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
 const primary = "inline-flex h-9 items-center justify-center rounded-md bg-[#D03020] px-4 text-sm font-semibold text-white hover:bg-[#B52818] disabled:opacity-50";
@@ -140,20 +146,39 @@ function RecordReservationFeeDialog({
   );
 }
 
-export function ReservationsPanel({ canManage = false }: { canManage?: boolean }) {
+export function ReservationsPanel({
+  canManage = false,
+  previewRows,
+  initialLengthOrder = "default",
+}: {
+  canManage?: boolean;
+  /** Skip the server read and render these rows. The alignment test uses this. */
+  previewRows?: ReservationRow[];
+  initialLengthOrder?: BookingsListMode;
+} = {}) {
   const navigate = useNavigate();
   const load = useServerFn(listReservations);
   const cancel = useServerFn(cancelReservation);
+  const releaseHold = useServerFn(releaseReservationHold);
   const toCredit = useServerFn(convertReservationFeeToCredit);
   const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
   const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
-  const [rows, setRows] = useState<ReservationRow[]>([]);
+  const [rows, setRows] = useState<ReservationRow[]>(previewRows ?? []);
+  const [lengthOrder, setLengthOrder] = useState<BookingsListMode>(initialLengthOrder);
   // The $50 Reservation Fee lives in the reservation_deposit_* columns when its
   // switch is on; it is never called a deposit (Dolmar, t309u).
-  const [feeOn, setFeeOn] = useState(false);
+  const [feeOn, setFeeOn] = useState(!!previewRows);
+  const today = etDateISO();
+  const owesCount = rows.filter((row) => reservationOwes(row.depositStatus, feeOn)).length;
+  const lengthSort: RentalLengthOrder = lengthOrder === "owes" ? "default" : lengthOrder;
+  const listed = lengthOrder === "owes" ? rows.filter((row) => reservationOwes(row.depositStatus, feeOn)) : rows;
+  const shown = useMemo(
+    () => orderByLength(listed, (row) => heldLengthDays(row.createdAt, today), lengthSort),
+    [listed, lengthSort, today],
+  );
   const chargeLabel = "Reservation Fee";
   const [failed, setFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!previewRows);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [depositRow, setDepositRow] = useState<ReservationRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -172,8 +197,23 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   }, [load]);
 
   useEffect(() => {
+    if (previewRows) return;
     refresh();
-  }, [refresh]);
+  }, [previewRows, refresh]);
+
+  const onReleaseHold = async (row: ReservationRow) => {
+    if (!window.confirm(`Release The Pending Reservation For ${row.driverName ?? "This Driver"}? The Car Returns To Available.`)) return;
+    setBusyId(row.id);
+    try {
+      await releaseHold({ data: { rentalId: row.id } });
+      toast.success("Hold Released");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could Not Release The Hold");
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const onCancel = async (row: ReservationRow) => {
     if (!window.confirm(`Cancel The Reservation For ${row.driverName ?? "This Driver"}?`)) return;
@@ -212,8 +252,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
         </p>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground" data-testid="reserved-count">
-            {rows.length} Reserved Vehicle{rows.length === 1 ? "" : "s"}{rows.some((r) => isOnHoldStatus(r.status)) ? ` (${rows.filter((r) => isOnHoldStatus(r.status)).length} On Hold)` : ""}
+            {shown.length} Reserved Vehicle{shown.length === 1 ? "" : "s"}{rows.some((r) => isOnHoldStatus(r.status)) ? ` (${rows.filter((r) => isOnHoldStatus(r.status)).length} On Hold)` : ""}{rows.some((r) => isPendingReservationStatus(r.status)) ? ` (${rows.filter((r) => isPendingReservationStatus(r.status)).length} Pending Reservation)` : ""}
           </span>
+          <RentalLengthSort value={lengthOrder} onChange={setLengthOrder} owesCount={owesCount} />
           {canManage ? (
             <button type="button" className={primary} onClick={() => setReserveOpen(true)}>
               Reserve A Car
@@ -245,11 +286,12 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                 <th className="w-[15%] px-2 py-2.5 font-semibold">Pickup</th>
                 <th className="w-[12%] px-2 py-2.5 font-semibold">{chargeLabel}</th>
                 <th className="w-[8%] px-2 py-2.5 font-semibold">Rate</th>
-                <th className="w-[13%] px-2 py-2.5 font-semibold text-right sticky right-0 bg-white">Open</th>
+                <th className={`${OPEN_COLUMN} py-2.5 font-semibold`}>Open</th>
+                {canManage ? <th className={`${ROW_MENU_COLUMN} py-2.5`} aria-hidden="true" /> : null}
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {shown.map((row) => {
                 const fee = reservationFeeLabel(row.depositStatus, feeOn);
                 return (
                   <tr
@@ -262,6 +304,12 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                     <td className="px-2 py-2 align-middle font-medium text-[#111114]">
                       <span className="block truncate">{row.driverName ?? "—"}</span>
                       {isOnHoldStatus(row.status) ? <OnHoldBadge reason={row.holdReason} /> : null}
+                      {isPendingReservationStatus(row.status) ? (
+                        <span className="mt-0.5 flex flex-col items-start gap-0.5" data-reservation-status="pending_reservation">
+                          <span className="inline-flex rounded-full bg-[#FFF4CC] px-2 py-0.5 text-[11px] font-medium text-[#7A5B00]">{PENDING_RESERVATION_LABEL}</span>
+                          <span className="text-[11px] text-[#7A5B00]">{WAITING_ON_INSURANCE_CARD}</span>
+                        </span>
+                      ) : null}
                       {row.bookedBy === "renter" ? (
                         <span
                           data-booked-by="renter"
@@ -274,16 +322,23 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                     </td>
                     <td className="px-2 py-2 align-middle text-[#111114]">
                       <VehicleCell
+                        vehicleId={row.vehicleId}
                         vehicle={{ label: row.vehicleLabel, plate: row.plate, vinLast6: row.vinLast6, unitNumber: row.unitNumber }}
                         thumbnailPath={row.thumbnailPath ?? null}
                       />
                     </td>
                     <td className="px-2 py-2 align-middle whitespace-nowrap">{fmtDate(row.createdAt)}</td>
                     <td className="px-2 py-2 align-middle">
-                      <span className="block whitespace-nowrap">{fmtDate(row.pickupDate)}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {row.pickupTime ? formatReservationTime(row.pickupTime) : "No Time Set"}
-                      </span>
+                      {isPendingReservationStatus(row.status) && !row.pickupTime ? (
+                        <span className="text-[#7A5B00]">Not Booked</span>
+                      ) : (
+                        <>
+                          <span className="block whitespace-nowrap">{fmtDate(row.pickupDate)}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {row.pickupTime ? formatReservationTime(row.pickupTime) : "No Time Set"}
+                          </span>
+                        </>
+                      )}
                     </td>
                     <td className="px-2 py-2 align-middle">
                       <span
@@ -303,8 +358,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                     <td className="px-2 py-2 align-middle whitespace-nowrap">
                       {typeof row.weeklyRate === "number" ? `$${row.weeklyRate.toLocaleString()}/wk` : "—"}
                     </td>
-                    <td className="px-2 py-2 align-middle sticky right-0 bg-white">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className={`${OPEN_COLUMN} py-2`}>
                         <Link
                           to="/admin"
                           search={{ tab: "bookings", view: "past", id: row.id }}
@@ -312,7 +366,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                         >
                           Open
                         </Link>
-                        {canManage ? (
+                    </td>
+                    {canManage ? (
+                      <td className={`${ROW_MENU_COLUMN} py-2`}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
@@ -328,7 +384,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                               {feeOn && (row.depositStatus === "pending" || row.depositStatus === "not_required") && (
                                 <DropdownMenuItem onSelect={() => setDepositRow(row)}>Record {chargeLabel}</DropdownMenuItem>
                               )}
-                              {isOnHoldStatus(row.status) ? (
+                              {isPendingReservationStatus(row.status) ? (
+                                <DropdownMenuItem onSelect={() => void onReleaseHold(row)}>Release Hold</DropdownMenuItem>
+                              ) : isOnHoldStatus(row.status) ? (
                                 <DropdownMenuItem onSelect={() => setResumeRow(row)}>Resume Reservation</DropdownMenuItem>
                               ) : (
                                 <DropdownMenuItem onSelect={() => setHoldRow(row)}>Put On Hold</DropdownMenuItem>
@@ -336,13 +394,12 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                               {isOnHoldStatus(row.status) && row.depositPaymentId ? (
                                 <DropdownMenuItem onSelect={() => void onKeepAsCredit(row)}>Keep {chargeLabel} As Credit</DropdownMenuItem>
                               ) : null}
-                              {!isOnHoldStatus(row.status) && <DropdownMenuItem onSelect={() => setSwitchRow(row)}>Switch Vehicle</DropdownMenuItem>}
+                              {!isOnHoldStatus(row.status) && !isPendingReservationStatus(row.status) && <DropdownMenuItem onSelect={() => setSwitchRow(row)}>Switch Vehicle</DropdownMenuItem>}
                               <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        ) : null}
-                      </div>
-                    </td>
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}

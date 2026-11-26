@@ -36,7 +36,10 @@ export function LeadCardBody({
     | "contact_status_at"
     | "contact_follow_up_on"
     | "contact_status_note"
-  >;
+  > & {
+    effective_follow_up_on?: string | null;
+    contacted_at?: string | null;
+  };
   today: string;
   name: ReactNode;
   /** Used for the avatar. Falls back when a caller only passes the name node. */

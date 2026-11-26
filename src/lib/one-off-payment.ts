@@ -5,6 +5,7 @@
 // Payment Link with no metadata was received and silently dropped (Regina's
 // $50, Nov 16 2026). Pure helpers; the database and Stripe reads live in
 // one-off-payment.server.ts.
+import { stripeChargePaymentMethod } from "@/lib/stripe-payment-method";
 import { stripeId } from "@/lib/stripe-unmatched";
 
 type Obj = Record<string, any> | null | undefined;
@@ -56,7 +57,8 @@ export type OneOffIdentity = {
   purpose: string | null;
   reason: string | null;
   receiptUrl: string | null;
-  cardPayment: boolean;
+  /** card, link, ach, cash_app, or the raw Stripe type. Null when the charge did not say. */
+  paymentMethod: string | null;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -237,25 +239,46 @@ export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charg
     purpose: text(sm.purpose) ?? text(pm.purpose) ?? text(cm.purpose) ?? text(lm.purpose) ?? text(pi?.description) ?? null,
     reason: text(pm.reason) ?? text(sm.reason) ?? text(cm.reason) ?? text(lm.reason),
     receiptUrl: text(charge?.receipt_url),
-    cardPayment: (charge?.payment_method_details?.type ?? null) === "card",
+    paymentMethod: stripeChargePaymentMethod(charge),
   };
 }
 
 const ROW_TYPES = new Set(["rent", "deposit", "late_fee", "toll", "damage", "fee"]);
 
 /**
- * payments.type for a one-off payment: a known reason keeps its type. With no
- * reason, a payment from a renter on an active rental is rent (Dolmar, Nov 19
- * 2026: Payment Links FLEET sends for rent, including $50/day, were landing as
- * Fee, so Schrita's $350 never settled her week). Anything else is a fee.
+ * Rent Payment Link tags that are not the literal reason "rent". FLEET tags
+ * Regina's $50/day links `daily_50`. `daily_rent` and `weekly_rent` are the
+ * same kind of tag. No other rent-style reason is written where this app
+ * creates a link (`reason: "rent"` only).
+ */
+export const RENT_LINK_REASONS = ["daily_50", "daily_rent", "weekly_rent"] as const;
+
+export function isRentLinkReason(reason: string | null | undefined): boolean {
+  const key = String(reason ?? "").trim().toLowerCase();
+  return key === "rent" || (RENT_LINK_REASONS as readonly string[]).includes(key);
+}
+
+/**
+ * payments.type for a one-off payment: a known reason keeps its type. A
+ * rent-style tag (daily_50, daily_rent, weekly_rent) is rent even though it
+ * is not the stored type name. With no reason, a payment from a renter on an
+ * active rental is rent (Dolmar, Nov 19 2026: Payment Links FLEET sends for
+ * rent, including $50/day, were landing as Fee). Anything else is a fee.
  */
 export function oneOffRowType(
   reason: string | null,
   ctx: { activeRental?: boolean } = {},
 ): "rent" | "deposit" | "late_fee" | "toll" | "damage" | "fee" {
-  if (reason && ROW_TYPES.has(reason)) return reason as any;
-  if (!reason && ctx.activeRental) return "rent";
+  const key = String(reason ?? "").trim().toLowerCase();
+  if (key && ROW_TYPES.has(key)) return key as any;
+  if (isRentLinkReason(key)) return "rent";
+  if (!key && ctx.activeRental) return "rent";
   return "fee";
+}
+
+/** The rent period a link names: the first week, else for_date / date. */
+export function rentPeriodOf(...objs: Obj[]): string | null {
+  return weeksOf(...objs)[0] ?? forDateOf(...objs);
 }
 
 /**

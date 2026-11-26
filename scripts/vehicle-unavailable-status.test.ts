@@ -31,6 +31,9 @@ test("Unavailable cars are blocked from reservations, payment holds and swap pic
 });
 
 test("Status filter always offers Unavailable and fleet board treats it as Not Rentable", () => {
-  expect(read("src/lib/vehicles-list.functions.ts")).toContain('["archived", "unavailable"]');
+  const list = read("src/lib/vehicles-list.functions.ts");
+  expect(list).toContain('"archived"');
+  expect(list).toContain('"unavailable"');
+  expect(list).toContain('"for_sale"');
   expect(read("src/lib/fleet-availability.ts")).toContain('status === "unavailable" ||');
 });

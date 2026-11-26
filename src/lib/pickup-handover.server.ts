@@ -197,7 +197,11 @@ export async function submitHandover(admin: Admin, actor: HandoverActor, input: 
   }
 
   const v = state.vehicle;
-  const weeklyRate = Number(r.weekly_rate ?? 0) > 0 ? Number(r.weekly_rate) : Number(state.app?.weekly_rent ?? 0) > 0 ? Number(state.app.weekly_rent) : Number(v?.weekly_rate ?? 0);
+  const { currentAgreementWeeklyAmount } = await import("@/lib/agreement-weekly.server");
+  const { weeklyRateFromAgreementOrVehicle, moneyNumber } = await import("@/lib/agreement-prep");
+  const agreed = await currentAgreementWeeklyAmount(admin, r.application_id);
+  const fallback = Number(r.weekly_rate ?? 0) > 0 ? Number(r.weekly_rate) : Number(state.app?.weekly_rent ?? 0) > 0 ? Number(state.app.weekly_rent) : Number(v?.weekly_rate ?? 0);
+  const weeklyRate = weeklyRateFromAgreementOrVehicle(agreed, moneyNumber(fallback) ?? (fallback > 0 ? fallback : null)) ?? 0;
   const deposit = r.deposit_amount != null ? Number(r.deposit_amount) : state.app?.deposit_amount != null ? Number(state.app.deposit_amount) : Number(v?.deposit ?? 0);
   const result = await deps.activate(actor, {
     applicationId: r.application_id,

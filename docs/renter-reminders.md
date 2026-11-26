@@ -25,3 +25,11 @@ Rules:
 - Each step is claimed once in `renter_reminder_sends` before sending. No
   table, nothing sent.
 - The copy never states a late-arrival rule (none is decided).
+- Rent, payment, and late notices stay with the primary renter.
+- Pickup reminders also go to approved additional drivers on that rental who
+  consented to texts. Each additional driver is claimed separately. Their
+  consent is the additional-driver row, and STOP still blocks the send.
+- Agreement reminders also go to each approved additional driver who has not
+  signed yet and consented to texts. The text points them back to the signing
+  link already sent. It does not include a new link.
+- GPS and immobilizer alerts go to the team. There is no renter text for those.

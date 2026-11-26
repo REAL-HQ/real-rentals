@@ -5,9 +5,9 @@
  * Those stay on the Vehicles screen. This board only reads the stored status,
  * the live rental, open incidents, and the registration and insurance dates.
  *
- * A car with archived_at set is off the board. Sold, retired, and status
- * `archived` stay on it, under Not Rentable, because those are the existing
- * inactive statuses in fleet-summary.
+ * A car with archived_at set is off the board. Sold, retired, For Sale, and
+ * status `archived` stay on it, under Not Rentable. For Sale is not an
+ * Available Now car.
  *
  * One car, one group:
  * 1. An active rental is Rented, so the driver and next payment stay visible.
@@ -28,7 +28,7 @@
 
 import { displayPersonName, displayVehicleWord } from "@/lib/display-normalize";
 import { fmtDate } from "@/lib/date-format";
-import { INACTIVE_VEHICLE_STATUSES } from "@/lib/fleet-summary";
+import { INACTIVE_VEHICLE_STATUSES, isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 
 /** Compile-time gate. No environment variable can open this. */
@@ -65,8 +65,10 @@ const STATUS_LABEL: Record<string, string> = {
   maintenance: "In Maintenance",
   unavailable: "Unavailable",
   reserved: "Reserved",
+  pending_reservation: "Pending Reservation",
   archived: "Archived",
   sold: "Sold",
+  for_sale: "For Sale",
   retired: "Retired",
 };
 
@@ -286,7 +288,7 @@ export function buildFleetAvailability(input: {
     let group: FleetGroup;
     if (active.length > 0) group = "rented";
     else if (shop || maintenance) group = "in_shop";
-    else if (registration === "expired" || insurance === "expired" || status === "unavailable" || INACTIVE.has(status)) group = "not_rentable";
+    else if (registration === "expired" || insurance === "expired" || status === "unavailable" || INACTIVE.has(status) || isForSaleVehicleStatus(status)) group = "not_rentable";
     else if (status === "available" && !openIncident && registration === "current" && insurance === "current") {
       group = "available_now";
     } else group = "unknown";

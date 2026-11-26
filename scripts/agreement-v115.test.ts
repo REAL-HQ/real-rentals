@@ -88,8 +88,8 @@ const v115 = libraryTemplate("insurance_included_v115")!;
 const v115Text = plain(v115.body);
 
 describe("v1.15 contains every addition verbatim", () => {
-  it("stays Owner-approved and selectable; v1.16 is the default", () => {
-    expect(DEFAULT_LIBRARY_KEY).toBe("insurance_included_v116");
+  it("stays Owner-approved and selectable; v1.17 is the default", () => {
+    expect(DEFAULT_LIBRARY_KEY).toBe("insurance_included_v117");
     expect(AMENDMENT_TEMPLATE_KEY).toBe(DEFAULT_LIBRARY_KEY);
     expect(OWNER_APPROVED_LIBRARY.insurance_included_v115).toBeTruthy();
     expect(v115.displayVersion).toBe("1.15");
@@ -226,6 +226,7 @@ describe("older templates (v1.10, v1.10.2) are retired", () => {
     expect(isRetiredLibrary("insurance_included")).toBe(false);
     expect(isRetiredLibrary("insurance_included_v115")).toBe(false);
     expect(isRetiredLibrary("insurance_included_v116")).toBe(false);
+    expect(isRetiredLibrary("insurance_included_v117")).toBe(false);
     for (const k of Object.keys(OWNER_APPROVED_LIBRARY)) expect(isRetiredLibrary(k)).toBe(false);
     expect(LIBRARY.filter((t) => t.retired).map((t) => t.key)).toEqual(["no_insurance", "insurance_required"]);
   });

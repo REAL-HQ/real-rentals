@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Clock,
   Lock,
+  Download,
 } from "lucide-react";
 import {
   DOC_CATEGORIES,
@@ -21,6 +22,7 @@ import {
   deleteDocument,
   archiveDocument,
   restoreDocument,
+  moveDocument,
   isMultiFileCategory,
   setDocumentReview,
   getApplicationSummary,
@@ -32,9 +34,11 @@ import { MicroLabel } from "./ui";
 import { PdfThumbnail } from "./PdfThumbnail";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AppSelect } from "@/components/ui/app-select";
 import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
 import { DocumentBatchUpload } from "./DocumentBatchUpload";
-import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { fmtDate, fmtDateTime, fmtActivityStamp } from "@/lib/date-format";
+import { stepCategoryPage, uploaderLabel } from "@/lib/document-category-files";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { verifyApprovalIdentity } from "@/lib/identity-verification.functions";
 import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
@@ -204,11 +208,13 @@ export function ApplicantDocuments({
   const removeDoc = useServerFn(deleteDocument);
   const archiveDoc = useServerFn(archiveDocument);
   const restoreDoc = useServerFn(restoreDocument);
+  const relocate = useServerFn(moveDocument);
   const review = useServerFn(setDocumentReview);
   const [replacing, setReplacing] = useState<VaultDocument | null>(null);
 
   const [busy, setBusy] = useState<string | null>(null);
-  const [viewing, setViewing] = useState<ViewerDoc | null>(null);
+  const [loose, setLoose] = useState<ViewerDoc | null>(null);
+  const [page, setPage] = useState<{ ids: string[]; index: number; title: string } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [uploadingCategory, setUploadingCategory] = useState<DocCategory | null>(null);
   // The application is a record, not a file: fetched as a document when no file is filed.
@@ -234,7 +240,8 @@ export function ApplicantDocuments({
     const bin = atob(appSummary.base64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    setViewing({
+    setPage(null);
+    setLoose({
       url: URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })),
       fileName: appSummary.fileName,
       mimeType: "application/pdf",
@@ -253,8 +260,7 @@ export function ApplicantDocuments({
   const uploadDocument = useDriverDocumentUpload(applicationId, refresh);
 
   // One pass, not one find() per category. A section holds every active file,
-  // newest first; the first is the face of the card and the rest are listed
-  // under it with their own Verify, Needs New, Replace and Archive.
+  // newest first. Each file is its own row. Nothing is hidden behind the newest.
   const { current, files, history } = useMemo(() => {
     const byCategory = new Map<string, VaultDocument[]>();
     const past: VaultDocument[] = [];
@@ -350,6 +356,20 @@ export function ApplicantDocuments({
     }
   }
 
+  async function moveTo(d: VaultDocument, category: DocCategory) {
+    if (category === d.category) return;
+    setBusy(d.id);
+    try {
+      await relocate({ data: { documentId: d.id, category } });
+      toast.success("File moved");
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not move");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function restore(d: VaultDocument) {
     setBusy(d.id);
     try {
@@ -363,22 +383,40 @@ export function ApplicantDocuments({
     }
   }
 
-  function open(d: VaultDocument, title: string) {
+  function viewerFor(d: VaultDocument, title: string): ViewerDoc {
     const st = statusOf(d);
-    setViewing({
+    const who = uploaderLabel(d.uploaded_by_role);
+    return {
       url: d.url,
       fileName: d.file_name,
       mimeType: d.mime_type,
       title,
       meta: [
         { label: "Status", value: STATUS_STYLE[st].label },
-        { label: "Uploaded", value: fmtDate(d.created_at) ?? "—" },
+        { label: "Uploaded", value: fmtActivityStamp(d.created_at) || fmtDate(d.created_at) || "—" },
+        ...(who ? [{ label: "Uploaded By", value: who }] : []),
         ...(d.expires_at ? [{ label: "Expires", value: d.expires_at }] : []),
         ...(fmtSize(d.size_bytes) ? [{ label: "Size", value: fmtSize(d.size_bytes)! }] : []),
-        ...(d.uploaded_by_role ? [{ label: "From", value: d.uploaded_by_role }] : []),
       ],
-    });
+    };
   }
+
+  function openList(list: readonly VaultDocument[], index: number, title: string) {
+    if (!list.length) return;
+    setLoose(null);
+    setPage({ ids: list.map((file) => file.id), index: Math.min(Math.max(index, 0), list.length - 1), title });
+  }
+
+  function openLoose(d: VaultDocument, title: string) {
+    setPage(null);
+    setLoose(viewerFor(d, title));
+  }
+
+  const paged = page
+    ? page.ids.map((id) => docs.find((file) => file.id === id)).filter((file): file is VaultDocument => !!file)
+    : [];
+  const pagedIndex = page ? Math.min(page.index, Math.max(paged.length - 1, 0)) : 0;
+  const shown = paged[pagedIndex] ? viewerFor(paged[pagedIndex], page!.title) : loose;
 
   if (loading) {
     return (
@@ -428,14 +466,15 @@ export function ApplicantDocuments({
           const st = statusOf(d);
           const sectionFiles = files.get(key) ?? [];
           const multi = isMultiFileCategory(key);
-          const moreFiles = sectionFiles.filter((f) => f.id !== d?.id);
           const cardSt = multi ? sectionStatus(sectionFiles) : st;
           const style = summaryCard
             ? { label: "Submitted", cls: "bg-sky-50 text-sky-700 border-sky-200" }
             : systemSigned && st === "uploaded"
               ? { label: "E-Signed", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" }
               : STATUS_STYLE[cardSt];
-          const working = busy === key || (d && busy === d.id);
+          const badgeText =
+            (key === "gig_profile" && cardSt === "verified" ? "Staff Reviewed" : style.label) +
+            (multi && sectionFiles.length > 1 ? ` · ${sectionFiles.length} Files` : "");
           // Signed agreements are permanent records: no Replace and no Needs
           // New, and the server refuses both anyway. A wrong agreement is
           // voided and re-sent through eSign.
@@ -445,49 +484,37 @@ export function ApplicantDocuments({
               key={key}
               className="rounded-xl border border-[#EDEDF0] bg-white overflow-hidden flex flex-col"
             >
-              <button
-                type="button"
-                disabled={!d && !summaryCard}
-                onClick={() => (d ? open(d, meta.label) : summaryCard ? openSummary() : undefined)}
-                className="relative block w-full aspect-[16/10] bg-[#FAFAFB] border-b border-[#EDEDF0] disabled:cursor-default group"
-              >
-                {d && d.url && isImageDoc(d) ? (
-                  <img
-                    src={d.url}
-                    alt={meta.label}
-                    className="absolute inset-0 w-full h-full object-cover group-hover:opacity-90 transition-opacity"
-                  />
-                ) : d && d.url && isPdfDoc(d) ? (
-                  <PdfThumbnail url={d.url} label={meta.label} />
-                ) : d ? (
-                  <span className="absolute inset-0 grid place-items-center text-[#9A9AA3]">
-                    <FileText className="w-7 h-7" />
-                  </span>
-                ) : summaryCard ? (
-                  <PdfThumbnail base64={appSummary!.base64} label={meta.label} />
-                ) : (
-                  <span className="absolute inset-0 grid place-items-center text-[11px] text-[#C4C4CB]">
-                    Not Received
-                  </span>
-                )}
-                {d && !d.url && (
-                  <span className="absolute inset-x-0 bottom-0 bg-red-600/90 text-white text-[10px] py-1">
-                    File Missing from Storage
-                  </span>
-                )}
-              </button>
+              {sectionFiles.length === 0 && (
+                <div className="relative block w-full aspect-[16/10] bg-[#FAFAFB] border-b border-[#EDEDF0]">
+                  {summaryCard ? (
+                    <PdfThumbnail base64={appSummary!.base64} label={meta.label} />
+                  ) : (
+                    <span className="absolute inset-0 grid place-items-center text-[11px] text-[#C4C4CB]">
+                      Not Received
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="p-3 flex-1 flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
                   <span className="text-[12px] font-semibold text-[#111114] leading-tight">
                     {displayTitleCase(meta.label).replace("(front)", "(Front)").replace("(back)", "(Back)")}
                   </span>
-                  <span
-                    className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${style.cls}`}
-                  >
-                    {key === "gig_profile" && cardSt === "verified" ? "Staff Reviewed" : style.label}
-                    {multi && sectionFiles.length > 1 ? ` · ${sectionFiles.length} Files` : ""}
-                  </span>
+                  {multi && sectionFiles.length > 1 ? (
+                    <button
+                      type="button"
+                      data-testid={`open-files-${key}`}
+                      onClick={() => openList(sectionFiles, 0, meta.label)}
+                      className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${style.cls}`}
+                    >
+                      {badgeText}
+                    </button>
+                  ) : (
+                    <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${style.cls}`}>
+                      {badgeText}
+                    </span>
+                  )}
                 </div>
                 {key === "gig_profile" ? (
                   <div className="text-[10px] text-[#9A9AA3]">
@@ -523,136 +550,155 @@ export function ApplicantDocuments({
                   </div>
                 )}
 
-                {d && (
-                  <div className="text-[11px] text-[#9A9AA3] space-y-0.5">
-                    <div className="truncate">{d.file_name ?? "File"}</div>
-                    <div className="flex flex-wrap gap-x-2">
-                      <span>{fmtDate(d.created_at)}</span>
-                      {fmtSize(d.size_bytes) && <span>· {fmtSize(d.size_bytes)}</span>}
-                    </div>
-                    {d.review_note && <div className="text-[#D03020] pt-0.5">{d.review_note}</div>}
-                  </div>
-                )}
-
-                {d && meta.expiring && (
-                  <label className="flex items-center gap-1.5 text-[10px] text-[#9A9AA3]">
-                    <Clock className="w-3 h-3 shrink-0" />
-                    Expires
-                    <input
-                      type="date"
-                      value={d.expires_at ?? ""}
-                      onChange={(e) => void setExpiry(d, e.target.value)}
-                      className="flex-1 min-w-0 rounded border border-[#EDEDF0] px-1.5 py-0.5 text-[10px]"
-                    />
-                  </label>
-                )}
-
-                <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
-                  {d && st !== "verified" && !systemSigned && (
-                    <button
-                      onClick={() => void decide(d, "verified")}
-                      disabled={!!working}
-                      className="inline-flex items-center gap-1 rounded-md bg-emerald-600 text-white px-2 py-1 text-[11px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
-                    >
-                      <ShieldCheck className="w-3 h-3" /> Verify
-                    </button>
-                  )}
-                  {d && st === "verified" && (
-                    <button
-                      onClick={() => void decide(d, "uploaded")}
-                      disabled={!!working}
-                      className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#C4C4CB] disabled:opacity-50"
-                    >
-                      <RotateCcw className="w-3 h-3" /> Unverify
-                    </button>
-                  )}
-                  {d && st !== "rejected" && !locked && (
-                    <button
-                      onClick={() => void decide(d, "rejected")}
-                      disabled={!!working}
-                      className="inline-flex items-center gap-1 rounded-md border border-red-200 text-red-700 px-2 py-1 text-[11px] font-medium hover:bg-red-50 disabled:opacity-50"
-                    >
-                      <AlertTriangle className="w-3 h-3" /> Needs New
-                    </button>
-                  )}
-                  {d && multi && !locked && !d.signed_agreement && (
-                    <>
-                      <button
-                        onClick={() => setReplacing(d)}
-                        disabled={!!working}
-                        title="Upload a new file that takes this file's place. The old one moves to Previous Uploads."
-                        className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#C4C4CB] disabled:opacity-50"
-                      >
-                        <RotateCcw className="w-3 h-3" /> Replace
-                      </button>
-                      <button
-                        onClick={() => void archive(d)}
-                        disabled={!!working}
-                        title="Take this file off the active list. It stays on record and can be restored."
-                        className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#C4C4CB] disabled:opacity-50"
-                      >
-                        <Archive className="w-3 h-3" /> Archive
-                      </button>
-                    </>
-                  )}
-                  {locked ? (
-                    <span
-                      className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E]"
-                      title="Signed agreements can't be replaced. To correct one, void it and send a new agreement through eSign."
-                    >
-                      <ShieldCheck className="w-3 h-3" /> Permanent Record
-                    </span>
-                  ) : null}
-                  {/* Signed agreements are permanent records: no Delete, and
-                      the server refuses it anyway (deleteDocument). */}
-                  {d && key !== "agreement" && !d.signed_agreement && d.uploaded_by_role !== "driver" && (
-                    <button
-                      onClick={() => void drop(d)}
-                      disabled={!!working}
-                      className="ml-auto rounded-md p-1 text-[#9A9AA3] hover:text-[#D03020] disabled:opacity-50"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-                {!locked ? <Button type="button" variant="outline" size="sm" className="mt-2 h-8 self-start text-xs" disabled={busy != null} aria-label={`Add ${displayTitleCase(meta.label).replace("(front)", "(Front)").replace("(back)", "(Back)")}`} onClick={() => setUploadingCategory(key)}><Plus className="h-3.5 w-3.5" /> Add</Button> : null}
-                {multi && moreFiles.length > 0 && (
-                  <ul
-                    className="mt-1 divide-y divide-[#F4F4F6] rounded-lg border border-[#EDEDF0]"
-                    aria-label={`More ${displayTitleCase(meta.label)} Files`}
-                  >
-                    {moreFiles.map((f) => {
-                      const fs = statusOf(f);
-                      const fworking = busy === f.id;
+                {sectionFiles.length > 0 && (
+                  <ul data-testid={`category-files-${key}`} className="space-y-2">
+                    {sectionFiles.map((d) => {
+                      const st = statusOf(d);
+                      const systemSigned = isSystemSigned(d);
+                      const fworking = busy === d.id;
+                      const who = uploaderLabel(d.uploaded_by_role);
+                      const index = sectionFiles.findIndex((file) => file.id === d.id);
+                      const fileName = d.file_name ?? d.label ?? "File";
                       return (
-                        <li key={f.id} className="px-2 py-1.5 text-[11px]">
-                          <div className="flex items-center gap-2">
-                            <FileText className="w-3 h-3 shrink-0 text-[#C4C4CB]" />
-                            <button
-                              type="button"
-                              onClick={() => open(f, f.label ?? f.file_name ?? meta.label)}
-                              className="min-w-0 flex-1 truncate text-left text-[#28282E] hover:underline"
-                            >
-                              {f.label ?? f.file_name ?? "File"}
-                            </button>
-                            {!(f.visibility ?? []).includes("driver") && <Lock className="w-3 h-3 shrink-0 text-[#77777F]" aria-label="Team Only" />}
-                            <span className={`shrink-0 rounded border px-1 py-0.5 text-[9.5px] font-semibold ${STATUS_STYLE[fs].cls}`}>{STATUS_STYLE[fs].label}</span>
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-5">
-                            {fs !== "verified" ? (
-                              <button onClick={() => void decide(f, "verified")} disabled={fworking} className="rounded border border-emerald-200 px-1.5 py-0.5 font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">Verify</button>
-                            ) : (
-                              <button onClick={() => void decide(f, "uploaded")} disabled={fworking} className="rounded border border-[#EDEDF0] px-1.5 py-0.5 text-[#55555E] disabled:opacity-50">Unverify</button>
+                        <li key={d.id} data-testid={`doc-file-${d.id}`} className="rounded-lg border border-[#EDEDF0] p-2">
+                          <button
+                            type="button"
+                            onClick={() => openList(sectionFiles, index, meta.label)}
+                            className="flex w-full items-start gap-2 text-left"
+                          >
+                            <span className="relative block h-14 w-20 shrink-0 overflow-hidden rounded-md border border-[#EDEDF0] bg-[#FAFAFB]">
+                              {d.url && isImageDoc(d) ? (
+                                <img src={d.url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                              ) : d.url && isPdfDoc(d) ? (
+                                <PdfThumbnail url={d.url} label={fileName} />
+                              ) : (
+                                <span className="absolute inset-0 grid place-items-center text-[#9A9AA3]">
+                                  <FileText className="h-4 w-4" />
+                                </span>
+                              )}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-1">
+                                <span className="truncate text-[12px] font-medium text-[#111114]">{fileName}</span>
+                                {!(d.visibility ?? []).includes("driver") && <Lock className="h-3 w-3 shrink-0 text-[#77777F]" aria-label="Team Only" />}
+                              </span>
+                              <span className="mt-0.5 block text-[11px] text-[#55555E]">{fmtActivityStamp(d.created_at) || "—"}</span>
+                              {who ? <span className="block text-[11px] text-[#55555E]">Uploaded By {who}</span> : null}
+                              {fmtSize(d.size_bytes) ? <span className="block text-[11px] text-[#9A9AA3]">{fmtSize(d.size_bytes)}</span> : null}
+                              {d.review_note ? <span className="block pt-0.5 text-[11px] text-[#D03020]">{d.review_note}</span> : null}
+                              {!d.url ? <span className="mt-1 block rounded bg-red-600 px-1.5 py-0.5 text-[10px] text-white">File Missing From Storage</span> : null}
+                            </span>
+                          </button>
+                          {meta.expiring && (
+                            <label className="mt-2 flex items-center gap-1.5 text-[10px] text-[#9A9AA3]">
+                              <Clock className="w-3 h-3 shrink-0" />
+                              Expires
+                              <input
+                                type="date"
+                                value={d.expires_at ?? ""}
+                                onChange={(e) => void setExpiry(d, e.target.value)}
+                                className="flex-1 min-w-0 rounded border border-[#EDEDF0] bg-white px-1.5 py-0.5 text-[10px]"
+                              />
+                            </label>
+                          )}
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span className={`rounded border px-1 py-0.5 text-[9.5px] font-semibold ${STATUS_STYLE[st].cls}`}>{STATUS_STYLE[st].label}</span>
+                            {st !== "verified" && !systemSigned && (
+                              <button
+                                onClick={() => void decide(d, "verified")}
+                                disabled={fworking}
+                                className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                              >
+                                <ShieldCheck className="w-3 h-3" /> Verify
+                              </button>
                             )}
-                            {fs !== "rejected" && (
-                              <button onClick={() => void decide(f, "rejected")} disabled={fworking} className="rounded border border-red-200 px-1.5 py-0.5 text-red-700 hover:bg-red-50 disabled:opacity-50">Needs New</button>
+                            {st === "verified" && (
+                              <button
+                                onClick={() => void decide(d, "uploaded")}
+                                disabled={fworking}
+                                className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#C4C4CB] disabled:opacity-50"
+                              >
+                                <RotateCcw className="w-3 h-3" /> Unverify
+                              </button>
                             )}
-                            {!locked && !f.signed_agreement && (
-                              <button onClick={() => setReplacing(f)} disabled={fworking} className="rounded border border-[#EDEDF0] px-1.5 py-0.5 text-[#55555E] disabled:opacity-50">Replace</button>
+                            {st !== "rejected" && !locked && (
+                              <button
+                                onClick={() => void decide(d, "rejected")}
+                                disabled={fworking}
+                                className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                              >
+                                <AlertTriangle className="w-3 h-3" /> Needs New
+                              </button>
                             )}
-                            {!f.signed_agreement && (
-                              <button onClick={() => void archive(f)} disabled={fworking} className="rounded border border-[#EDEDF0] px-1.5 py-0.5 text-[#55555E] disabled:opacity-50">Archive</button>
+                            {multi && !locked && !d.signed_agreement && (
+                              <>
+                                <button
+                                  onClick={() => setReplacing(d)}
+                                  disabled={fworking}
+                                  title="Upload a new file that takes this file's place. The old one moves to Previous Uploads."
+                                  className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#C4C4CB] disabled:opacity-50"
+                                >
+                                  <RotateCcw className="w-3 h-3" /> Replace
+                                </button>
+                                <button
+                                  onClick={() => void archive(d)}
+                                  disabled={fworking}
+                                  title="Take this file off the active list. It stays on record and can be restored."
+                                  className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#C4C4CB] disabled:opacity-50"
+                                >
+                                  <Archive className="w-3 h-3" /> Archive
+                                </button>
+                              </>
+                            )}
+                            {d.url ? (
+                              <a
+                                href={d.url}
+                                download={d.file_name ?? undefined}
+                                className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] bg-white px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#C4C4CB]"
+                              >
+                                <Download className="w-3 h-3" /> Download
+                              </a>
+                            ) : null}
+                            {multi && !d.signed_agreement && (
+                              <label className="inline-flex items-center gap-1 text-[11px] text-[#55555E]">
+                                Move
+                                <AppSelect
+                                  aria-label={`Move ${fileName}`}
+                                  value={d.category}
+                                  disabled={fworking}
+                                  onChange={(e) => {
+                                    const next = e.target.value as DocCategory;
+                                    if (next !== d.category) void moveTo(d, next);
+                                  }}
+                                  className="h-7 rounded border border-[#EDEDF0] bg-white px-1.5 text-[11px] text-[#28282E]"
+                                >
+                                  {DOC_CATEGORIES.filter((c) => isMultiFileCategory(c.key) && c.key !== "verification_recording").map((c) => (
+                                    <option key={c.key} value={c.key}>
+                                      {displayTitleCase(c.label).replace("(front)", "(Front)").replace("(back)", "(Back)")}
+                                    </option>
+                                  ))}
+                                </AppSelect>
+                              </label>
+                            )}
+                            {locked ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E]"
+                                title="Signed agreements can't be replaced. To correct one, void it and send a new agreement through eSign."
+                              >
+                                <ShieldCheck className="w-3 h-3" /> Permanent Record
+                              </span>
+                            ) : null}
+                            {/* Signed agreements are permanent records: no Delete, and
+                                the server refuses it anyway (deleteDocument). */}
+                            {d && key !== "agreement" && !d.signed_agreement && d.uploaded_by_role !== "driver" && (
+                              <button
+                                onClick={() => void drop(d)}
+                                disabled={fworking}
+                                className="ml-auto rounded-md p-1 text-[#9A9AA3] hover:text-[#D03020] disabled:opacity-50"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             )}
                           </div>
                         </li>
@@ -660,6 +706,7 @@ export function ApplicantDocuments({
                     })}
                   </ul>
                 )}
+                {!locked ? <Button type="button" variant="outline" size="sm" className="mt-2 h-8 self-start text-xs" disabled={busy != null} aria-label={`Add ${displayTitleCase(meta.label).replace("(front)", "(Front)").replace("(back)", "(Back)")}`} onClick={() => setUploadingCategory(key)}><Plus className="h-3.5 w-3.5" /> Add</Button> : null}
               </div>
             </div>
           );
@@ -680,7 +727,7 @@ export function ApplicantDocuments({
                 </span>
                 <span className="text-[11px] text-[#9A9AA3] shrink-0">{fmtDateTime(d.created_at)}</span>
                 <button
-                  onClick={() => open(d, `${d.label ?? d.file_name} (Previous Upload)`)}
+                  onClick={() => openLoose(d, `${d.label ?? d.file_name} (Previous Upload)`)}
                   className="text-[11px] font-medium text-[#55555E] hover:text-[#111114] shrink-0"
                 >
                   View
@@ -700,7 +747,29 @@ export function ApplicantDocuments({
         </div>
       )}
 
-      <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
+      <DocumentViewer
+        doc={shown}
+        nav={
+          page && paged.length > 1
+            ? {
+                index: pagedIndex,
+                total: paged.length,
+                onPrevious: () =>
+                  setPage((current) =>
+                    current ? { ...current, index: stepCategoryPage(current.index, current.ids.length, "previous") } : current,
+                  ),
+                onNext: () =>
+                  setPage((current) =>
+                    current ? { ...current, index: stepCategoryPage(current.index, current.ids.length, "next") } : current,
+                  ),
+              }
+            : null
+        }
+        onClose={() => {
+          setPage(null);
+          setLoose(null);
+        }}
+      />
       {uploadingCategory && !signedAgreementLocked(docs, uploadingCategory) ? <DriverDocumentUploadDialog
         label={displayTitleCase(DOC_CATEGORIES.find((c) => c.key === uploadingCategory)?.label ?? "Document").replace("(front)", "(Front)").replace("(back)", "(Back)")}
         hint={uploadingCategory === "agreement" ? "Written Or Signed Copy · Owner/Manager Review Required" : uploadingCategory === "rental_application" ? "Written Or Completed Application · Owner/Manager Review Required" : undefined}

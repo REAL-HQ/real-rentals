@@ -187,6 +187,45 @@ export type ContactStatusDraft = {
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Same Eastern calendar the Lead Priorities board uses. */
+export function contactToday(now = new Date()): string {
+  const p = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  return ["year", "month", "day"].map((k) => p.find((v) => v.type === k)!.value).join("-");
+}
+
+export function addCalendarDays(iso: string, days: number): string {
+  const ms = Date.parse(`${iso}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return iso;
+  return new Date(ms + days * 86400000).toISOString().slice(0, 10);
+}
+
+/** The next calendar day that is not Saturday or Sunday. */
+export function nextBusinessDay(today: string): string {
+  let iso = addCalendarDays(today, 1);
+  for (let i = 0; i < 6; i++) {
+    const day = new Date(`${iso}T00:00:00Z`).getUTCDay();
+    if (day !== 0 && day !== 6) return iso;
+    iso = addCalendarDays(iso, 1);
+  }
+  return iso;
+}
+
+/**
+ * Date to store when staff log a contact and did not pick a future day.
+ * A date already after today is kept. Today, a past date, or a blank becomes
+ * the next business day. The stored value is left on the row until they save.
+ */
+export function followUpForNewEntry(stored: string | null | undefined, today: string): string {
+  const value = String(stored ?? "").trim();
+  if (value > today) return value;
+  return nextBusinessDay(today);
+}
+
 export type ContactStatusBlocker = { field: "status" | "note" | "followUpOn"; why: string };
 
 /**
@@ -194,11 +233,14 @@ export type ContactStatusBlocker = { field: "status" | "note" | "followUpOn"; wh
  * disable Save and say why) and on the server (to refuse), so the browser can
  * never talk the server into storing something the rules forbid.
  */
-export function contactStatusBlockers(draft: {
-  status: unknown;
-  note?: unknown;
-  followUpOn?: unknown;
-}): ContactStatusBlocker[] {
+export function contactStatusBlockers(
+  draft: {
+    status: unknown;
+    note?: unknown;
+    followUpOn?: unknown;
+  },
+  opts?: { today?: string; existingFollowUpOn?: string | null },
+): ContactStatusBlocker[] {
   const out: ContactStatusBlocker[] = [];
   const status = normalizeContactStatus(draft.status);
   if (!status) {
@@ -229,6 +271,14 @@ export function contactStatusBlockers(draft: {
     });
   if (followUp && !DATE_ONLY.test(followUp))
     out.push({ field: "followUpOn", why: "Enter the follow-up date as a date." });
+  else if (followUp) {
+    const today = opts?.today ?? contactToday();
+    const existing = String(opts?.existingFollowUpOn ?? "").trim();
+    // A new entry has to be after today. The date already on the row stays
+    // readable and can be saved unchanged; this does not rewrite old rows.
+    if (followUp <= today && followUp !== existing)
+      out.push({ field: "followUpOn", why: "Next Follow-Up has to be after today." });
+  }
 
   return out;
 }

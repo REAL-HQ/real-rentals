@@ -145,6 +145,17 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
       throw new Error(
         "No application was updated. Refresh and retry; it may have changed or been removed.",
       );
+    if (patch.status === "declined" || patch.status === "closed") {
+      try {
+        const { releasePendingReservation } = await import("@/lib/pending-reservation.server");
+        await releasePendingReservation(supabaseAdmin, {
+          applicationId: data.id,
+          reason: patch.status === "declined" ? "application_declined" : "application_closed",
+        });
+      } catch (err) {
+        console.error("[lifecycle] pending reservation release failed", err);
+      }
+    }
     await logAudit(actor, {
       action: closing
         ? "application.closed"

@@ -294,6 +294,25 @@ describe("applicants endpoint", () => {
     expect(withUrls.packet.documents[0].url_expires_in_seconds).toBe(900);
     expect((await srv.handleFleetApplicants(req("applicants", { action: "get", lead_id: "nope" }), { admin: db, env: ENV })).status).toBe(400);
   });
+  test("get returns every file in a category, newest first, each with its own signed url", async () => {
+    const s = seed();
+    s.documents.push(
+      { id: `${A}-ssa`, driver_id: A, category: "income", file_name: "ssa.pdf", review_status: "uploaded", is_current: true, created_at: "2026-11-01T15:00:00Z", storage_bucket: "vault", storage_path: `${A}/ssa.pdf`, uploaded_by_role: "driver" },
+      { id: `${A}-uber`, driver_id: A, category: "income", file_name: "uber-earnings.pdf", review_status: "verified", is_current: true, created_at: "2026-11-20T15:00:00Z", storage_bucket: "vault", storage_path: `${A}/uber.pdf`, uploaded_by_role: "team" },
+      { id: `${A}-old`, driver_id: A, category: "income", file_name: "archived.pdf", review_status: "uploaded", is_current: false, created_at: "2026-10-01T15:00:00Z", storage_bucket: "vault", storage_path: `${A}/old.pdf` },
+    );
+    const db = fakeDb(s);
+    const j = await (await srv.handleFleetApplicants(req("applicants", { action: "get", lead_id: A, include_urls: true }), { admin: db, env: ENV, now: () => NOW })).json();
+    const income = j.packet.documents_by_category.income;
+    expect(income.active).toBe(3);
+    expect(income.verified).toBe(1);
+    expect(income.latest).toMatchObject({ id: `${A}-uber`, file_name: "uber-earnings.pdf" });
+    expect(income.latest.url).toContain("https://signed.example/");
+    expect(income.files.map((f: any) => f.id)).toEqual([`${A}-uber`, `${A}-d3`, `${A}-ssa`]);
+    expect(income.files.every((f: any) => typeof f.url === "string" && f.url.includes("https://signed.example/"))).toBe(true);
+    expect(j.packet.documents.some((d: any) => d.id === `${A}-old`)).toBe(false);
+    expect(j.packet.documents.filter((d: any) => d.category === "income")).toHaveLength(3);
+  });
 });
 
 describe("decision endpoint", () => {

@@ -21,6 +21,8 @@ function dollars(printed: unknown): number | null {
  * v1.14 (Insurance Included) agreements print a Balance Due. Under that
  * wording only the Reservation Fee is due at signing (Section 4); the balance
  * is due before pickup. No fee entered means nothing is charged at signing.
+ * The recurring weekly charge is rentals.weekly_rate (the agreement's weekly
+ * amount, Additional Driver fees included once). This offer does not add them.
  */
 function reservationFeeOffer(prepJson: unknown): InitialPaymentOffer | null {
   let fee = 0;

@@ -17,6 +17,7 @@ export type FixTarget =
   | { kind: "approve" }
   | { kind: "activate" }
   | { kind: "reserve" }
+  | { kind: "book_pickup" }
   | { kind: "return" };
 
 export type Blocker = { key: ActivationRequirementKey | "local"; label: string; detail?: string; fix: string; target: FixTarget };
@@ -32,6 +33,11 @@ export type NextStep = {
   activation: "ready" | "blocked" | "checking" | "unknown" | "manager_only" | "rental_active";
   /** One sentence for the card. */
   note: string;
+  /**
+   * Approved, signed, Reservation Fee paid, and no reserved / on-hold / active
+   * rental. The card shows Pickup Not Booked with Book Pickup and Send Pickup Link.
+   */
+  pickupNotBooked?: boolean;
 };
 
 const FIX: Partial<Record<ActivationRequirementKey, { fix: string; target: FixTarget }>> = {
@@ -63,9 +69,12 @@ export function nextStep(input: {
   canReserve?: boolean;
   /** Soft hold already on file. */
   hasReservation?: boolean;
+  /** Approved, signed, Reservation Fee paid, no open rental. See pickup-not-booked.ts. */
+  pickupNotBooked?: boolean;
 }): NextStep {
   const { step, entry, readiness, loading, failed } = input;
   const canReserve = input.canReserve === true && input.hasReservation !== true;
+  const pickupNotBooked = input.pickupNotBooked === true && input.hasReservation !== true && entry !== "rental_active" && entry !== "manager_only";
   if (entry === "rental_active") {
     return { label: "Return", target: { kind: "return" }, busy: false, blockers: [], activation: "rental_active", note: "Rental is active. Use Return to record the car back, balances, and stop billing." };
   }
@@ -80,9 +89,10 @@ export function nextStep(input: {
   if (!readiness) {
     // Until the server answers, the profile's own checklist leads (never Activate).
     const local = step in LOCAL ? LOCAL[step as keyof typeof LOCAL] : null;
-    if (loading) return { label: local?.fix ?? "Checking…", target: local?.target ?? { kind: "none" }, busy: !local, blockers: local ? [local] : [], activation: "checking", note: "Checking what's needed to start a rental…" };
+    const marked = pickupNotBooked ? { pickupNotBooked: true as const } : {};
+    if (loading) return { label: local?.fix ?? "Checking…", target: local?.target ?? { kind: "none" }, busy: !local, blockers: local ? [local] : [], activation: "checking", note: "Checking what's needed to start a rental…", ...marked };
     // Failure: say so, keep Activate Rental reachable (it re-checks on open).
-    return { label: local?.fix ?? "Activate Rental", target: local?.target ?? { kind: "activate" }, busy: false, blockers: local ? [local] : [], activation: "unknown", note: failed ? "Couldn't check readiness. Retry, or open Activate Rental to re-check." : "Readiness not checked yet." };
+    return { label: local?.fix ?? "Activate Rental", target: local?.target ?? { kind: "activate" }, busy: false, blockers: local ? [local] : [], activation: "unknown", note: failed ? "Couldn't check readiness. Retry, or open Activate Rental to re-check." : "Readiness not checked yet.", ...marked };
   }
   const unmet = readiness.requirements.filter((r) => r.met === false && r.enforcement === "hard");
   unmet.sort((a, b) => rank(a.key) - rank(b.key));
@@ -95,7 +105,10 @@ export function nextStep(input: {
   if (step === "interview") blockers.unshift(LOCAL.interview);
   if (blockers.length) {
     const first = blockers[0];
-    return { label: first.fix, target: first.target, busy: false, blockers, activation: "blocked", note: `${unmet.length || 1} item${(unmet.length || 1) === 1 ? "" : "s"} before this renter can start a rental.` };
+    return { label: first.fix, target: first.target, busy: false, blockers, activation: "blocked", note: `${unmet.length || 1} item${(unmet.length || 1) === 1 ? "" : "s"} before this renter can start a rental.`, ...(pickupNotBooked ? { pickupNotBooked: true } : {}) };
+  }
+  if (pickupNotBooked) {
+    return { label: "Book Pickup", target: { kind: "book_pickup" }, busy: false, blockers: [], activation: "ready", note: "Pickup Not Booked. The agreement is signed and the Reservation Fee is paid. Book a pickup or send the renter a link to choose a time.", pickupNotBooked: true };
   }
   if (canReserve) {
     return { label: "Reserved", target: { kind: "reserve" }, busy: false, blockers: [], activation: "ready", note: "Approved — confirm the pickup appointment and reserve a car. Account login details are sent when Reserved is saved." };

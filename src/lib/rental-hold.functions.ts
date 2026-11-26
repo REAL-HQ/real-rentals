@@ -81,6 +81,8 @@ export type RenterCreditRow = {
   status: "available" | "applied" | "void";
   appliedToRentalId: string | null;
   createdAt: string;
+  /** Null when the credit was saved before expiry existed. */
+  expiresAt: string | null;
   sourcePaymentId: string | null;
 };
 
@@ -92,9 +94,19 @@ export const listRenterCredits = createServerFn({ method: "GET" })
     const { requireStaff } = await import("@/lib/roles.server");
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    let q = (supabaseAdmin as any).from("renter_credits").select("id,application_id,source_payment_id,amount,reason,status,applied_to_rental_id,created_at").order("created_at", { ascending: false }).limit(200);
-    if (data.applicationId) q = q.eq("application_id", data.applicationId);
-    const { data: rows, error } = await q;
+    const base = () => {
+      let q = (supabaseAdmin as any).from("renter_credits").select("id,application_id,source_payment_id,amount,reason,status,applied_to_rental_id,created_at,expires_at").order("created_at", { ascending: false }).limit(200);
+      if (data.applicationId) q = q.eq("application_id", data.applicationId);
+      return q;
+    };
+    let { data: rows, error } = await base();
+    if (error && /expires_at/i.test(String(error.message))) {
+      let q = (supabaseAdmin as any).from("renter_credits").select("id,application_id,source_payment_id,amount,reason,status,applied_to_rental_id,created_at").order("created_at", { ascending: false }).limit(200);
+      if (data.applicationId) q = q.eq("application_id", data.applicationId);
+      const second = await q;
+      rows = second.data;
+      error = second.error;
+    }
     if (error) {
       if (/renter_credits/i.test(error.message)) return { rows: [] };
       throw new Error(error.message);
@@ -113,6 +125,7 @@ export const listRenterCredits = createServerFn({ method: "GET" })
         status: r.status,
         appliedToRentalId: r.applied_to_rental_id ?? null,
         createdAt: r.created_at,
+        expiresAt: r.expires_at ?? null,
         sourcePaymentId: r.source_payment_id ?? null,
       })),
     };

@@ -12,6 +12,7 @@ import {
   type ReservationRow,
 } from "@/lib/reservations";
 import { tierAllows } from "@/lib/roles";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import { SwitchReservationVehicleInput, type SwitchResult } from "@/lib/reservation-switch";
 import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 import {
@@ -156,7 +157,7 @@ export const listReservations = createServerFn({ method: "GET" })
     const baseCols =
       "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,weekly_rate,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id";
     const run = (cols: string) =>
-      supabaseAdmin.from("rentals").select(cols).in("status", [RESERVATION_STATUS, "on_hold"]).order("start_date", { ascending: true }).limit(500);
+      supabaseAdmin.from("rentals").select(cols).in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation"]).order("start_date", { ascending: true }).limit(500);
     let { data, error } = await run(`${baseCols},hold_reason,hold_started_at`);
     // Before the On Hold migration is applied the hold columns are missing: read without them.
     if (error && /hold_/i.test(error.message)) ({ data, error } = await run(baseCols));
@@ -312,24 +313,62 @@ export async function createReservationCore(
   if (!vehicle) throw new Error("Vehicle Not Found.");
   if (vehicle.archived_at) throw new Error("That Vehicle Is Archived.");
   const vStatus = String(vehicle.status ?? "").toLowerCase();
-  if (["sold", "retired", "archived", "rented", "unavailable"].includes(vStatus)) {
+  if (["sold", "retired", "archived", "rented", "unavailable"].includes(vStatus) || isForSaleVehicleStatus(vStatus)) {
     throw new Error("That Vehicle Is Not Free To Reserve.");
   }
 
+  // A Pending Reservation or an On Hold row for this lead is reused. A
+  // reserved row that already has a pickup time still refuses, so a second
+  // tap stays "already booked". Book Pickup (PR 517) calls this function.
+  const { reuseOpenHoldForPickup } = await import("@/lib/pending-reservation.server");
+  const reused = await reuseOpenHoldForPickup(admin, {
+    applicationId: data.applicationId,
+    vehicleId: data.vehicleId,
+    pickupDate: pickup,
+    pickupTime: data.pickupTime,
+    reservationNote,
+    deposit,
+    feeOn,
+    feePaymentId,
+  });
+  if (reused.reused) {
+    const loginEmail = reused.pickupWasNew
+      ? await maybeSendPickupBookedEmail(admin, data.applicationId, {
+          pickupDate: pickup,
+          pickupTime: data.pickupTime,
+          pickupLocation: data.pickupLocation.trim(),
+          vehicle: [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ").trim() || null,
+        })
+      : "skipped";
+    if (reused.status === RESERVATION_STATUS) {
+      try {
+        const { maybeConfirmReservation } = await import("@/lib/reservation-confirmation.server");
+        await maybeConfirmReservation(admin, { rentalId: reused.id });
+      } catch (e) {
+        console.error("[reservation] confirmation check failed", String((e as Error)?.message ?? e));
+      }
+    }
+    return { id: reused.id, loginEmail };
+  }
+
+  const vStatusHeld = String(vehicle.status ?? "").toLowerCase();
+  if (vStatusHeld === "pending_reservation") throw new Error("That Vehicle Is Not Free To Reserve.");
+
   const { data: busyActive } = await admin.from("rentals").select("id").eq("vehicle_id", data.vehicleId).eq("status", "active").limit(1);
   if (busyActive?.length) throw new Error("That Vehicle Already Has An Active Rental.");
-  const { data: busyReserved } = await admin.from("rentals").select("id").eq("vehicle_id", data.vehicleId).eq("status", RESERVATION_STATUS).limit(1);
+  const { data: busyReserved } = await admin.from("rentals").select("id").eq("vehicle_id", data.vehicleId).in("status", [RESERVATION_STATUS, "pending_reservation", "on_hold"]).limit(1);
   if (busyReserved?.length) throw new Error("That Vehicle Is Already Reserved.");
-  const { data: driverReserved } = await admin.from("rentals").select("id").eq("driver_id", app.user_id).eq("status", RESERVATION_STATUS).limit(1);
+  const { data: driverReserved } = await admin.from("rentals").select("id").eq("driver_id", app.user_id).in("status", [RESERVATION_STATUS, "pending_reservation", "on_hold"]).limit(1);
   if (driverReserved?.length) throw new Error("This Person Already Has A Reserved Car. Cancel It First.");
 
   // One booking per pickup slot (date + time), for staff and FLEET alike.
-  const { data: sameDay } = await admin.from("rentals").select("id,reservation_note").eq("status", RESERVATION_STATUS).eq("start_date", pickup).limit(50);
+  const { data: sameDay } = await admin.from("rentals").select("id,reservation_note").in("status", [RESERVATION_STATUS, "pending_reservation"]).eq("start_date", pickup).limit(50);
   if ((sameDay ?? []).some((r: any) => readReservationDetails(r.reservation_note).pickupTime === data.pickupTime)) {
     throw new Error("That Pickup Slot Is Already Booked.");
   }
 
-  const weekly = typeof vehicle.weekly_rate === "number" ? vehicle.weekly_rate : 0;
+  const { weeklyRateForApplication } = await import("@/lib/agreement-weekly.server");
+  const weekly = (await weeklyRateForApplication(admin, data.applicationId, vehicle.weekly_rate)) ?? 0;
   const insertRow: Record<string, unknown> = {
     driver_id: app.user_id,
     vehicle_id: data.vehicleId,
@@ -360,7 +399,9 @@ export async function createReservationCore(
   }
 
   await admin.from("vehicles").update({ status: "reserved" }).eq("id", data.vehicleId).neq("status", "rented");
-  // The agreement and the Reservation Fee were created before this row: tie them to it.
+  // The Reservation Fee was paid before this row. Link that payment. The signed
+  // agreement stays unlinked until the rental is active, so pickup can still
+  // count it (linkOrphansToRental).
   await (await import("@/lib/booking-links.server")).linkOrphansToRental(admin, inserted.id);
 
   const loginEmail = await maybeSendPickupBookedEmail(admin, data.applicationId, {
@@ -388,13 +429,14 @@ export const cancelReservation = createServerFn({ method: "POST" })
     const { data: row, error } = await supabaseAdmin.from("rentals").select("id,status,vehicle_id").eq("id", data.rentalId).maybeSingle();
     if (error) throw new Error(error.message);
     if (!row) throw new Error("Reservation Not Found.");
-    if (!isReservationStatus(row.status)) throw new Error("That Rental Is Not An Open Reservation.");
+    const pending = row.status === "pending_reservation";
+    if (!pending && !isReservationStatus(row.status)) throw new Error("That Rental Is Not An Open Reservation.");
 
     const { error: upd } = await supabaseAdmin
       .from("rentals")
       .update({ status: "cancelled" } as never)
       .eq("id", data.rentalId)
-      .eq("status", RESERVATION_STATUS);
+      .in("status", pending ? ["pending_reservation"] : [RESERVATION_STATUS]);
     if (upd) throw new Error(upd.message);
 
     if (row.vehicle_id) {
@@ -402,13 +444,26 @@ export const cancelReservation = createServerFn({ method: "POST" })
         .from("rentals")
         .select("id")
         .eq("vehicle_id", row.vehicle_id)
-        .in("status", [RESERVATION_STATUS, "on_hold", "active"])
+        .in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation", "active"])
         .limit(1);
       if (!still?.length) {
-        await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).eq("status", "reserved");
+        await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).in("status", ["reserved", "pending_reservation"]);
       }
     }
     return { ok: true };
+  });
+
+/** Staff Release Hold. Only a Pending Reservation. The car returns to Available. */
+export const releaseReservationHold = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ rentalId: UUID }).parse(d))
+  .handler(async ({ context, data }): Promise<{ released: number }> => {
+    await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { releasePendingReservation } = await import("@/lib/pending-reservation.server");
+    const result = await releasePendingReservation(supabaseAdmin, { rentalId: data.rentalId, reason: "staff_release" });
+    if (!result.released) throw new Error("That Car Is Not On A Pending Reservation.");
+    return result;
   });
 
 /**
@@ -436,7 +491,7 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
       .from("rentals")
       .select("id,vehicle_id,reservation_deposit_status,reservation_deposit_amount,reservation_deposit_payment_id,reservation_deposit_required")
       .eq("application_id", data.applicationId)
-      .in("status", [RESERVATION_STATUS, "on_hold"]);
+      .in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation"]);
     if (data.vehicleId) q = q.eq("vehicle_id", data.vehicleId);
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
@@ -446,7 +501,7 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
       // Nothing is carried into the security deposit: the old reservation
       // deposit is retired, and a Reservation Fee is credited to week 1
       // (applyReservationFeeCredit), never held as a deposit (card t315s1710).
-      const { error: upd } = await supabaseAdmin.from("rentals").update(patch as never).eq("id", row.id).in("status", [RESERVATION_STATUS, "on_hold"]);
+      const { error: upd } = await supabaseAdmin.from("rentals").update(patch as never).eq("id", row.id).in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation"]);
       if (!upd) {
         cleared += 1;
         // Free the reserved vehicle if nothing else holds it.
@@ -454,10 +509,10 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
           .from("rentals")
           .select("id")
           .eq("vehicle_id", row.vehicle_id)
-          .in("status", [RESERVATION_STATUS, "on_hold", "active"])
+          .in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation", "active"])
           .limit(1);
         if (!still.data?.length) {
-          await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).eq("status", "reserved");
+          await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).in("status", ["reserved", "pending_reservation"]);
         }
       }
     }
@@ -606,6 +661,8 @@ export const getOpenReservationForApplication = createServerFn({ method: "POST" 
       .eq("application_id", data.applicationId)
       .eq("status", RESERVATION_STATUS)
       .maybeSingle();
+    // A Pending Reservation is not returned here. The profile still shows
+    // Book Pickup (PR 517 hides that button when this reservation exists).
     if (error) {
       if (/reservation_/i.test(error.message)) return { reservation: null, settings, feeDisplayStatus: fee.status };
       throw new Error(error.message);
@@ -640,11 +697,11 @@ export const listVehiclesForReservation = createServerFn({ method: "GET" })
       .from("rentals")
       .select("vehicle_id")
       .in("vehicle_id", ids)
-      .in("status", ["active", "reserved"]);
+      .in("status", ["active", "reserved", "on_hold", "pending_reservation"]);
     if (busy.error) throw new Error(busy.error.message);
     const taken = new Set((busy.data ?? []).map((r) => r.vehicle_id));
     return (data ?? [])
-      .filter((v) => !taken.has(v.id))
+      .filter((v) => !taken.has(v.id) && !isForSaleVehicleStatus(v.status))
       .map((v) => ({
         id: v.id,
         unit_number: v.unit_number ?? null,
@@ -661,12 +718,12 @@ export const listVehiclesForReservation = createServerFn({ method: "GET" })
 
 export const listApprovedForReservation = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<Array<{ id: string; full_name: string | null; email: string | null }>> => {
+  .handler(async ({ context }): Promise<Array<{ id: string; full_name: string | null; email: string | null; phone: string | null }>> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("applications")
-      .select("id,full_name,email,status,user_id")
+      .select("id,full_name,email,phone,status,user_id")
       .in("status", ["approved", "active"])
       .order("full_name", { ascending: true })
       .limit(500);
@@ -677,5 +734,10 @@ export const listApprovedForReservation = createServerFn({ method: "GET" })
     const taken = new Set((reserved.data ?? []).map((r) => r.application_id).filter(Boolean));
     return (data ?? [])
       .filter((a) => !taken.has(a.id))
-      .map((a) => ({ id: a.id, full_name: a.full_name ?? null, email: a.email ?? null }));
+      .map((a) => ({
+        id: a.id,
+        full_name: a.full_name ?? null,
+        email: a.email ?? null,
+        phone: a.phone ?? null,
+      }));
   });

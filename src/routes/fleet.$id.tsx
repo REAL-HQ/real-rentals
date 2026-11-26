@@ -11,6 +11,7 @@ import { representativePhoto } from "@/lib/marketing-fleet";
 import { PublicAvailabilityBadge } from "@/components/site/PublicAvailability";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { PUBLIC_AVAILABILITY_ENABLED, publicAvailability } from "@/lib/public-availability";
+import { isPublicHiddenVehicleStatus } from "@/lib/fleet-summary";
 
 export const Route = createFileRoute("/fleet/$id")({
   loader: async ({ params }) => {
@@ -19,7 +20,7 @@ export const Route = createFileRoute("/fleet/$id")({
       .select("id, make, model, weekly_rate, status")
       .eq("id", params.id)
       .maybeSingle();
-    if (!data || data.status === "retired") throw notFound();
+    if (!data || isPublicHiddenVehicleStatus(data.status)) throw notFound();
     return { vehicle: data };
   },
   head: ({ params, loaderData }) => {
@@ -134,7 +135,7 @@ function VehicleDetail() {
       .maybeSingle()
       .then(({ data, error }) => {
         if (!active) return;
-        if (error || !data) {
+        if (error || !data || isPublicHiddenVehicleStatus(data.status)) {
           setStatus("missing");
           return;
         }
@@ -237,7 +238,7 @@ function VehicleDetail() {
             <div className="mt-8">
               <div className="text-sm font-medium mb-3">What's included</div>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                {["Insurance is included, with the policy in your name. One less bill to worry about.", "No deposit — payment card on file", "Routine maintenance included", "24/7 driver support"].map((i) => (
+                {["Insurance is included, with the policy in your name. Approved additional drivers are covered too.", "Need to share the car? Add an approved driver for $100/week. Insurance is included for both of you.", "No deposit — payment card on file", "Routine maintenance included", "24/7 driver support"].map((i) => (
                   <li key={i} className="flex gap-2 items-start"><Check className="w-4 h-4 text-real-red mt-0.5" /> {i}</li>
                 ))}
               </ul>

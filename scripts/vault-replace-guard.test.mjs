@@ -464,17 +464,17 @@ try {
       assert.ok(hit, `card ${title} rendered`);
       return hit;
     };
-    const agreement = card("Signed agreement");
+    const agreement = card("Rental Agreement");
     assert.doesNotMatch(agreement, />Replace</, "no Replace on the signed agreement");
     assert.doesNotMatch(agreement, /Needs New/, "no Needs New on the signed agreement");
     assert.doesNotMatch(agreement, /title="Delete"/, "no Delete on the signed agreement");
     assert.doesNotMatch(agreement, /aria-label="Add /, "signed evidence never offers an upload modal");
     assert.match(agreement, /Permanent Record/);
-    const licence = card("Driver&#x27;s license (front)");
+    const licence = card("Driver&#x27;s License (Front)");
     assert.match(licence, /aria-label="Add Driver&#x27;s License \(Front\)"/, "ordinary documents can open the upload modal");
     assert.match(licence, /Needs New/, "ordinary documents keep Needs New");
     // Empty fields offer the same Add modal, never an inline drop area.
-    assert.match(card("Insurance card"), /aria-label="Add Insurance Card"/);
+    assert.match(card("Insurance Card"), /aria-label="Add Insurance Card"/);
   });
 
   await test("DocumentVault gates Replace on the same rule", async () => {

@@ -10,11 +10,13 @@ export function VehicleStatusBadge({ status, label, className, ...props }: {
 }) {
   const key = (status ?? "").trim().toLowerCase().replace(/ /g, "_");
   const variant = key === "available" ? "white"
+    : key === "pending_reservation" ? "pending"
     : key === "reserved" ? "warning"
     : ["rented", "on_rent"].includes(key) ? "success"
     : key === "assigned" ? "occupied"
+    : key === "for_sale" ? "sale"
     : ["maintenance", "unavailable", "onboarding", "needs_setup", "out_of_service"].includes(key) ? "attention" : "neutral";
   return <Badge variant={variant} data-vehicle-status={key || "unknown"} className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${className ?? ""}`} {...props}>
-    {label ?? (key === "on_rent" ? "Rented" : key === "onboarding" ? "Needs Setup" : displayTitleCase(status?.replace(/_/g, " ") ?? "") || "Not Set")}
+    {label ?? (key === "on_rent" ? "Rented" : key === "onboarding" ? "Needs Setup" : key === "for_sale" ? "For Sale" : displayTitleCase(status?.replace(/_/g, " ") ?? "") || "Not Set")}
   </Badge>;
 }

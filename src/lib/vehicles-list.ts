@@ -153,6 +153,8 @@ export function buildVehicleSearchOr(raw: string): string | null {
 export function availabilityLabel(row: Pick<VehicleListRow, "on_rent" | "status">): string {
   if (row.on_rent) return "Rented";
   if (row.status === "onboarding") return "Needs Setup";
+  if (row.status === "for_sale") return "For Sale";
+  if (row.status === "pending_reservation") return "Pending Reservation";
   return (row.status ?? "—").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -196,7 +198,7 @@ export function summarizeVehicleFleetStats(
   let maintenance = 0;
   let other = 0;
   for (const vehicle of vehicles) {
-    const status = (vehicle.status ?? "").toLowerCase();
+    const status = (vehicle.status ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
     if (status === "archived") {
       archived += 1;
       continue;

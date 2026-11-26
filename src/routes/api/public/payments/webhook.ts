@@ -7,6 +7,8 @@ import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatc
 import { holdIfHeld, type HeldNoticeInput } from '@/lib/held-payment-notices.server';
 import { failedInvoiceLink } from '@/lib/failed-payment-link';
 import { easternDateOf } from '@/lib/rent-reminders';
+import { isRentLinkReason, rentPeriodOf } from '@/lib/one-off-payment';
+import { invoicePaymentMethod, stripeChargePaymentMethod } from '@/lib/stripe-payment-method';
 import { dueDateOf, extractPaymentReceiptFields, paidDateOf, shouldNotifyRenter } from '@/lib/renter-payments';
 import { resolveStripePaymentMatch } from '@/lib/renter-payments-match.server';
 import { safeReceiptUrl } from '@/lib/payment-received';
@@ -366,8 +368,10 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
         vehicle_id: r?.vehicle_id ?? null,
         amount,
         balance_due: status === 'paid' ? 0 : amount,
-        type: reason === 'rent' ? 'rent' : reason === 'late_fee' ? 'late_fee' : 'other',
+        type: isRentLinkReason(reason) ? 'rent' : reason === 'late_fee' ? 'late_fee' : 'other',
         reason,
+        // The day or first week the link names. Absent when the link doesn't say.
+        ...(isRentLinkReason(reason) && rentPeriodOf(pi) ? { due_date: rentPeriodOf(pi) } : {}),
         status,
         failure_reason: status === 'failed' ? failure : null,
         stripe_payment_intent_id: pi.id,
@@ -548,7 +552,7 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     notified_status: notify ? null : status,
     failure_reason: !notify && status === 'failed' ? failure : null,
     paid_date: !notify && status === 'paid' ? paidDateOf(invoice, receipts) : null,
-    payment_method: 'card',
+    payment_method: invoicePaymentMethod(invoice),
     // The week this invoice bills starts when Stripe created it (ET), the same
     // date the rent reminders and late-fee waivers use. invoice.period_start is
     // the previous period for renewals, which made weeks look days later.
@@ -785,6 +789,17 @@ async function handleChargeRefunded(charge: any) {
     _charge_id: charge.id ?? null,
     _pi: piId,
   }));
+  try {
+    const { data: fees } = await admin.from('payments').select('id,driver_id,reason,status,refunded_amount').in('id', ids);
+    const { releasePendingReservation } = await import('@/lib/pending-reservation.server');
+    for (const fee of (fees ?? []) as any[]) {
+      if (String(fee.reason ?? '') !== 'reservation_fee') continue;
+      if (fee.status !== 'refunded' && !(Number(fee.refunded_amount ?? 0) > 0)) continue;
+      if (fee.driver_id) await releasePendingReservation(admin, { applicationId: fee.driver_id, reason: 'fee_refunded' });
+    }
+  } catch (err) {
+    console.error('[webhook] pending reservation release failed', err);
+  }
 }
 
 /** customer.subscription.created: link a new subscription to its rental by metadata or customer. */
@@ -831,8 +846,9 @@ async function recordOneOff(
 }
 
 /**
- * Store the Stripe receipt link on rows paid by a PaymentIntent (the
- * Reservation Fee, collection-flow charges). Invoices already carry theirs
+ * Store the Stripe receipt link, and the charge's payment method when the
+ * row does not have one yet, on rows paid by a PaymentIntent (the Reservation
+ * Fee, collection-flow charges). Invoices already carry theirs
  * (extractPaymentReceiptFields). charge.succeeded is not subscribed on the
  * live endpoint, so the charge is read from the intent. Fills nulls only and
  * never fails the event.
@@ -847,13 +863,21 @@ async function fillIntentReceipt(pi: any, env: StripeEnv) {
       charge = await stripe.charges.retrieve(chargeId);
     }
     const receipt = safeReceiptUrl(charge?.receipt_url);
-    if (!receipt) return;
+    const method = stripeChargePaymentMethod(charge);
+    if (!receipt && !method) return;
     const admin: any = getSupabase();
     const chargeRef = charge?.id ?? chargeId;
-    // Receipt link only: never status, amount or paid_date, and never over a stored link.
-    await admin.from('payments').update({ stripe_receipt_url: receipt, stripe_charge_id: chargeRef }).eq('stripe_payment_intent_id', pi.id).is('stripe_receipt_url', null);
     const ids = String(pi.metadata?.paymentIds ?? '').split(',').map((x: string) => x.trim()).filter((x: string) => /^[0-9a-f-]{36}$/i.test(x));
-    if (ids.length) await admin.from('payments').update({ stripe_receipt_url: receipt, stripe_charge_id: chargeRef }).in('id', ids).is('stripe_receipt_url', null);
+    // Receipt link only: never status, amount or paid_date, and never over a stored link.
+    if (receipt) {
+      await admin.from('payments').update({ stripe_receipt_url: receipt, stripe_charge_id: chargeRef }).eq('stripe_payment_intent_id', pi.id).is('stripe_receipt_url', null);
+      if (ids.length) await admin.from('payments').update({ stripe_receipt_url: receipt, stripe_charge_id: chargeRef }).in('id', ids).is('stripe_receipt_url', null);
+    }
+    // Method only where it is still blank, including when the charge has no receipt URL.
+    if (method) {
+      await admin.from('payments').update({ payment_method: method }).eq('stripe_payment_intent_id', pi.id).is('payment_method', null);
+      if (ids.length) await admin.from('payments').update({ payment_method: method }).in('id', ids).is('payment_method', null);
+    }
   } catch (err) {
     console.error('[webhook] receipt link fill failed', err);
   }

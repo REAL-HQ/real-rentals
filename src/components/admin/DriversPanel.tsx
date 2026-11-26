@@ -1,5 +1,6 @@
 import { LinkedVehicleCell } from "./VehicleCell";
 import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import { LeadActivity } from "./LeadActivity";
 import { AppSelect } from "@/components/ui/app-select";
 import { OnboardingChecklist } from "./OnboardingChecklist";
@@ -77,6 +78,7 @@ import { createDriverReadVersions } from "@/lib/latest-driver-reads";
 import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
 import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { ReserveCarDialog } from "./ReserveCarDialog";
+import { PickupLinkDialog } from "./PickupLinkDialog";
 import { NextStepCard } from "./NextStepCard";
 import { ReturnFlowDialog } from "./ReturnFlowDialog";
 import { DriverSwapDialog } from "./DriverSwapDialog";
@@ -92,6 +94,8 @@ import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
 import { endRental, getActivationReadiness, type ActivationReadiness } from "@/lib/rentals.functions";
 import { clearReservationAfterActivate, getOpenReservationForApplication, getReservationDepositSettings } from "@/lib/reservations.functions";
+import { getPickupNotBooked } from "@/lib/pickup-not-booked.functions";
+import type { PickupNotBookedState } from "@/lib/pickup-not-booked";
 import { reservationBlocksStart } from "@/lib/reservations";
 import { approvalEmailMessage } from "@/lib/approval-email";
 import {
@@ -276,6 +280,7 @@ import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-revie
 import { listBlacklist } from "@/lib/blacklist.functions";
 import type { BlacklistEntry } from "@/lib/blacklist";
 import { BlacklistCard, BlacklistedBadge } from "@/components/admin/BlacklistCard";
+import { AdditionalDriversSection } from "@/components/admin/AdditionalDriversSection";
 import { CollectionsCard } from "@/components/admin/CollectionsCard";
 import { BackgroundReportsCard } from "@/components/admin/BackgroundReportsCard";
 import { BlacklistMatchAlert } from "@/components/admin/BlacklistMatchAlert";
@@ -356,6 +361,9 @@ export function DriversPanel({
   canViewOnboarding = false,
   canIssueCardLink = false,
   urlFilter,
+  previewDrivers,
+  previewBookingOutcomes,
+  previewMenuOpen = false,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
@@ -368,17 +376,24 @@ export function DriversPanel({
   externalSearch?: string;
   initialOpenId?: string;
   /**
-   * ?filter= from the address bar. "waitlist" and "active" are honoured for
-   * every staff tier. "documents-expiring" and "approved-not-renting" are honoured for a manager.
+   * ?filter= from the address bar. "waitlist", "active", "completed-booking"
+   * and "cancelled-booking" are honoured for every staff tier.
+   * "documents-expiring" and "approved-not-renting" are honoured for a manager.
    */
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
+  /** Skip the drivers fetch. Screenshots and tests pass the rows. */
+  previewDrivers?: Application[];
+  /** Skip the booking-outcome read. */
+  previewBookingOutcomes?: { completed: string[]; cancelled: string[] };
+  /** Force the Filters menu open so a static render can show it. */
+  previewMenuOpen?: boolean;
 } = {}) {
-  const [drivers, setDrivers] = useState<Application[]>([]);
+  const [drivers, setDrivers] = useState<Application[]>(previewDrivers ?? []);
   // Whether the applications fetch has come back, as distinct from having
   // come back empty. A deep link needs to tell those apart.
-  const [driversLoaded, setDriversLoaded] = useState(false);
+  const [driversLoaded, setDriversLoaded] = useState(previewDrivers != null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   /*
    * Which applicant is open is a fact about the URL, not about this
@@ -403,7 +418,7 @@ export function DriversPanel({
       const search: {
         tab: "drivers";
         id?: string;
-        filter?: "documents-expiring" | "approved-not-renting" | "stalled" | "active";
+        filter?: "documents-expiring" | "approved-not-renting" | "stalled" | "active" | "completed-booking" | "cancelled-booking";
       } = id ? { tab: "drivers", id } : { tab: "drivers" };
       // Opening a driver from a manager list comes back to that list.
       // Waitlist links stay as they were: the filter is not kept.
@@ -412,6 +427,7 @@ export function DriversPanel({
       }
       if (urlFilter === "stalled" && stalledOn) search.filter = "stalled";
       if (urlFilter === "active") search.filter = "active";
+      if (urlFilter === "completed-booking" || urlFilter === "cancelled-booking") search.filter = urlFilter;
       void navigate({ to: "/admin", search });
     },
     [navigate, urlFilter, canManageWaitlist, stalledOn],
@@ -447,6 +463,8 @@ export function DriversPanel({
   const urlListFilter =
     urlFilter === "waitlist" ||
     urlFilter === "active" ||
+    urlFilter === "completed-booking" ||
+    urlFilter === "cancelled-booking" ||
     ((urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") && canManageWaitlist) ||
     (urlFilter === "stalled" && stalledOn)
       ? urlFilter
@@ -471,13 +489,19 @@ export function DriversPanel({
         void navigate({ to: "/admin", search: { tab: "drivers", filter: "active" } });
         return;
       }
+      if (f === "completed-booking" || f === "cancelled-booking") {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: f } });
+        return;
+      }
       setLocalFilter(f);
       if (
         urlFilter === "waitlist" ||
         urlFilter === "documents-expiring" ||
         urlFilter === "approved-not-renting" ||
         urlFilter === "stalled" ||
-        urlFilter === "active"
+        urlFilter === "active" ||
+        urlFilter === "completed-booking" ||
+        urlFilter === "cancelled-booking"
       ) {
         void navigate({ to: "/admin", search: { tab: "drivers" } });
       }
@@ -603,6 +627,9 @@ export function DriversPanel({
 
   const [openRentals, setOpenRentals] = useState<Set<string>>(new Set());
   const [activeReadFailed, setActiveReadFailed] = useState(false);
+  const [completedBookingIds, setCompletedBookingIds] = useState<Set<string>>(new Set(previewBookingOutcomes?.completed ?? []));
+  const [cancelledBookingIds, setCancelledBookingIds] = useState<Set<string>>(new Set(previewBookingOutcomes?.cancelled ?? []));
+  const [bookingReadFailed, setBookingReadFailed] = useState(false);
   const loadActiveSets = useServerFn(listDriverActiveSets);
   const refreshActiveRenters = useCallback(() => {
     const current = readVersions.begin("active-rentals");
@@ -614,12 +641,18 @@ export function DriversPanel({
         setActiveRenters(new Set(filterIds));
         setOpenRentals(new Set(sets.openRentalIds));
         setActiveReadFailed(false);
+        setCompletedBookingIds(new Set(sets.completedBookingIds ?? []));
+        setCancelledBookingIds(new Set(sets.cancelledBookingIds ?? []));
+        setBookingReadFailed(sets.bookingOutcomesFailed === true);
       })
       .catch(() => {
         if (current()) setActiveReadFailed(true);
       });
   }, [loadActiveSets, readVersions]);
-  useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters, activationRefresh]);
+  useEffect(() => {
+    if (previewBookingOutcomes) return;
+    refreshActiveRenters();
+  }, [refreshActiveRenters, activationRefresh, previewBookingOutcomes]);
   // A committed readiness change anywhere in this tab (vehicle, screening,
   // document) re-reads the list's activation context so row readiness and the
   // Activate dialog's vehicle list never lag behind what was just saved.
@@ -859,7 +892,7 @@ export function DriversPanel({
     const failed = () => {
       if (live && current() && !reported) { reported = true; toast.error("Driver context could not refresh. Recheck to retry; no readiness decision was changed."); }
     };
-    refreshDrivers();
+    if (!previewDrivers) refreshDrivers();
     supabase
       .from("vehicles")
       .select("*")
@@ -914,7 +947,7 @@ setDocCounts(requiredDocCounts(rows));
     // because a loader missing from the dependency list is how a list stops
     // refreshing after somebody changes how it loads.
     return () => { live = false; };
-  }, [refreshDrivers, readVersions, activationRefresh]);
+  }, [refreshDrivers, readVersions, activationRefresh, previewDrivers]);
 
   const loadReviewAging = useServerFn(getDocumentReviewAging);
   useEffect(() => {
@@ -966,6 +999,10 @@ setDocCounts(requiredDocCounts(rows));
             ? drivers.filter((a) => blacklisted.has(a.id))
           : filter === "active"
             ? drivers.filter((a) => activeRenters.has(a.id))
+          : filter === "completed-booking"
+            ? drivers.filter((a) => completedBookingIds.has(a.id))
+          : filter === "cancelled-booking"
+            ? drivers.filter((a) => cancelledBookingIds.has(a.id))
             : drivers.filter((a) => a.status === filter && !held.has(a.id))
     )
       // readContactStatus already answers New for a row that has no value, so
@@ -995,7 +1032,7 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted]);
+  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted, completedBookingIds, cancelledBookingIds]);
 
   const funnelRows = useMemo(() => {
     const q = externalSearch.trim().toLowerCase();
@@ -1227,8 +1264,11 @@ setDocCounts(requiredDocCounts(rows));
   };
   const PRIMARY_FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active"];
   const MENU_FILTER_ORDER = ["needs_staff", "blacklisted", "suspended", "declined", "closed"];
+  const bookingCount = (ids: Set<string>) => (bookingReadFailed && ids.size === 0 ? "…" : drivers.filter((a) => ids.has(a.id)).length);
   const filterCount = (s: string) => {
     if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
+    if (s === "completed-booking") return bookingCount(completedBookingIds);
+    if (s === "cancelled-booking") return bookingCount(cancelledBookingIds);
     if (s === "needs_staff") return needsStaffFlags == null ? "…" : drivers.filter((a) => needsStaff.has(a.id)).length;
     if (s === "blacklisted") return blacklistEntries == null ? "…" : drivers.filter((a) => blacklisted.has(a.id)).length;
     const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
@@ -1247,6 +1287,8 @@ setDocCounts(requiredDocCounts(rows));
       : "…";
   const awaitingReservationCount = funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length;
   const filterLabelWithCount = (s: string) => {
+    if (s === "completed-booking") return `Completed Booking (${bookingCount(completedBookingIds)})`;
+    if (s === "cancelled-booking") return `Cancelled Booking (${bookingCount(cancelledBookingIds)})`;
     if (s === "documents-expiring") return `Documents Expiring (${documentsExpiringCount})`;
     if (s === "approved-not-renting") return `Approved, Awaiting Reservation (${awaitingReservationCount})`;
     if (s === "stalled") return `Stalled (${stalledRows == null ? "…" : stalledRows.length})`;
@@ -1361,7 +1403,7 @@ setDocCounts(requiredDocCounts(rows));
               Documents ×
             </button>
           ) : null}
-          <DropdownMenu>
+          <DropdownMenu open={previewMenuOpen ? true : undefined}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
@@ -1374,6 +1416,22 @@ setDocCounts(requiredDocCounts(rows));
             <DropdownMenuContent align="start" className="w-72 bg-white text-foreground">
               <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">Status</DropdownMenuLabel>
               {menuFilterButtons}
+              <DropdownMenuCheckboxItem
+                data-completed-booking-filter
+                checked={filter === "completed-booking"}
+                onCheckedChange={() => setFilter("completed-booking")}
+                className="bg-white text-xs text-foreground focus:bg-muted"
+              >
+                {filterLabelWithCount("completed-booking")}
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                data-cancelled-booking-filter
+                checked={filter === "cancelled-booking"}
+                onCheckedChange={() => setFilter("cancelled-booking")}
+                className="bg-white text-xs text-foreground focus:bg-muted"
+              >
+                {filterLabelWithCount("cancelled-booking")}
+              </DropdownMenuCheckboxItem>
               {canManageWaitlist ? (
                 <DropdownMenuCheckboxItem
                   data-documents-expiring-filter
@@ -2123,6 +2181,9 @@ function DriverDetail({
   const [swapOpen, setSwapOpen] = useState(false);
   const [activateOpen, setActivateOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
+  const [bookPickupOpen, setBookPickupOpen] = useState(false);
+  const [pickupLinkOpen, setPickupLinkOpen] = useState(false);
+  const [pickupGap, setPickupGap] = useState<PickupNotBookedState | null>(null);
   const [hasReservation, setHasReservation] = useState(false);
   const [reservationDepositStatus, setReservationDepositStatus] = useState<string | null>(null);
   const [reservationFeeRequired, setReservationFeeRequired] = useState(false);
@@ -2148,6 +2209,7 @@ function DriverDetail({
   const [evidenceSaving, setEvidenceSaving] = useState(false);
   const [pickupPaymentOpen, setPickupPaymentOpen] = useState(false);
   const loadOpenReservation = useServerFn(getOpenReservationForApplication);
+  const loadPickupGap = useServerFn(getPickupNotBooked);
   const loadReservationDepositSettings = useServerFn(getReservationDepositSettings);
   const clearReservation = useServerFn(clearReservationAfterActivate);
   useEffect(() => {
@@ -2180,6 +2242,17 @@ function DriverDetail({
       cancelled = true;
     };
   }, [driver.id, isManager, rentalActive, approved, loadOpenReservation, loadReservationDepositSettings, readinessNonce]);
+  useEffect(() => {
+    if (!isManager || !approved || rentalActive) {
+      setPickupGap(null);
+      return;
+    }
+    let cancelled = false;
+    void loadPickupGap({ data: { applicationId: driver.id } })
+      .then((row) => { if (!cancelled) setPickupGap(row); })
+      .catch(() => { if (!cancelled) setPickupGap(null); });
+    return () => { cancelled = true; };
+  }, [driver.id, isManager, approved, rentalActive, loadPickupGap, readinessNonce]);
   // Pickup is never completed by the account's payment standing: a paid $50
   // Reservation Fee made it "Current" and showed Pickup Complete green before
   // the car was picked up (t493u). Only a running rental completes it.
@@ -2364,7 +2437,7 @@ function DriverDetail({
   // before approval, Move Forward (Manager/Owner) once approved, then who/when.
   const termsAgreementSigned = agreementSignedForTerms || rentalActive;
   const termsConfirmedRow = termsConfirmedRequirement(staffTerms, { approved, agreementSigned: termsAgreementSigned });
-  const termsVehicles = useMemo(() => vehicles.map((v: any) => ({ id: String(v.id), unit_number: v.unit_number ?? null, year: v.year ?? null, make: v.make ?? null, model: v.model ?? null, license_plate: v.license_plate ?? v.plate ?? null, vin: v.vin ?? null, status: v.status ?? null })), [vehicles]);
+  const termsVehicles = useMemo(() => vehicles.filter((v: any) => !isForSaleVehicleStatus(v.status)).map((v: any) => ({ id: String(v.id), unit_number: v.unit_number ?? null, year: v.year ?? null, make: v.make ?? null, model: v.model ?? null, license_plate: v.license_plate ?? v.plate ?? null, vin: v.vin ?? null, status: v.status ?? null })), [vehicles]);
   function renderChecklistEvidence(key: ActivationRequirementKey) {
     if (key === "terms_confirmed") {
       if (!isManager) return null;
@@ -2517,7 +2590,8 @@ function DriverDetail({
   const step = primaryStep({ screeningDone, docsComplete, insuranceOk, approved, rentalActive, isManager });
   // One next step for the header and the Overview card, from the server's
   // readiness when it is loaded (see src/lib/next-step.ts).
-  const canReserve = isManager && approved && !rentalActive;
+  const canReserve = isManager && approved && !rentalActive && pickupGap?.openRental !== true;
+  const pickupNotBooked = isManager && pickupGap?.show === true && !hasReservation && !rentalActive;
   // Swap Vehicle from the profile: same Manager/Owner gate as the booking page; the vehicle_swap flag is checked inside the popup.
   const canSwap = (isManager || isOwner) && rentalActive && Boolean(activeRentalId);
   const next = nextStep({
@@ -2527,7 +2601,8 @@ function DriverDetail({
     loading: rentalTabReadinessLoading,
     failed: rentalTabReadinessFailed,
     canReserve,
-    hasReservation,
+    hasReservation: hasReservation || pickupGap?.openRental === true,
+    pickupNotBooked,
   });
   function openSection(tabValue: string, anchor: string) {
     setTab(tabValue);
@@ -2540,6 +2615,7 @@ function DriverDetail({
     else if (t.kind === "record_call") setRecordCallOpen(true);
     else if (t.kind === "approve") requestApprove();
     else if (t.kind === "reserve") { if (!reserveOpen) setReserveOpen(true); }
+    else if (t.kind === "book_pickup") { if (!bookPickupOpen) setBookPickupOpen(true); }
     else if (t.kind === "activate") {
       if (reservationBlocksStart({ depositStatus: reservationDepositStatus, blockStartWhenPending })) {
         toast.error("The Reservation Payment Is Still Pending. Record It Or Turn Off Block Start When Pending In Settings → Deposits.");
@@ -3065,6 +3141,8 @@ function DriverDetail({
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}
+                  onBookPickup={() => setBookPickupOpen(true)}
+                  onSendPickupLink={() => setPickupLinkOpen(true)}
                   canReserve={canReserve && !hasReservation}
                   canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
@@ -3077,6 +3155,7 @@ function DriverDetail({
                   onNotesChanged={(notes) => onSaved({ notes })}
                   onBlacklistChanged={onBlacklistChanged}
                 />
+                {isManager ? <AdditionalDriversSection applicationId={driver.id} /> : null}
                 <CollectionsCard applicationId={driver.id} canSee={isOwner || isManager} />
                 {summaryRow}
                 <details className="text-xs text-muted-foreground">
@@ -3253,6 +3332,8 @@ function DriverDetail({
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}
+                  onBookPickup={() => setBookPickupOpen(true)}
+                  onSendPickupLink={() => setPickupLinkOpen(true)}
                   canReserve={canReserve && !hasReservation}
                   canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
@@ -3277,7 +3358,7 @@ function DriverDetail({
                     )}
                   </div>
                   <VehiclePicker
-                    vehicles={vehicles}
+                    vehicles={vehicles.filter((v) => !isForSaleVehicleStatus(v.status))}
                     value={driver.vehicle_id}
                     onChange={(id) => onUpdate({ vehicle_id: id })}
                   />
@@ -3483,6 +3564,31 @@ function DriverDetail({
             setReadinessNonce((n) => n + 1);
             onReserved?.();
           }}
+        />
+      ) : null}
+      {bookPickupOpen ? (
+        <ReserveCarDialog
+          open={bookPickupOpen}
+          onOpenChange={setBookPickupOpen}
+          applicationId={driver.id}
+          driverName={driver.full_name}
+          intent="book_pickup"
+          defaultVehicleId={pickupGap?.vehicleId ?? driver.vehicle_id ?? null}
+          defaultPickupDate={pickupGap?.startDate ?? (driver as { contract_start_date?: string | null }).contract_start_date ?? null}
+          onSaved={() => {
+            setHasReservation(true);
+            setPickupGap((g) => (g ? { ...g, show: false, openRental: true } : g));
+            setReadinessNonce((n) => n + 1);
+            onReserved?.();
+          }}
+        />
+      ) : null}
+      {pickupLinkOpen ? (
+        <PickupLinkDialog
+          open={pickupLinkOpen}
+          onOpenChange={setPickupLinkOpen}
+          applicationId={driver.id}
+          driverName={driver.full_name}
         />
       ) : null}
     </div>

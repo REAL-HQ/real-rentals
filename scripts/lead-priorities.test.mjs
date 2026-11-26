@@ -13,7 +13,7 @@ export const supabaseAdmin={auth:{admin:{getUserById:async()=>({data:{user:{emai
  not(k,op,v){if(op!=='in')throw Error('unsupported');filters.push(r=>!v.slice(1,-1).split(',').includes(r[k]));return q;},
  or(expr){filters.push(r=>expr.split(',').some(x=>{const [k,op,v]=x.split('.');return op==='is'?r[k]===null:op==='gte'?r[k]!=null&&r[k]>=v:r[k]!=null&&r[k]>v;}));return q;},
  order(k,opts){sorts.push([k,opts]);return q;},range(a,b){start=a;end=b;return q;},
- then(resolve,reject){try{let rows=table==='user_roles'?s().roles:s().rows;
+ then(resolve,reject){try{let rows=table==='user_roles'?s().roles:table==='rentals'?(s().rentals||[]):s().rows;
  rows=rows.filter(r=>filters.every(f=>f(r))).sort((a,b)=>{for(const [k,o] of sorts){if(a[k]===b[k])continue;if(a[k]==null)return o.nullsFirst?-1:1;if(b[k]==null)return o.nullsFirst?1:-1;return (a[k]<b[k]?-1:1)*(o.ascending?1:-1);}return 0;});
  return Promise.resolve({data:head?null:rows.slice(start,end+1),count:rows.length,error:s().fail&&table==='applications'?{message:'synthetic failure'}:null}).then(resolve,reject);
  }catch(e){return Promise.reject(e).then(resolve,reject);}}
@@ -64,7 +64,7 @@ const pure = await build({
   platform: "node",
   format: "esm",
 });
-const { leadToday, leadBucket, projectLead, overdueAge, leadFilterBuckets, LEAD_ALL_PAGE_ORDER, LEAD_PREVIEW_LIMIT } = await import(
+const { leadToday, leadBucket, projectLead, overdueAge, effectiveFollowUpOn, leadFilterBuckets, LEAD_ALL_PAGE_ORDER, LEAD_PREVIEW_LIMIT } = await import(
   "data:text/javascript;base64," + Buffer.from(pure.outputFiles[0].text).toString("base64")
 );
 let checks = 0;
@@ -122,19 +122,19 @@ for (const role of ["admin", "team", "coordinator"]) {
     context: { userId: "staff" },
     data: { limit: 5, offset: 0 },
   });
-  check(first.total === 6, role + " eligible total");
+  check(first.total === 7, role + " eligible total");
   check(
-    JSON.stringify(first.counts) === JSON.stringify({ overdue: 1, new: 1, hot: 1 }),
+    JSON.stringify(first.counts) === JSON.stringify({ overdue: 1, new: 1, hot: 1, incomplete: 1 }),
     role + " disjoint counters",
   );
-  check(first.rows.map((r) => r.id).join(",") === "b,c,a,d,e", role + " deterministic priorities");
+  check(first.rows.map((r) => r.id).join(",") === "b,l,c,a,d", role + " deterministic priorities");
   check(first.filter === "all", role + " echoes all filter");
   check(
     !JSON.stringify(first).includes("MUST_NOT_LEAK"),
     role + " projection excludes sensitive fields even with overbroad adapter",
   );
   check(
-    first.rows[1].action.includes("does not establish rental readiness"),
+    first.rows.find((r) => r.id === "c").action.includes("does not establish rental readiness"),
     role + " interested is not ready",
   );
   check(
@@ -146,7 +146,7 @@ for (const role of ["admin", "team", "coordinator"]) {
     role + " recommendation does not invent a note interpretation",
   );
   check(
-    state.reads.every((t) => ["user_roles", "applications", "email_deliveries"].includes(t)),
+    state.reads.every((t) => ["user_roles", "applications", "email_deliveries", "rentals"].includes(t)),
     role + " no document/history reads",
   );
   const next = await getLeadPriorities({
@@ -154,11 +154,11 @@ for (const role of ["admin", "team", "coordinator"]) {
     data: { limit: 5, offset: 5 },
   });
   check(
-    next.rows.map((r) => r.id).join(",") === "f" && next.nextOffset === null,
+    next.rows.map((r) => r.id).join(",") === "e,f" && next.nextOffset === null,
     role + " bounded next page",
   );
 }
-check(LEAD_ALL_PAGE_ORDER[0] === "new" && LEAD_ALL_PAGE_ORDER[1] === "interested", "All page order surfaces pipeline first");
+check(LEAD_ALL_PAGE_ORDER[0] === "new" && LEAD_ALL_PAGE_ORDER[1] === "incomplete" && LEAD_ALL_PAGE_ORDER[2] === "interested", "All page order surfaces pipeline first");
 check(leadFilterBuckets("follow_up_due").join(",") === "overdue,today", "follow-up due filter");
 state.roles = [{ user_id: "staff", role: "admin" }];
 const preview = await getLeadPriorities({
@@ -167,7 +167,7 @@ const preview = await getLeadPriorities({
 });
 assert.deepEqual(
   { limit: LEAD_PREVIEW_LIMIT, ids: preview.rows.map((lead) => lead.id), nextOffset: preview.nextOffset },
-  { limit: 6, ids: ["b", "c", "a", "d", "e", "f"], nextOffset: null },
+  { limit: 6, ids: ["b", "l", "c", "a", "d", "e"], nextOffset: 6 },
   "Overview preview includes six eligible leads without truncating the sixth",
 );
 checks++;
@@ -202,6 +202,39 @@ state.fail = false;
 assert.throws(() => getLeadPriorities({ context: { userId: "staff" }, data: { limit: 1000 } }));
 checks++;
 check(JSON.stringify(state.rows) === before, "no records changed");
+const shift = (iso, days) => new Date(Date.parse(iso + "T00:00:00Z") + days * 86400000).toISOString().slice(0, 10);
+const yesterday = shift(today, -1);
+const twoAgo = shift(today, -2);
+const tenAgo = shift(today, -10);
+state.rows = [
+  row("ancient", "contacted", tenAgo),
+  row("recent", "follow_up", twoAgo),
+  row("grace", "contacted", yesterday),
+  row("due", "contacted", today),
+  { ...row("newer", "new", null, "partial"), created_at: "2026-06-02" },
+  { ...row("older", "new", null, "partial"), created_at: "2026-06-01" },
+];
+const duePage = await getLeadPriorities({
+  context: { userId: "staff" },
+  data: { limit: 10, offset: 0, filter: "follow_up_due" },
+});
+check(duePage.counts.overdue === 2, "a follow-up one day past is not overdue");
+check(
+  duePage.rows.map((r) => r.id).join(",") === "recent,ancient,grace,due",
+  "overdue sorts newest due date first, then the grace day with today",
+);
+check(leadBucket(state.rows[2], today) === "today" && leadBucket(state.rows[1], today) === "overdue", "grace stays out of overdue");
+const incomplete = await getLeadPriorities({
+  context: { userId: "staff" },
+  data: { limit: 10, offset: 0, filter: "incomplete" },
+});
+check(incomplete.filter === "incomplete" && incomplete.total === 2 && incomplete.counts.incomplete === 2, "incomplete has its own count");
+check(incomplete.rows.map((r) => r.id).join(",") === "newer,older", "incomplete is newest first");
+const withPartial = await getLeadPriorities({
+  context: { userId: "staff" },
+  data: { limit: 10, offset: 0, filter: "all" },
+});
+check(withPartial.total === 6 && withPartial.rows.map((r) => r.id).join(",") === "newer,older,recent,ancient,grace,due", "incomplete is included in all");
 state.rows = Array.from({ length: 81 }, (_, i) => row(String(i).padStart(3, "0"), "new"));
 const pages = [];
 for (let offset = 0; offset < 81; offset += 25) {
@@ -221,3 +254,36 @@ await assert.rejects(
   /changed/,
 );
 console.log("Stale pagination offset rejected");
+
+state.roles = [{ user_id: "staff", role: "admin" }];
+state.rentals = [
+  { id: "rent-adam", application_id: "adam", status: "closed" },
+  { id: "rent-arielle", application_id: "arielle", status: "active" },
+  { id: "rent-pending", application_id: "pending-renter", status: "pending_reservation" },
+  { id: "rent-blank", application_id: null, status: "cancelled" },
+];
+const contactOn = shift(today, -8) + "T16:00:00Z";
+const staleFollowUp = shift(today, -40);
+const genuineFollowUp = shift(today, -6);
+state.rows = [
+  row("adam", "contacted", staleFollowUp),
+  row("arielle", "follow_up", staleFollowUp),
+  row("pending-renter", "new"),
+  { ...row("stale", "contacted", staleFollowUp), contacted_at: contactOn, full_name: "Stale Follow-Up" },
+  { ...row("genuine", "follow_up", genuineFollowUp), contacted_at: shift(today, -20) + "T16:00:00Z", full_name: "Genuine Overdue" },
+  row("fresh", "new"),
+];
+const listed = await getLeadPriorities({ context: { userId: "staff" }, data: { limit: 25, offset: 0 } });
+const listedIds = listed.rows.map((r) => r.id);
+check(!listedIds.includes("adam") && !listedIds.includes("arielle") && !listedIds.includes("pending-renter"), "any rental removes the applicant from leads");
+check(listedIds.includes("fresh") && listedIds.includes("stale") && listedIds.includes("genuine"), "applicants without a rental stay");
+const staleLead = listed.rows.find((r) => r.id === "stale");
+const genuineLead = listed.rows.find((r) => r.id === "genuine");
+const staleDue = effectiveFollowUpOn(state.rows.find((r) => r.id === "stale"));
+check(staleDue > staleFollowUp && staleLead.effective_follow_up_on === staleDue, "a follow-up before the last contact restarts the next business day");
+check(staleLead.bucket === leadBucket(state.rows.find((r) => r.id === "stale"), today), "stale row uses the effective bucket");
+check(genuineLead.effective_follow_up_on === genuineFollowUp && genuineLead.bucket === "overdue", "a follow-up after the last contact stays overdue");
+const staleAge = overdueAge(staleDue, today);
+const storedAge = overdueAge(staleFollowUp, today);
+check(staleAge !== storedAge, "the overdue count is not the stale stored date");
+check(overdueAge(genuineLead.effective_follow_up_on, today) === "6 days overdue", "a genuinely past follow-up still counts from its own date");

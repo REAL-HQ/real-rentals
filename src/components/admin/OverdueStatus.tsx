@@ -1,26 +1,42 @@
-import { overdueLabel } from "@/lib/active-rentals";
+import { dueBadge, etDateISO, overdueLabel } from "@/lib/active-rentals";
 import { DANGER_BADGE } from "@/lib/badge-tone";
 
 /**
- * Overdue column cell on Active Rentals (Bookings > Active) and any screen
- * that shows the same rental overdue state (driver profile rental tab).
- * Overdue stays the solid red pill; Current uses the same size and shape
- * with the shared green success colors (StatusPill "Paid" / tone green).
+ * Status column on Active Rentals. Overdue stays the solid red pill.
+ * Due today is a flat amber pill. A future due date stays the green Current pill.
  */
 const GREEN = { backgroundColor: "rgba(80,192,96,0.08)", color: "#50C060" };
 
-export function OverdueStatus({ days }: { days: number | null }) {
-  const label = overdueLabel(days);
-  if (days == null) {
-    return <span className="text-muted-foreground">{label}</span>;
+export function OverdueStatus({
+  days,
+  due = null,
+  today,
+}: {
+  days: number | null;
+  due?: string | null;
+  today?: string;
+}) {
+  const state = dueBadge(days, due, today ?? etDateISO());
+  if (state === "none") {
+    return <span className="text-muted-foreground">{overdueLabel(days)}</span>;
   }
-  if (days > 0) {
+  if (state === "overdue") {
     return (
       <span
         data-testid="overdue-pill"
         className={`inline-flex items-center rounded-full ${DANGER_BADGE} px-2 py-0.5 text-[11px] font-semibold`}
       >
-        {label}
+        {overdueLabel(days)}
+      </span>
+    );
+  }
+  if (state === "due") {
+    return (
+      <span
+        data-testid="overdue-due-pill"
+        className="inline-flex items-center rounded-full bg-[#FFF4D6] px-2 py-0.5 text-[11px] font-semibold text-[#8A6A00]"
+      >
+        Due
       </span>
     );
   }
@@ -30,7 +46,7 @@ export function OverdueStatus({ days }: { days: number | null }) {
       className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
       style={GREEN}
     >
-      {label}
+      Current
     </span>
   );
 }

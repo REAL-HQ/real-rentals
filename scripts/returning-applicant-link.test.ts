@@ -1,7 +1,8 @@
 // Returning applicant on a lead form (Dolmar, t314u): the email they just typed
 // matched an application, so a secure link went to that address. The panel
 // must not ask for the email again, must show it masked, and Resend must reuse
-// it. A phone-only match ("review") keeps the neutral email box.
+// it. A phone-only match ("review") keeps an empty email box and a masked hint
+// of the address on file. The email they just typed is not put back in the box.
 import { describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
@@ -103,13 +104,54 @@ describe("returning applicant panel", () => {
   });
 });
 
-describe("unchanged neutral panels", () => {
-  test("phone-only match keeps the email box and review copy", () => {
-    const { html, text } = render({ email: EMAIL, initial: { status: "review", retryAfterSeconds: 0 }, onBack: () => {} });
+describe("phone match, different email", () => {
+  const HINT = "m•••••y@gmail.com";
+  const WRONG = "jayson.new@gmail.com";
+
+  test("does not pre-fill the email they just typed", () => {
+    const { html } = render({ email: WRONG, maskedEmailOnFile: HINT, initial: { status: "review", retryAfterSeconds: 0 }, onBack: () => {} });
     expect(html).toContain("<input");
-    expect(text).toContain("a team member will review them");
+    expect(html).toContain('value=""');
+    expect(html).not.toContain(WRONG);
+    expect(html).not.toContain("jayson.new");
+    expect(html).not.toContain("mystery@gmail.com");
+  });
+
+  test("shows the masked hint and the plain wording", () => {
+    const { html, text } = render({ email: WRONG, maskedEmailOnFile: HINT, initial: { status: "review", retryAfterSeconds: 0 }, onBack: () => {} });
+    expect(html).toContain('data-secure-link="email-on-file"');
+    expect(text).toContain("Use The Email You Applied With");
+    expect(text).toContain(`The secure link only goes to the email you used when you first applied: ${HINT}.`);
+    expect(text).toContain("Enter that email below.");
+    expect(text).toContain("If you no longer use it, our team will reach out to help.");
+    expect(text).toContain("Send Secure Link");
     expect(text).not.toContain("Welcome Back");
-    expect(text).not.toContain("d•••@gmail.com");
+    expect(text).not.toContain("a team member will review them");
+  });
+
+  test("a full address passed as the hint is not shown", () => {
+    const { html, text } = render({ maskedEmailOnFile: "mystery@gmail.com", initial: { status: "review", retryAfterSeconds: 0 } });
+    expect(html).toContain('value=""');
+    expect(html).not.toContain("mystery@gmail.com");
+    expect(text).toContain("If you applied with a different email, enter that one below.");
+    expect(text).not.toContain("mystery");
+  });
+
+  test("without a hint, the box is still empty and the fallback wording is plain", () => {
+    const { html, text } = render({ email: WRONG, initial: { status: "review", retryAfterSeconds: 0 } });
+    expect(html).toContain('value=""');
+    expect(html).not.toContain(WRONG);
+    expect(text).toContain("The secure link only goes to the email you used when you first applied.");
+    expect(text).toContain("If you applied with a different email, enter that one below.");
+  });
+});
+
+describe("unchanged neutral panels", () => {
+  test("an email passed outside a phone match is still the box value", () => {
+    const { html, text } = render({ email: EMAIL });
+    expect(html).toContain(`value="${EMAIL}"`);
+    expect(text).toContain("Check Your Email To Continue");
+    expect(text).not.toContain("Use The Email You Applied With");
   });
   test("/thank-you missing and expired still ask for an email", () => {
     for (const p of [{ missing: true }, { expired: true }]) {
@@ -121,15 +163,18 @@ describe("unchanged neutral panels", () => {
 });
 
 describe("wiring", () => {
-  test("Resend reuses the stored email", () => {
+  test("Resend reuses the typed value, and a phone match starts from an empty box", () => {
     const src = readFileSync("src/components/site/WelcomeBack.tsx", "utf8");
-    expect(src).toContain("useState(email ?? \"\")");
+    expect(src).toContain('initial?.status === "review" ? "" : (email ?? "")');
     expect(src).toMatch(/requestLink\(\{ data: \{ email: value \} \}\)/);
   });
-  test("both lead forms pass the typed email and a way back", () => {
+  test("both lead forms leave the box empty on review and pass only the masked hint", () => {
     for (const f of ["src/routes/apply.tsx", "src/components/site/CityHeroLeadForm.tsx"]) {
       const src = readFileSync(f, "utf8");
-      expect(src).toContain("<WelcomeBack email={returning.email} initial={returning} fresh={returning.fresh} onBack={() => setReturning(null)} />");
+      expect(src).toContain('email: review ? "" : form.email');
+      expect(src).toContain('email={returning.status === "review" ? undefined : returning.email}');
+      expect(src).toContain("maskedEmailOnFile={returning.maskedEmailOnFile}");
+      expect(src).toContain("onBack={() => setReturning(null)}");
     }
   });
 });

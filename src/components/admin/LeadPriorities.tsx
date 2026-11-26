@@ -61,7 +61,9 @@ export default function LeadPriorities({
           !Array.isArray(r.rows) ||
           !Number.isSafeInteger(r.total) ||
           !r.counts ||
-          ![r.counts.new, r.counts.overdue, r.counts.hot].every(Number.isSafeInteger)
+          ![r.counts.new, r.counts.overdue, r.counts.hot, r.counts.incomplete].every(
+            Number.isSafeInteger,
+          )
         ) {
           throw new Error("Lead priorities response unavailable");
         }
@@ -148,13 +150,20 @@ export default function LeadPriorities({
       ) : (
         result && (
           <>
-            <div className="my-4 grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="my-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
               {(
                 [
                   [
                     "New Leads",
                     result.counts.new,
                     "new" as LeadFilter,
+                    "border-border bg-card hover:bg-secondary",
+                    "text-card-foreground",
+                  ],
+                  [
+                    "Incomplete",
+                    result.counts.incomplete,
+                    "incomplete" as LeadFilter,
                     "border-border bg-card hover:bg-secondary",
                     "text-card-foreground",
                   ],
