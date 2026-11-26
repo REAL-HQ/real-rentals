@@ -1,5 +1,5 @@
 import { PhoneInput } from "@/components/ui/phone-input";
-import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
+import { chargeTypeLabel, enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { initialPortalTab, rememberPayIntent, wantsPay } from "@/lib/portal-pay-link";
 import { SigningPanel } from "@/components/esign/SigningPanel";
@@ -2224,12 +2224,13 @@ function MyChargesCard() {
           <li key={c.id} className="py-2.5 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <div className="text-sm font-medium ">
-                {enumDisplayLabel(c.charge_type)}
+                {chargeTypeLabel(c.charge_type)}
               </div>
               <div className="text-xs text-muted-foreground">
                 {fmtDate(c.occurred_at)}
                 {c.location ? ` · ${c.location}` : ""}
                 {c.agency ? ` · ${c.agency}` : ""}
+                {c.renter_pay_by ? ` · Pay By ${fmtDate(c.renter_pay_by)}` : ""}
               </div>
             </div>
             <div className="text-right shrink-0">
