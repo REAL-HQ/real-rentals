@@ -11,6 +11,8 @@ import {
   contactStatusBlockers,
   contactStatusForm,
   contactStatusLabel,
+  contactToday,
+  followUpForNewEntry,
   readContactStatus,
   type ContactStatusDraft,
   type ContactStatusKey,
@@ -73,9 +75,12 @@ export function ContactStatusCell({
     }
   }, [open, state.note, state.followUpOn]);
 
+  const today = contactToday();
   const form = picked ? contactStatusForm(picked) : null;
   const draft: ContactStatusDraft | null = picked ? { status: picked, note, followUpOn } : null;
-  const blockers = draft ? contactStatusBlockers(draft) : [];
+  const blockers = draft
+    ? contactStatusBlockers(draft, { today, existingFollowUpOn: state.followUpOn })
+    : [];
 
   function pick(status: ContactStatusKey) {
     const f = contactStatusForm(status);
@@ -84,6 +89,7 @@ export function ContactStatusCell({
     // Unqualified would file the wrong reason.
     if (f.note === "off") setNote("");
     if (f.followUp === "off") setFollowUpOn("");
+    else setFollowUpOn(followUpForNewEntry(followUpOn || state.followUpOn, contactToday()));
     setTimeout(() => noteRef.current?.focus(), 0);
   }
 
@@ -122,7 +128,7 @@ export function ContactStatusCell({
     const next: ContactStatusDraft = {
       status: "contacted",
       note: state.note ?? "",
-      followUpOn: state.followUpOn ?? "",
+      followUpOn: followUpForNewEntry(state.followUpOn, contactToday()),
     };
     const why = contactStatusBlockers(next);
     if (why.length) {
@@ -197,7 +203,7 @@ export function ContactStatusCell({
               data-contact-status-details
             >
               <div className="py-0.5 text-[10px] font-medium tracking-wider text-muted-foreground">
-                Follow-Up
+                Next Follow-Up
               </div>
               <div className="mt-1 text-[12px] text-foreground">
                 {state.followUpOn ? (
@@ -241,7 +247,7 @@ export function ContactStatusCell({
             {form?.followUp !== "off" && (
               <label className="mt-3 block">
                 <span className="text-[11px] font-medium text-muted-foreground">
-                  Follow-Up Date{form?.followUp === "required" ? "" : " (optional)"}
+                  Next Follow-Up{form?.followUp === "required" ? "" : " (optional)"}
                 </span>
                 <input
                   type="date"
@@ -249,6 +255,11 @@ export function ContactStatusCell({
                   onChange={(e) => setFollowUpOn(e.target.value)}
                   className="mt-1 h-9 w-full rounded-md border border-border bg-white px-2 text-[13px]"
                 />
+                {state.followUpOn && state.followUpOn !== followUpOn && (
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    Saved date {fmtDate(state.followUpOn)}
+                  </span>
+                )}
               </label>
             )}
 

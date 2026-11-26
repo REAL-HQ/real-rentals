@@ -96,9 +96,6 @@ export const setContactStatus = createServerFn({ method: "POST" })
       note: data.note ?? "",
       followUpOn: data.followUpOn ?? "",
     };
-    // The browser already checked these. It is not the browser's decision.
-    const blockers = contactStatusBlockers(draft);
-    if (blockers.length) throw new Error(blockers.map((b) => b.why).join(" "));
 
     // Read the current values so the audit entry can say what moved, and so a
     // forged application id fails before anything is written.
@@ -116,6 +113,11 @@ export const setContactStatus = createServerFn({ method: "POST" })
     if (!beforeRaw) throw new Error("That driver no longer exists.");
     const before = beforeRaw as unknown as BeforeRow;
     const who = before.full_name ?? "a driver";
+    const prev = readContactStatus(before).state;
+    // The browser already checked these. It is not the browser's decision.
+    // The date already stored may be today or earlier; a new entry may not.
+    const blockers = contactStatusBlockers(draft, { existingFollowUpOn: prev.followUpOn });
+    if (blockers.length) throw new Error(blockers.map((b) => b.why).join(" "));
 
     const patch = contactStatusPatch(draft);
     const { data: after, error } = await supabaseAdmin
@@ -132,7 +134,6 @@ export const setContactStatus = createServerFn({ method: "POST" })
     if (error) throw new Error(missingColumns(error) ? MIGRATION_PENDING : error.message);
     if (!after) throw new Error("That driver no longer exists.");
 
-    const prev = readContactStatus(before).state;
     const next = readContactStatus(after).state;
     await logAudit(actor, {
       action: "contact_status.set",

@@ -122,19 +122,19 @@ for (const role of ["admin", "team", "coordinator"]) {
     context: { userId: "staff" },
     data: { limit: 5, offset: 0 },
   });
-  check(first.total === 6, role + " eligible total");
+  check(first.total === 7, role + " eligible total");
   check(
-    JSON.stringify(first.counts) === JSON.stringify({ overdue: 1, new: 1, hot: 1 }),
+    JSON.stringify(first.counts) === JSON.stringify({ overdue: 1, new: 1, hot: 1, incomplete: 1 }),
     role + " disjoint counters",
   );
-  check(first.rows.map((r) => r.id).join(",") === "b,c,a,d,e", role + " deterministic priorities");
+  check(first.rows.map((r) => r.id).join(",") === "b,l,c,a,d", role + " deterministic priorities");
   check(first.filter === "all", role + " echoes all filter");
   check(
     !JSON.stringify(first).includes("MUST_NOT_LEAK"),
     role + " projection excludes sensitive fields even with overbroad adapter",
   );
   check(
-    first.rows[1].action.includes("does not establish rental readiness"),
+    first.rows.find((r) => r.id === "c").action.includes("does not establish rental readiness"),
     role + " interested is not ready",
   );
   check(
@@ -154,11 +154,11 @@ for (const role of ["admin", "team", "coordinator"]) {
     data: { limit: 5, offset: 5 },
   });
   check(
-    next.rows.map((r) => r.id).join(",") === "f" && next.nextOffset === null,
+    next.rows.map((r) => r.id).join(",") === "e,f" && next.nextOffset === null,
     role + " bounded next page",
   );
 }
-check(LEAD_ALL_PAGE_ORDER[0] === "new" && LEAD_ALL_PAGE_ORDER[1] === "interested", "All page order surfaces pipeline first");
+check(LEAD_ALL_PAGE_ORDER[0] === "new" && LEAD_ALL_PAGE_ORDER[1] === "incomplete" && LEAD_ALL_PAGE_ORDER[2] === "interested", "All page order surfaces pipeline first");
 check(leadFilterBuckets("follow_up_due").join(",") === "overdue,today", "follow-up due filter");
 state.roles = [{ user_id: "staff", role: "admin" }];
 const preview = await getLeadPriorities({
@@ -167,7 +167,7 @@ const preview = await getLeadPriorities({
 });
 assert.deepEqual(
   { limit: LEAD_PREVIEW_LIMIT, ids: preview.rows.map((lead) => lead.id), nextOffset: preview.nextOffset },
-  { limit: 6, ids: ["b", "c", "a", "d", "e", "f"], nextOffset: null },
+  { limit: 6, ids: ["b", "l", "c", "a", "d", "e"], nextOffset: 6 },
   "Overview preview includes six eligible leads without truncating the sixth",
 );
 checks++;
@@ -202,6 +202,39 @@ state.fail = false;
 assert.throws(() => getLeadPriorities({ context: { userId: "staff" }, data: { limit: 1000 } }));
 checks++;
 check(JSON.stringify(state.rows) === before, "no records changed");
+const shift = (iso, days) => new Date(Date.parse(iso + "T00:00:00Z") + days * 86400000).toISOString().slice(0, 10);
+const yesterday = shift(today, -1);
+const twoAgo = shift(today, -2);
+const tenAgo = shift(today, -10);
+state.rows = [
+  row("ancient", "contacted", tenAgo),
+  row("recent", "follow_up", twoAgo),
+  row("grace", "contacted", yesterday),
+  row("due", "contacted", today),
+  { ...row("newer", "new", null, "partial"), created_at: "2026-06-02" },
+  { ...row("older", "new", null, "partial"), created_at: "2026-06-01" },
+];
+const duePage = await getLeadPriorities({
+  context: { userId: "staff" },
+  data: { limit: 10, offset: 0, filter: "follow_up_due" },
+});
+check(duePage.counts.overdue === 2, "a follow-up one day past is not overdue");
+check(
+  duePage.rows.map((r) => r.id).join(",") === "recent,ancient,grace,due",
+  "overdue sorts newest due date first, then the grace day with today",
+);
+check(leadBucket(state.rows[2], today) === "today" && leadBucket(state.rows[1], today) === "overdue", "grace stays out of overdue");
+const incomplete = await getLeadPriorities({
+  context: { userId: "staff" },
+  data: { limit: 10, offset: 0, filter: "incomplete" },
+});
+check(incomplete.filter === "incomplete" && incomplete.total === 2 && incomplete.counts.incomplete === 2, "incomplete has its own count");
+check(incomplete.rows.map((r) => r.id).join(",") === "newer,older", "incomplete is newest first");
+const withPartial = await getLeadPriorities({
+  context: { userId: "staff" },
+  data: { limit: 10, offset: 0, filter: "all" },
+});
+check(withPartial.total === 6 && withPartial.rows.map((r) => r.id).join(",") === "newer,older,recent,ancient,grace,due", "incomplete is included in all");
 state.rows = Array.from({ length: 81 }, (_, i) => row(String(i).padStart(3, "0"), "new"));
 const pages = [];
 for (let offset = 0; offset < 81; offset += 25) {

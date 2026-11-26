@@ -8,6 +8,7 @@ import {
   LEAD_FILTERS,
   LEAD_SELECT,
   leadToday,
+  overdueCutoff,
   leadBucket,
   leadBucketSort,
   leadFilterBuckets,
@@ -34,29 +35,32 @@ export const getLeadPriorities = createServerFn({ method: "POST" })
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const today = leadToday();
+    const graceDay = overdueCutoff(today);
     const filter = data.filter as LeadFilter;
 
-    const base = (countOnly: boolean) =>
+    const base = (countOnly: boolean, statuses: readonly string[] = ACTIVE_LEAD_STATUSES) =>
       supabaseAdmin
         .from("applications")
         .select(countOnly ? "id" : LEAD_SELECT, countOnly ? { count: "exact", head: true } : {})
         .is("deleted_at", null)
-        .in("status", ACTIVE_LEAD_STATUSES)
+        .in("status", statuses as string[])
         .in(
           "contact_status",
           CONTACT_STATUS_KEYS.filter((s) => s !== "unqualified" && s !== "declined"),
         );
 
-    // Mutually exclusive groups for All / New / Follow-up Due counters and pages.
-    // An overdue new/interested lead counts only as overdue in those views.
+    // Mutually exclusive groups. Overdue is more than one day past the follow-up.
+    // A lead due yesterday stays with Today. Partial applications are Incomplete
+    // even when they also have a follow-up date, and they are not in the other groups.
     const queryBucket = (bucket: LeadBucket, countOnly: boolean) => {
+      if (bucket === "incomplete") return base(countOnly, ["partial"]);
       let q = base(countOnly);
-      if (bucket === "overdue") return q.lt("contact_follow_up_on", today);
-      q = q.or(`contact_follow_up_on.is.null,contact_follow_up_on.gte.${today}`);
+      if (bucket === "overdue") return q.lt("contact_follow_up_on", graceDay);
+      q = q.or(`contact_follow_up_on.is.null,contact_follow_up_on.gte.${graceDay}`);
       if (bucket === "new") return q.eq("contact_status", "new");
       if (bucket === "interested") return q.eq("contact_status", "interested");
       q = q.not("contact_status", "in", "(new,interested)");
-      if (bucket === "today") return q.eq("contact_follow_up_on", today);
+      if (bucket === "today") return q.in("contact_follow_up_on", [graceDay, today]);
       q = q.or(`contact_follow_up_on.is.null,contact_follow_up_on.gt.${today}`);
       if (bucket === "information") return q.eq("contact_status", "documents");
       return q.neq("contact_status", "documents").gt("contact_follow_up_on", today);
@@ -70,10 +74,12 @@ export const getLeadPriorities = createServerFn({ method: "POST" })
     if (counted.some((q) => q.error || !Number.isSafeInteger(q.count) || q.count! < 0))
       throw new Error("Lead priorities could not be loaded. Please retry.");
     const bucketCounts = counted.map((q) => q.count!);
+    const countOf = (bucket: LeadBucket) => bucketCounts[LEAD_BUCKETS.indexOf(bucket)];
     const counts = {
-      overdue: bucketCounts[0],
-      new: bucketCounts[1],
-      hot: bucketCounts[2],
+      overdue: countOf("overdue"),
+      new: countOf("new"),
+      hot: countOf("interested"),
+      incomplete: countOf("incomplete"),
     };
 
     const orderBucket = (bucket: LeadBucket, q: ReturnType<typeof queryBucket>) => {

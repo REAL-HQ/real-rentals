@@ -13,6 +13,7 @@ export const LEAD_TONES: Record<LeadBucket, { label: string; badge: string }> = 
   today: { label: "Due Today", badge: "text-muted-foreground" },
   information: { label: "Waiting on Info", badge: "text-muted-foreground" },
   future: { label: "Scheduled", badge: "text-muted-foreground" },
+  incomplete: { label: "Incomplete", badge: "text-muted-foreground" },
 };
 
 /** One short, actionable next step per bucket. Title Case in the string. */
@@ -23,6 +24,7 @@ export const LEAD_NEXT_STEP: Record<LeadBucket, string> = {
   today: "Follow Up Today",
   information: "Check What Info Is Missing",
   future: "Review Note Before Follow-Up",
+  incomplete: "Ask Them To Finish",
 };
 
 function relDays(iso: string): string | null {
