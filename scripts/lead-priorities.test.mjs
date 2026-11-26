@@ -13,7 +13,7 @@ export const supabaseAdmin={auth:{admin:{getUserById:async()=>({data:{user:{emai
  not(k,op,v){if(op!=='in')throw Error('unsupported');filters.push(r=>!v.slice(1,-1).split(',').includes(r[k]));return q;},
  or(expr){filters.push(r=>expr.split(',').some(x=>{const [k,op,v]=x.split('.');return op==='is'?r[k]===null:op==='gte'?r[k]!=null&&r[k]>=v:r[k]!=null&&r[k]>v;}));return q;},
  order(k,opts){sorts.push([k,opts]);return q;},range(a,b){start=a;end=b;return q;},
- then(resolve,reject){try{let rows=table==='user_roles'?s().roles:s().rows;
+ then(resolve,reject){try{let rows=table==='user_roles'?s().roles:table==='rentals'?(s().rentals||[]):s().rows;
  rows=rows.filter(r=>filters.every(f=>f(r))).sort((a,b)=>{for(const [k,o] of sorts){if(a[k]===b[k])continue;if(a[k]==null)return o.nullsFirst?-1:1;if(b[k]==null)return o.nullsFirst?1:-1;return (a[k]<b[k]?-1:1)*(o.ascending?1:-1);}return 0;});
  return Promise.resolve({data:head?null:rows.slice(start,end+1),count:rows.length,error:s().fail&&table==='applications'?{message:'synthetic failure'}:null}).then(resolve,reject);
  }catch(e){return Promise.reject(e).then(resolve,reject);}}
@@ -64,7 +64,7 @@ const pure = await build({
   platform: "node",
   format: "esm",
 });
-const { leadToday, leadBucket, projectLead, overdueAge, leadFilterBuckets, LEAD_ALL_PAGE_ORDER, LEAD_PREVIEW_LIMIT } = await import(
+const { leadToday, leadBucket, projectLead, overdueAge, effectiveFollowUpOn, leadFilterBuckets, LEAD_ALL_PAGE_ORDER, LEAD_PREVIEW_LIMIT } = await import(
   "data:text/javascript;base64," + Buffer.from(pure.outputFiles[0].text).toString("base64")
 );
 let checks = 0;
@@ -146,7 +146,7 @@ for (const role of ["admin", "team", "coordinator"]) {
     role + " recommendation does not invent a note interpretation",
   );
   check(
-    state.reads.every((t) => ["user_roles", "applications", "email_deliveries"].includes(t)),
+    state.reads.every((t) => ["user_roles", "applications", "email_deliveries", "rentals"].includes(t)),
     role + " no document/history reads",
   );
   const next = await getLeadPriorities({
@@ -254,3 +254,36 @@ await assert.rejects(
   /changed/,
 );
 console.log("Stale pagination offset rejected");
+
+state.roles = [{ user_id: "staff", role: "admin" }];
+state.rentals = [
+  { id: "rent-adam", application_id: "adam", status: "closed" },
+  { id: "rent-arielle", application_id: "arielle", status: "active" },
+  { id: "rent-pending", application_id: "pending-renter", status: "pending_reservation" },
+  { id: "rent-blank", application_id: null, status: "cancelled" },
+];
+const contactOn = shift(today, -8) + "T16:00:00Z";
+const staleFollowUp = shift(today, -40);
+const genuineFollowUp = shift(today, -6);
+state.rows = [
+  row("adam", "contacted", staleFollowUp),
+  row("arielle", "follow_up", staleFollowUp),
+  row("pending-renter", "new"),
+  { ...row("stale", "contacted", staleFollowUp), contacted_at: contactOn, full_name: "Stale Follow-Up" },
+  { ...row("genuine", "follow_up", genuineFollowUp), contacted_at: shift(today, -20) + "T16:00:00Z", full_name: "Genuine Overdue" },
+  row("fresh", "new"),
+];
+const listed = await getLeadPriorities({ context: { userId: "staff" }, data: { limit: 25, offset: 0 } });
+const listedIds = listed.rows.map((r) => r.id);
+check(!listedIds.includes("adam") && !listedIds.includes("arielle") && !listedIds.includes("pending-renter"), "any rental removes the applicant from leads");
+check(listedIds.includes("fresh") && listedIds.includes("stale") && listedIds.includes("genuine"), "applicants without a rental stay");
+const staleLead = listed.rows.find((r) => r.id === "stale");
+const genuineLead = listed.rows.find((r) => r.id === "genuine");
+const staleDue = effectiveFollowUpOn(state.rows.find((r) => r.id === "stale"));
+check(staleDue > staleFollowUp && staleLead.effective_follow_up_on === staleDue, "a follow-up before the last contact restarts the next business day");
+check(staleLead.bucket === leadBucket(state.rows.find((r) => r.id === "stale"), today), "stale row uses the effective bucket");
+check(genuineLead.effective_follow_up_on === genuineFollowUp && genuineLead.bucket === "overdue", "a follow-up after the last contact stays overdue");
+const staleAge = overdueAge(staleDue, today);
+const storedAge = overdueAge(staleFollowUp, today);
+check(staleAge !== storedAge, "the overdue count is not the stale stored date");
+check(overdueAge(genuineLead.effective_follow_up_on, today) === "6 days overdue", "a genuinely past follow-up still counts from its own date");
