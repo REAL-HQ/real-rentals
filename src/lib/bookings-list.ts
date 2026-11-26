@@ -202,6 +202,8 @@ export type BookingListResult = {
   counts: BookingCounts;
   /** False for a Coordinator: money is absent from the rows, not hidden in CSS. */
   canSeeMoney: boolean;
+  /** Rows in this list with a balance due. Null when money is hidden. */
+  owesCount?: number | null;
 };
 
 export const BOOKING_LIST_PAGE_SIZE = 25;

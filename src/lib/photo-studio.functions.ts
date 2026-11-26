@@ -4,7 +4,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { requireManager, requireOwner, requireStaff } from "@/lib/roles.server";
+import { requireManager, requireOwner, requireStaff, type Actor } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
 import {
   MARKETING_BUCKET, ORIGINALS_BUCKET, PHOTO_STUDIO_KEY, SHOT_SLOTS, SLOT_LABELS, carSetStatus, effectiveModel,
@@ -66,11 +66,7 @@ export const savePhotoStudioSettings = createServerFn({ method: "POST" })
   });
 
 /** Generate (or regenerate specific slots of) one car's template set. */
-export const generateMarketingShots = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ vehicleId: z.string().uuid(), slots: z.array(z.enum(SHOT_SLOTS)).max(7).optional() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const actor = await requireManager(context.userId);
+export async function generateVehicleShots(actor: Actor, vehicleId: string, slots?: ShotSlot[]) {
     const sb = await admin();
     const settings = await loadSettings(sb);
     if (!settings.enabled) return { ok: false as const, error: "Photo Studio is off." };
@@ -79,10 +75,10 @@ export const generateMarketingShots = createServerFn({ method: "POST" })
     if ("error" in provider) return { ok: false as const, error: provider.error };
     const { runCar } = await import("@/lib/photo-studio-run");
 
-    const { data: car } = await sb.from("vehicles").select("id,year,make,model,color,license_plate,vin").eq("id", data.vehicleId).maybeSingle();
+    const { data: car } = await sb.from("vehicles").select("id,year,make,model,color,license_plate,vin").eq("id", vehicleId).maybeSingle();
     if (!car) return { ok: false as const, error: "Car not found." };
     const origRes = await (sb.from("vehicle_media") as any).select("id,photo_class,storage_bucket,storage_path,created_at")
-      .eq("vehicle_id", data.vehicleId).eq("kind", "original");
+      .eq("vehicle_id", vehicleId).eq("kind", "original");
     if (origRes.error && isMissingPhotoClassColumn(origRes.error.message)) {
       return { ok: false as const, error: "Photo classes are not on this database yet." };
     }
@@ -96,7 +92,7 @@ export const generateMarketingShots = createServerFn({ method: "POST" })
     try {
       result = await runCar(
       { id: car.id, year: car.year, make: car.make, model: car.model, color: (car as any).color, plate: car.license_plate, vin: car.vin },
-      originals, data.slots ?? null,
+      originals, slots ?? null,
       {
         provider, settings, model,
         usage: () => usage(sb),
@@ -107,16 +103,16 @@ export const generateMarketingShots = createServerFn({ method: "POST" })
         },
         saveShot: async (s) => {
           const ext = s.mime.includes("png") ? "png" : s.mime.includes("webp") ? "webp" : "jpg";
-          const path = `${data.vehicleId}/studio/${s.slot}-${crypto.randomUUID()}.${ext}`;
+          const path = `${vehicleId}/studio/${s.slot}-${crypto.randomUUID()}.${ext}`;
           const up = await sb.storage.from(MARKETING_BUCKET).upload(path, s.bytes, { contentType: s.mime });
           if (up.error) throw new Error(`Could not store the new ${SLOT_LABELS[s.slot]} shot.`);
-          const retired = await retireLiveMarketingShots(sb, data.vehicleId, s.slot);
+          const retired = await retireLiveMarketingShots(sb, vehicleId, s.slot);
           if (!retired.ok) {
             await sb.storage.from(MARKETING_BUCKET).remove([path]);
             throw new Error(`Could not replace the ${SLOT_LABELS[s.slot]} shot. ${retired.error}`);
           }
           const { error } = await (sb.from("vehicle_media") as any).insert({
-            vehicle_id: data.vehicleId, kind: "marketing", storage_bucket: MARKETING_BUCKET, storage_path: path, mime_type: s.mime,
+            vehicle_id: vehicleId, kind: "marketing", storage_bucket: MARKETING_BUCKET, storage_path: path, mime_type: s.mime,
             shot_slot: s.slot, source_media_ids: s.sources, generation_model: `${provider.name}:${model}`,
             enhancement_provider: provider.name, studio_check: s.check, published: false, uploaded_by: actor.userId,
             caption: "AI-generated", sort_order: 100 + SHOT_SLOTS.indexOf(s.slot),
@@ -127,7 +123,7 @@ export const generateMarketingShots = createServerFn({ method: "POST" })
           }
         },
         logSpend: async (e) => {
-          await (sb.from as any)("photo_studio_spend").insert({ vehicle_id: data.vehicleId, shot_slot: e.slot, provider: provider.name, model, cost_cents: e.costCents, outcome: e.outcome, created_by: actor.userId });
+          await (sb.from as any)("photo_studio_spend").insert({ vehicle_id: vehicleId, shot_slot: e.slot, provider: provider.name, model, cost_cents: e.costCents, outcome: e.outcome, created_by: actor.userId });
         },
       },
     );
@@ -135,8 +131,16 @@ export const generateMarketingShots = createServerFn({ method: "POST" })
       const message = e instanceof Error ? e.message : "Could not save the shot.";
       return { ok: false as const, error: message, outcomes: [] as { slot: ShotSlot; status: "saved" | "rejected" | "failed"; reason?: string }[] };
     }
-    await logAudit(actor, { action: "photo_studio.generate", summary: `Generated marketing shots (${result.outcomes.filter((o) => o.status === "saved").length} saved)`, entityType: "vehicle", entityId: data.vehicleId, metadata: { outcomes: result.outcomes, model } });
+    await logAudit(actor, { action: "photo_studio.generate", summary: `Generated marketing shots (${result.outcomes.filter((o) => o.status === "saved").length} saved)`, entityType: "vehicle", entityId: vehicleId, metadata: { outcomes: result.outcomes, model } });
     return result;
+}
+
+export const generateMarketingShots = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ vehicleId: z.string().uuid(), slots: z.array(z.enum(SHOT_SLOTS)).max(7).optional() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireManager(context.userId);
+    return generateVehicleShots(actor, data.vehicleId, data.slots);
   });
 
 /** Approve or reject one shot. Approval is per shot; the car is "approved"
@@ -157,13 +161,11 @@ export const reviewMarketingShot = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
-/** Owner-only: put (or take down) a car's approved shots on the public site. */
-export const setCarMarketingPublished = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ vehicleId: z.string().uuid(), published: z.boolean() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const actor = await requireOwner(context.userId);
+/** Owner-only: put (or take down) a car's approved shots on the public site.
+ * The marketing publish trigger still refuses a shot that is not approved by a person. */
+export async function publishApprovedMarketing(actor: Actor, vehicleId: string, published: boolean) {
     const sb = await admin();
+    const data = { vehicleId, published };
     const { data: shots } = await (sb.from("vehicle_media") as any).select("id,shot_slot,studio_review_status").eq("vehicle_id", data.vehicleId).eq("kind", "marketing");
     const set = carSetStatus(((shots ?? []) as any[]).map((s) => ({ id: s.id, slot: s.shot_slot as ShotSlot, status: s.studio_review_status })));
     if (data.published && set !== "approved") return { ok: false as const, error: "Approve all four exterior shots (and nothing pending) first." };
@@ -190,6 +192,14 @@ export const setCarMarketingPublished = createServerFn({ method: "POST" })
     await sb.rpc("sync_vehicle_photos" as any, { _vehicle_id: data.vehicleId });
     await logAudit(actor, { action: "photo_studio.publish", summary: data.published ? "Marketing shots published to website" : "Marketing shots taken off website", entityType: "vehicle", entityId: data.vehicleId, metadata: {} });
     return { ok: true as const };
+}
+
+export const setCarMarketingPublished = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ vehicleId: z.string().uuid(), published: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireOwner(context.userId);
+    return publishApprovedMarketing(actor, data.vehicleId, data.published);
   });
 
 export { ORIGINALS_BUCKET };

@@ -8,6 +8,7 @@ import { holdIfHeld, type HeldNoticeInput } from '@/lib/held-payment-notices.ser
 import { failedInvoiceLink } from '@/lib/failed-payment-link';
 import { easternDateOf } from '@/lib/rent-reminders';
 import { isRentLinkReason, rentPeriodOf } from '@/lib/one-off-payment';
+import { invoicePaymentMethod, stripeChargePaymentMethod } from '@/lib/stripe-payment-method';
 import { dueDateOf, extractPaymentReceiptFields, paidDateOf, shouldNotifyRenter } from '@/lib/renter-payments';
 import { resolveStripePaymentMatch } from '@/lib/renter-payments-match.server';
 import { safeReceiptUrl } from '@/lib/payment-received';
@@ -551,7 +552,7 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     notified_status: notify ? null : status,
     failure_reason: !notify && status === 'failed' ? failure : null,
     paid_date: !notify && status === 'paid' ? paidDateOf(invoice, receipts) : null,
-    payment_method: 'card',
+    payment_method: invoicePaymentMethod(invoice),
     // The week this invoice bills starts when Stripe created it (ET), the same
     // date the rent reminders and late-fee waivers use. invoice.period_start is
     // the previous period for renewals, which made weeks look days later.
@@ -845,8 +846,9 @@ async function recordOneOff(
 }
 
 /**
- * Store the Stripe receipt link on rows paid by a PaymentIntent (the
- * Reservation Fee, collection-flow charges). Invoices already carry theirs
+ * Store the Stripe receipt link, and the charge's payment method when the
+ * row does not have one yet, on rows paid by a PaymentIntent (the Reservation
+ * Fee, collection-flow charges). Invoices already carry theirs
  * (extractPaymentReceiptFields). charge.succeeded is not subscribed on the
  * live endpoint, so the charge is read from the intent. Fills nulls only and
  * never fails the event.
@@ -861,13 +863,21 @@ async function fillIntentReceipt(pi: any, env: StripeEnv) {
       charge = await stripe.charges.retrieve(chargeId);
     }
     const receipt = safeReceiptUrl(charge?.receipt_url);
-    if (!receipt) return;
+    const method = stripeChargePaymentMethod(charge);
+    if (!receipt && !method) return;
     const admin: any = getSupabase();
     const chargeRef = charge?.id ?? chargeId;
-    // Receipt link only: never status, amount or paid_date, and never over a stored link.
-    await admin.from('payments').update({ stripe_receipt_url: receipt, stripe_charge_id: chargeRef }).eq('stripe_payment_intent_id', pi.id).is('stripe_receipt_url', null);
     const ids = String(pi.metadata?.paymentIds ?? '').split(',').map((x: string) => x.trim()).filter((x: string) => /^[0-9a-f-]{36}$/i.test(x));
-    if (ids.length) await admin.from('payments').update({ stripe_receipt_url: receipt, stripe_charge_id: chargeRef }).in('id', ids).is('stripe_receipt_url', null);
+    // Receipt link only: never status, amount or paid_date, and never over a stored link.
+    if (receipt) {
+      await admin.from('payments').update({ stripe_receipt_url: receipt, stripe_charge_id: chargeRef }).eq('stripe_payment_intent_id', pi.id).is('stripe_receipt_url', null);
+      if (ids.length) await admin.from('payments').update({ stripe_receipt_url: receipt, stripe_charge_id: chargeRef }).in('id', ids).is('stripe_receipt_url', null);
+    }
+    // Method only where it is still blank, including when the charge has no receipt URL.
+    if (method) {
+      await admin.from('payments').update({ payment_method: method }).eq('stripe_payment_intent_id', pi.id).is('payment_method', null);
+      if (ids.length) await admin.from('payments').update({ payment_method: method }).in('id', ids).is('payment_method', null);
+    }
   } catch (err) {
     console.error('[webhook] receipt link fill failed', err);
   }

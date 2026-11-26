@@ -24,7 +24,7 @@ import {
   weeksInLabel,
   type ActiveRentalRow,
 } from "@/lib/active-rentals";
-import { activeLengthDays, orderByLength, type RentalLengthOrder } from "@/lib/rental-length-order";
+import { activeLengthDays, orderByLength, owesAmount, type BookingsListMode, type RentalLengthOrder } from "@/lib/rental-length-order";
 import { RentalLengthSort } from "./RentalLengthSort";
 import { listActiveRentals } from "@/lib/active-rentals.functions";
 import { getRentalLateFees, type RentalLateFeeStatus } from "@/lib/rent-reminders.functions";
@@ -66,13 +66,13 @@ export function ActiveRentalsPanel({
   initialFilter = "all",
 }: {
   previewRows?: ActiveRentalRow[];
-  initialLengthOrder?: RentalLengthOrder;
+  initialLengthOrder?: BookingsListMode;
   initialFilter?: (typeof FILTERS)[number]["id"];
 } = {}) {
   const navigate = useNavigate();
   const fetchBoard = useServerFn(listActiveRentals);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>(initialFilter);
-  const [lengthOrder, setLengthOrder] = useState<RentalLengthOrder>(initialLengthOrder);
+  const [lengthOrder, setLengthOrder] = useState<BookingsListMode>(initialLengthOrder);
   const [rows, setRows] = useState<ActiveRentalRow[]>(previewRows ?? []);
   const [loaded, setLoaded] = useState({ payments: true, issues: true, incidents: true, documents: true });
   const [loading, setLoading] = useState(!previewRows);
@@ -130,14 +130,17 @@ export function ActiveRentalsPanel({
   }, [fetchBoard, reload, previewRows]);
 
   const today = etDateISO();
+  const owesCount = rows.filter((row) => owesAmount(row.rentOwed)).length;
+  const lengthSort: RentalLengthOrder = lengthOrder === "owes" ? "default" : lengthOrder;
   const visible = useMemo(() => {
     const filtered = rows.filter((row) => {
+      if (lengthOrder === "owes" && !owesAmount(row.rentOwed)) return false;
       if (filter === "overdue") return (row.overdueDays ?? 0) > 0;
       if (filter === "issues") return (row.openIssues ?? 0) > 0;
       return true;
     });
-    return orderByLength(filtered, (row) => activeLengthDays(row.startDate, today), lengthOrder);
-  }, [rows, filter, lengthOrder, today]);
+    return orderByLength(filtered, (row) => activeLengthDays(row.startDate, today), lengthSort);
+  }, [rows, filter, lengthOrder, lengthSort, today]);
 
   return (
     <div className="space-y-4" data-testid="active-rentals">
@@ -162,7 +165,7 @@ export function ActiveRentalsPanel({
           <span className="text-sm text-muted-foreground">
             {visible.length} Active Rental{visible.length === 1 ? "" : "s"}
           </span>
-          <RentalLengthSort value={lengthOrder} onChange={setLengthOrder} />
+          <RentalLengthSort value={lengthOrder} onChange={setLengthOrder} owesCount={owesCount} />
         </div>
       </div>
 
@@ -199,7 +202,7 @@ export function ActiveRentalsPanel({
                 <th className="w-[14%] px-2 py-2.5 font-semibold">Started</th>
                 <th className="w-[10%] px-2 py-2.5 font-semibold">Rate</th>
                 <th className="w-[16%] px-2 py-2.5 font-semibold">Due</th>
-                <th className="w-[12%] px-2 py-2.5 font-semibold">Overdue</th>
+                <th className="w-[12%] px-2 py-2.5 font-semibold">Status</th>
                 <th className={`${OPEN_COLUMN} py-2.5 font-semibold`}>Open</th>
                 <th className={`${ROW_MENU_COLUMN} py-2.5`} aria-hidden="true" />
               </tr>
@@ -269,10 +272,10 @@ export function ActiveRentalsPanel({
                             setDialog({ kind: "fees", row });
                           }}
                         >
-                          <OverdueCellBody row={row} fee={fee} feesLoaded={feesLoaded} lateDue={lateDue} />
+                          <OverdueCellBody row={row} fee={fee} feesLoaded={feesLoaded} lateDue={lateDue} today={today} />
                         </button>
                       ) : (
-                        <OverdueCellBody row={row} fee={fee} feesLoaded={feesLoaded} lateDue={lateDue} />
+                        <OverdueCellBody row={row} fee={fee} feesLoaded={feesLoaded} lateDue={lateDue} today={today} />
                       )}
                     </td>
                     <td className={`${OPEN_COLUMN} py-2`}>
@@ -398,10 +401,10 @@ export function ActiveRentalsPanel({
   );
 }
 
-function OverdueCellBody({ row, fee, feesLoaded, lateDue }: { row: ActiveRentalRow; fee: RentalLateFeeStatus | undefined; feesLoaded: boolean; lateDue: boolean }) {
+function OverdueCellBody({ row, fee, feesLoaded, lateDue, today }: { row: ActiveRentalRow; fee: RentalLateFeeStatus | undefined; feesLoaded: boolean; lateDue: boolean; today: string }) {
   return (
     <>
-      <OverdueStatus days={row.overdueDays} />
+      <OverdueStatus days={row.overdueDays} due={row.nextPaymentDue} today={today} />
       {lateDue ? (
         <span className="mt-1 block text-xs font-medium text-[#D03020]" data-testid="late-fee">
           Late {lateFeeLabel(fee, feesLoaded)}

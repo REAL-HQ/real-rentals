@@ -41,6 +41,7 @@ import { ENHANCE_MODES, localProcessingBlocker, runEnhance, type EnhanceMode } f
 import { SectionCard, MicroLabel } from "./ui";
 import { PhotoStudioPanel } from "./PhotoStudioPanel";
 import { PhotoClassLabel, PhotoClassSelect } from "./PhotoClassSelect";
+import { AutoLabelPhotos } from "./AutoLabelPhotos";
 import { setOriginalPhotoClass } from "@/lib/photo-studio-media.functions";
 import type { PhotoClass } from "@/lib/photo-studio";
 
@@ -419,6 +420,11 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
               ` · ${publishedCount} on the website`
         }
       >
+        {canEdit && classAvailable && (
+          <div className="mb-3">
+            <AutoLabelPhotos vehicleId={vehicleId} onDone={() => void refresh()} />
+          </div>
+        )}
         {canEdit && (
           <FileUploader
             key={uploadRevision}
