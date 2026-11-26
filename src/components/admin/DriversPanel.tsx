@@ -358,6 +358,9 @@ export function DriversPanel({
   canViewOnboarding = false,
   canIssueCardLink = false,
   urlFilter,
+  previewDrivers,
+  previewBookingOutcomes,
+  previewMenuOpen = false,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
@@ -370,17 +373,24 @@ export function DriversPanel({
   externalSearch?: string;
   initialOpenId?: string;
   /**
-   * ?filter= from the address bar. "waitlist" and "active" are honoured for
-   * every staff tier. "documents-expiring" and "approved-not-renting" are honoured for a manager.
+   * ?filter= from the address bar. "waitlist", "active", "completed-booking"
+   * and "cancelled-booking" are honoured for every staff tier.
+   * "documents-expiring" and "approved-not-renting" are honoured for a manager.
    */
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
+  /** Skip the drivers fetch. Screenshots and tests pass the rows. */
+  previewDrivers?: Application[];
+  /** Skip the booking-outcome read. */
+  previewBookingOutcomes?: { completed: string[]; cancelled: string[] };
+  /** Force the Filters menu open so a static render can show it. */
+  previewMenuOpen?: boolean;
 } = {}) {
-  const [drivers, setDrivers] = useState<Application[]>([]);
+  const [drivers, setDrivers] = useState<Application[]>(previewDrivers ?? []);
   // Whether the applications fetch has come back, as distinct from having
   // come back empty. A deep link needs to tell those apart.
-  const [driversLoaded, setDriversLoaded] = useState(false);
+  const [driversLoaded, setDriversLoaded] = useState(previewDrivers != null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   /*
    * Which applicant is open is a fact about the URL, not about this
@@ -405,7 +415,7 @@ export function DriversPanel({
       const search: {
         tab: "drivers";
         id?: string;
-        filter?: "documents-expiring" | "approved-not-renting" | "stalled" | "active";
+        filter?: "documents-expiring" | "approved-not-renting" | "stalled" | "active" | "completed-booking" | "cancelled-booking";
       } = id ? { tab: "drivers", id } : { tab: "drivers" };
       // Opening a driver from a manager list comes back to that list.
       // Waitlist links stay as they were: the filter is not kept.
@@ -414,6 +424,7 @@ export function DriversPanel({
       }
       if (urlFilter === "stalled" && stalledOn) search.filter = "stalled";
       if (urlFilter === "active") search.filter = "active";
+      if (urlFilter === "completed-booking" || urlFilter === "cancelled-booking") search.filter = urlFilter;
       void navigate({ to: "/admin", search });
     },
     [navigate, urlFilter, canManageWaitlist, stalledOn],
@@ -449,6 +460,8 @@ export function DriversPanel({
   const urlListFilter =
     urlFilter === "waitlist" ||
     urlFilter === "active" ||
+    urlFilter === "completed-booking" ||
+    urlFilter === "cancelled-booking" ||
     ((urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") && canManageWaitlist) ||
     (urlFilter === "stalled" && stalledOn)
       ? urlFilter
@@ -473,13 +486,19 @@ export function DriversPanel({
         void navigate({ to: "/admin", search: { tab: "drivers", filter: "active" } });
         return;
       }
+      if (f === "completed-booking" || f === "cancelled-booking") {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: f } });
+        return;
+      }
       setLocalFilter(f);
       if (
         urlFilter === "waitlist" ||
         urlFilter === "documents-expiring" ||
         urlFilter === "approved-not-renting" ||
         urlFilter === "stalled" ||
-        urlFilter === "active"
+        urlFilter === "active" ||
+        urlFilter === "completed-booking" ||
+        urlFilter === "cancelled-booking"
       ) {
         void navigate({ to: "/admin", search: { tab: "drivers" } });
       }
@@ -605,6 +624,9 @@ export function DriversPanel({
 
   const [openRentals, setOpenRentals] = useState<Set<string>>(new Set());
   const [activeReadFailed, setActiveReadFailed] = useState(false);
+  const [completedBookingIds, setCompletedBookingIds] = useState<Set<string>>(new Set(previewBookingOutcomes?.completed ?? []));
+  const [cancelledBookingIds, setCancelledBookingIds] = useState<Set<string>>(new Set(previewBookingOutcomes?.cancelled ?? []));
+  const [bookingReadFailed, setBookingReadFailed] = useState(false);
   const loadActiveSets = useServerFn(listDriverActiveSets);
   const refreshActiveRenters = useCallback(() => {
     const current = readVersions.begin("active-rentals");
@@ -616,12 +638,18 @@ export function DriversPanel({
         setActiveRenters(new Set(filterIds));
         setOpenRentals(new Set(sets.openRentalIds));
         setActiveReadFailed(false);
+        setCompletedBookingIds(new Set(sets.completedBookingIds ?? []));
+        setCancelledBookingIds(new Set(sets.cancelledBookingIds ?? []));
+        setBookingReadFailed(sets.bookingOutcomesFailed === true);
       })
       .catch(() => {
         if (current()) setActiveReadFailed(true);
       });
   }, [loadActiveSets, readVersions]);
-  useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters, activationRefresh]);
+  useEffect(() => {
+    if (previewBookingOutcomes) return;
+    refreshActiveRenters();
+  }, [refreshActiveRenters, activationRefresh, previewBookingOutcomes]);
   // A committed readiness change anywhere in this tab (vehicle, screening,
   // document) re-reads the list's activation context so row readiness and the
   // Activate dialog's vehicle list never lag behind what was just saved.
@@ -861,7 +889,7 @@ export function DriversPanel({
     const failed = () => {
       if (live && current() && !reported) { reported = true; toast.error("Driver context could not refresh. Recheck to retry; no readiness decision was changed."); }
     };
-    refreshDrivers();
+    if (!previewDrivers) refreshDrivers();
     supabase
       .from("vehicles")
       .select("*")
@@ -916,7 +944,7 @@ setDocCounts(requiredDocCounts(rows));
     // because a loader missing from the dependency list is how a list stops
     // refreshing after somebody changes how it loads.
     return () => { live = false; };
-  }, [refreshDrivers, readVersions, activationRefresh]);
+  }, [refreshDrivers, readVersions, activationRefresh, previewDrivers]);
 
   const loadReviewAging = useServerFn(getDocumentReviewAging);
   useEffect(() => {
@@ -968,6 +996,10 @@ setDocCounts(requiredDocCounts(rows));
             ? drivers.filter((a) => blacklisted.has(a.id))
           : filter === "active"
             ? drivers.filter((a) => activeRenters.has(a.id))
+          : filter === "completed-booking"
+            ? drivers.filter((a) => completedBookingIds.has(a.id))
+          : filter === "cancelled-booking"
+            ? drivers.filter((a) => cancelledBookingIds.has(a.id))
             : drivers.filter((a) => a.status === filter && !held.has(a.id))
     )
       // readContactStatus already answers New for a row that has no value, so
@@ -997,7 +1029,7 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted]);
+  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted, completedBookingIds, cancelledBookingIds]);
 
   const funnelRows = useMemo(() => {
     const q = externalSearch.trim().toLowerCase();
@@ -1229,8 +1261,11 @@ setDocCounts(requiredDocCounts(rows));
   };
   const PRIMARY_FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active"];
   const MENU_FILTER_ORDER = ["needs_staff", "blacklisted", "suspended", "declined", "closed"];
+  const bookingCount = (ids: Set<string>) => (bookingReadFailed && ids.size === 0 ? "…" : drivers.filter((a) => ids.has(a.id)).length);
   const filterCount = (s: string) => {
     if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
+    if (s === "completed-booking") return bookingCount(completedBookingIds);
+    if (s === "cancelled-booking") return bookingCount(cancelledBookingIds);
     if (s === "needs_staff") return needsStaffFlags == null ? "…" : drivers.filter((a) => needsStaff.has(a.id)).length;
     if (s === "blacklisted") return blacklistEntries == null ? "…" : drivers.filter((a) => blacklisted.has(a.id)).length;
     const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
@@ -1249,6 +1284,8 @@ setDocCounts(requiredDocCounts(rows));
       : "…";
   const awaitingReservationCount = funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length;
   const filterLabelWithCount = (s: string) => {
+    if (s === "completed-booking") return `Completed Booking (${bookingCount(completedBookingIds)})`;
+    if (s === "cancelled-booking") return `Cancelled Booking (${bookingCount(cancelledBookingIds)})`;
     if (s === "documents-expiring") return `Documents Expiring (${documentsExpiringCount})`;
     if (s === "approved-not-renting") return `Approved, Awaiting Reservation (${awaitingReservationCount})`;
     if (s === "stalled") return `Stalled (${stalledRows == null ? "…" : stalledRows.length})`;
@@ -1363,7 +1400,7 @@ setDocCounts(requiredDocCounts(rows));
               Documents ×
             </button>
           ) : null}
-          <DropdownMenu>
+          <DropdownMenu open={previewMenuOpen ? true : undefined}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
@@ -1376,6 +1413,22 @@ setDocCounts(requiredDocCounts(rows));
             <DropdownMenuContent align="start" className="w-72 bg-white text-foreground">
               <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">Status</DropdownMenuLabel>
               {menuFilterButtons}
+              <DropdownMenuCheckboxItem
+                data-completed-booking-filter
+                checked={filter === "completed-booking"}
+                onCheckedChange={() => setFilter("completed-booking")}
+                className="bg-white text-xs text-foreground focus:bg-muted"
+              >
+                {filterLabelWithCount("completed-booking")}
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                data-cancelled-booking-filter
+                checked={filter === "cancelled-booking"}
+                onCheckedChange={() => setFilter("cancelled-booking")}
+                className="bg-white text-xs text-foreground focus:bg-muted"
+              >
+                {filterLabelWithCount("cancelled-booking")}
+              </DropdownMenuCheckboxItem>
               {canManageWaitlist ? (
                 <DropdownMenuCheckboxItem
                   data-documents-expiring-filter

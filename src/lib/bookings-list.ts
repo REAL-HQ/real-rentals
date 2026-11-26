@@ -108,6 +108,28 @@ export function isPastPhase(phase: BookingPhase): boolean {
   return phase === "completed" || phase === "cancelled" || phase === "swap";
 }
 
+/**
+ * Drivers who have at least one rental on the Bookings Completed or Cancelled
+ * tab. Those tabs filter by PHASE_STATUSES, so an unknown status is neither.
+ * One driver can be in both lists. Swap-ended rows are cancelled statuses.
+ */
+export function bookingOutcomeApplicationIds(
+  rentals: readonly { application_id?: string | null; status?: string | null }[],
+): { completed: string[]; cancelled: string[] } {
+  const completedStatuses = new Set(PHASE_STATUSES.completed.map((status) => status.toLowerCase()));
+  const cancelledStatuses = new Set(PHASE_STATUSES.cancelled.map((status) => status.toLowerCase()));
+  const completed = new Set<string>();
+  const cancelled = new Set<string>();
+  for (const rental of rentals) {
+    const id = String(rental.application_id ?? "").trim();
+    if (!id) continue;
+    const status = String(rental.status ?? "").toLowerCase();
+    if (completedStatuses.has(status)) completed.add(id);
+    if (cancelledStatuses.has(status)) cancelled.add(id);
+  }
+  return { completed: [...completed], cancelled: [...cancelled] };
+}
+
 export type BookingRow = {
   id: string;
   source: BookingSource;
