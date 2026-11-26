@@ -148,7 +148,63 @@ describe("payments webhook receipts", () => {
     assert.equal(row.stripe_hosted_invoice_url, "https://invoice.stripe.com/i/test");
     assert.equal(row.stripe_invoice_pdf_url, "https://pay.stripe.com/invoice/test/pdf");
     assert.equal(row.stripe_charge_id, "ch_1");
+    assert.equal(row.payment_method, "card");
     assert.equal(row.stripe_paid_at, new Date(1794497023 * 1000).toISOString());
+  });
+
+  it("stores the invoice charge method and keeps card when the charge is only an id", async () => {
+    const linkDb = fakeDb(rentalSeed);
+    const link = await postVerifiedPaymentWebhook({
+      type: "invoice.paid",
+      data: { object: paidInvoice({
+        id: "in_link",
+        charge: { id: "ch_link", receipt_url: "https://pay.stripe.com/receipts/link", payment_method_details: { type: "cashapp" } },
+      }) },
+    }, linkDb);
+    assert.equal(link.status, 200);
+    assert.equal(linkDb._state.payments[0].payment_method, "cash_app");
+
+    const idOnly = fakeDb(rentalSeed);
+    const res = await postVerifiedPaymentWebhook({
+      type: "invoice.paid",
+      data: { object: paidInvoice({ id: "in_id_only", charge: "ch_only" }) },
+    }, idOnly);
+    assert.equal(res.status, 200);
+    assert.equal(idOnly._state.payments[0].payment_method, "card");
+  });
+
+  it("fills a blank PaymentIntent method from the charge and does not replace one already set", async () => {
+    const blank = "11111111-1111-4111-8111-111111111111";
+    const kept = "22222222-2222-4222-8222-222222222222";
+    const db = fakeDb({
+      payments: [
+        { id: blank, status: "paid", notified_status: "paid", amount: 50, payment_method: null, stripe_payment_intent_id: "pi_fee", stripe_receipt_url: null },
+        { id: kept, status: "paid", notified_status: "paid", amount: 50, payment_method: "zelle", stripe_receipt_url: null },
+      ],
+    });
+    const intent = {
+      id: "pi_fee",
+      amount: 5000,
+      metadata: { paymentIds: `${blank},${kept}`, reason: "other" },
+      latest_charge: { id: "ch_fee", receipt_url: null, payment_method_details: { type: "us_bank_account" } },
+    };
+    assert.equal((await postVerifiedPaymentWebhook({ type: "payment_intent.succeeded", data: { object: intent } }, db)).status, 200);
+    const rows = Object.fromEntries(db._state.payments.map((row: Row) => [row.id, row]));
+    assert.equal(rows[blank].payment_method, "ach");
+    assert.equal(rows[blank].stripe_receipt_url, null);
+    assert.equal(rows[blank].amount, 50);
+    assert.equal(rows[blank].status, "paid");
+    assert.equal(rows[kept].payment_method, "zelle");
+
+    const replay = {
+      ...intent,
+      latest_charge: { id: "ch_fee", receipt_url: "https://pay.stripe.com/receipts/fee", payment_method_details: { type: "card" } },
+    };
+    assert.equal((await postVerifiedPaymentWebhook({ type: "payment_intent.succeeded", data: { object: replay } }, db)).status, 200);
+    assert.equal(rows[blank].payment_method, "ach");
+    assert.equal(rows[blank].stripe_receipt_url, "https://pay.stripe.com/receipts/fee");
+    assert.equal(rows[kept].payment_method, "zelle");
+    assert.equal(rows[kept].stripe_receipt_url, "https://pay.stripe.com/receipts/fee");
   });
 
   it("does not stamp stripe_paid_at or paid_date on a failed invoice", async () => {

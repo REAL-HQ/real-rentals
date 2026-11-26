@@ -14,6 +14,6495 @@ export type Database = {
   }
   public: {
     Tables: {
+      _backup_20261119_heather_repo_applications: {
+        Row: {
+          address: string | null
+          ai_flags: Json | null
+          ai_score: number | null
+          ai_summary: string | null
+          ai_tier: string | null
+          background_check_status: string | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          city: string | null
+          consent_background: boolean | null
+          consent_gps: boolean | null
+          consent_prepay: boolean | null
+          consent_terms: boolean | null
+          contact_follow_up_on: string | null
+          contact_status: string | null
+          contact_status_at: string | null
+          contact_status_by: string | null
+          contact_status_note: string | null
+          contacted_at: string | null
+          contract_end_date: string | null
+          contract_start_date: string | null
+          created_at: string | null
+          current_step: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          deleted_reason: string | null
+          deposit_amount: number | null
+          deposit_paid: number | null
+          deposit_status: string | null
+          dob: string | null
+          doc_request_note: string | null
+          doc_request_sent_at: string | null
+          drive_type: string | null
+          earnings_verified_status: string | null
+          email: string | null
+          expected_duration: string | null
+          full_coverage_insurance: boolean | null
+          full_name: string | null
+          gclid: string | null
+          gig_status: string | null
+          how_heard: string | null
+          id: string | null
+          incident_count: number | null
+          income_proof_url: string | null
+          insurance_answer: string | null
+          insurance_carrier: string | null
+          insurance_doc_url: string | null
+          insurance_expires_on: string | null
+          insurance_policy_number: string | null
+          insurance_rideshare_endorsement: boolean | null
+          insurance_status: string | null
+          landing_page: string | null
+          legal_hold: boolean | null
+          license_expiration: string | null
+          license_number: string | null
+          license_photo_url: string | null
+          license_state: string | null
+          license_valid: boolean | null
+          market_id: string | null
+          mvr_status: string | null
+          notes: string | null
+          payment_method: string | null
+          payment_status: string | null
+          phone: string | null
+          pickup_date: string | null
+          pickup_time: string | null
+          platform_active: boolean | null
+          platform_status: string | null
+          platforms: string[] | null
+          primary_application_id: string | null
+          profile_screenshot_url: string | null
+          purged_at: string | null
+          rating: number | null
+          recovery_email_sent_24h: string | null
+          recovery_email_sent_72h: string | null
+          recovery_sent_at: string | null
+          referrer: string | null
+          rental_duration: string | null
+          rental_duration_days: number | null
+          rental_length: string | null
+          rental_term: string | null
+          renter_policy_status: string | null
+          requested_docs: Json | null
+          resubmission_count: number | null
+          resubmission_history: Json | null
+          return_date: string | null
+          return_time: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          rideshare_history_status: string | null
+          score: number | null
+          scored_at: string | null
+          sms_consent: boolean | null
+          sms_consent_at: string | null
+          sms_consent_page: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
+          sms_consent_version: string | null
+          sms_opt_out_at: string | null
+          source: string | null
+          start_date: string | null
+          start_timing: string | null
+          state: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          trip_screenshots: string[] | null
+          trips_completed: string | null
+          updated_at: string | null
+          user_id: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          vehicle_id: string | null
+          vehicle_size: string | null
+          waitlist_signed_up_at: string | null
+          waitlist_source: string | null
+          weekly_hours: number | null
+          weekly_rent: number | null
+          years_licensed: number | null
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
+          background_check_status?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string | null
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
+          contacted_at?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          created_at?: string | null
+          current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string | null
+          dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
+          drive_type?: string | null
+          earnings_verified_status?: string | null
+          email?: string | null
+          expected_duration?: string | null
+          full_coverage_insurance?: boolean | null
+          full_name?: string | null
+          gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
+          id?: string | null
+          incident_count?: number | null
+          income_proof_url?: string | null
+          insurance_answer?: string | null
+          insurance_carrier?: string | null
+          insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string | null
+          landing_page?: string | null
+          legal_hold?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          license_valid?: boolean | null
+          market_id?: string | null
+          mvr_status?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          pickup_time?: string | null
+          platform_active?: boolean | null
+          platform_status?: string | null
+          platforms?: string[] | null
+          primary_application_id?: string | null
+          profile_screenshot_url?: string | null
+          purged_at?: string | null
+          rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
+          referrer?: string | null
+          rental_duration?: string | null
+          rental_duration_days?: number | null
+          rental_length?: string | null
+          rental_term?: string | null
+          renter_policy_status?: string | null
+          requested_docs?: Json | null
+          resubmission_count?: number | null
+          resubmission_history?: Json | null
+          return_date?: string | null
+          return_time?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rideshare_history_status?: string | null
+          score?: number | null
+          scored_at?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          sms_opt_out_at?: string | null
+          source?: string | null
+          start_date?: string | null
+          start_timing?: string | null
+          state?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          trip_screenshots?: string[] | null
+          trips_completed?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          vehicle_id?: string | null
+          vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
+          weekly_hours?: number | null
+          weekly_rent?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
+          background_check_status?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string | null
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
+          contacted_at?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          created_at?: string | null
+          current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string | null
+          dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
+          drive_type?: string | null
+          earnings_verified_status?: string | null
+          email?: string | null
+          expected_duration?: string | null
+          full_coverage_insurance?: boolean | null
+          full_name?: string | null
+          gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
+          id?: string | null
+          incident_count?: number | null
+          income_proof_url?: string | null
+          insurance_answer?: string | null
+          insurance_carrier?: string | null
+          insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string | null
+          landing_page?: string | null
+          legal_hold?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          license_valid?: boolean | null
+          market_id?: string | null
+          mvr_status?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          pickup_time?: string | null
+          platform_active?: boolean | null
+          platform_status?: string | null
+          platforms?: string[] | null
+          primary_application_id?: string | null
+          profile_screenshot_url?: string | null
+          purged_at?: string | null
+          rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
+          referrer?: string | null
+          rental_duration?: string | null
+          rental_duration_days?: number | null
+          rental_length?: string | null
+          rental_term?: string | null
+          renter_policy_status?: string | null
+          requested_docs?: Json | null
+          resubmission_count?: number | null
+          resubmission_history?: Json | null
+          return_date?: string | null
+          return_time?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rideshare_history_status?: string | null
+          score?: number | null
+          scored_at?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          sms_opt_out_at?: string | null
+          source?: string | null
+          start_date?: string | null
+          start_timing?: string | null
+          state?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          trip_screenshots?: string[] | null
+          trips_completed?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          vehicle_id?: string | null
+          vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
+          weekly_hours?: number | null
+          weekly_rent?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_heather_repo_automation_enrollments: {
+        Row: {
+          application_id: string | null
+          cancelled_reason: string | null
+          completed_at: string | null
+          created_at: string | null
+          current_step: number | null
+          enrolled_at: string | null
+          id: string | null
+          next_run_at: string | null
+          rental_id: string | null
+          status: string | null
+          updated_at: string | null
+          workflow_id: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          cancelled_reason?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          current_step?: number | null
+          enrolled_at?: string | null
+          id?: string | null
+          next_run_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+          workflow_id?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          cancelled_reason?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          current_step?: number | null
+          enrolled_at?: string | null
+          id?: string | null
+          next_run_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+          workflow_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_heather_repo_payment_text_pauses: {
+        Row: {
+          application_id: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string | null
+          idempotency_key: string | null
+          pause_until: string | null
+          reason: string | null
+          rental_id: string | null
+          source: string | null
+          starts_at: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          idempotency_key?: string | null
+          pause_until?: string | null
+          reason?: string | null
+          rental_id?: string | null
+          source?: string | null
+          starts_at?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          idempotency_key?: string | null
+          pause_until?: string | null
+          reason?: string | null
+          rental_id?: string | null
+          source?: string | null
+          starts_at?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_heather_repo_payments: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_heather_repo_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          created_at: string | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          hold_by: string | null
+          hold_reason: string | null
+          hold_started_at: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_heather_repo_vehicles: {
+        Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          badges: string[] | null
+          body_type: string | null
+          color: string | null
+          created_at: string | null
+          current_odometer: number | null
+          deposit: number | null
+          description: string | null
+          doors: number | null
+          fuel_type: string | null
+          gps_battery: string | null
+          gps_device_id: string | null
+          gps_geofence_status: string | null
+          gps_imei: string | null
+          gps_install_notes: string | null
+          gps_installed_on: string | null
+          gps_last_location: Json | null
+          gps_last_ping_at: string | null
+          gps_odometer: number | null
+          gps_provider: string | null
+          gps_serial: string | null
+          gps_sim: string | null
+          gps_status: string | null
+          gps_tracking_url: string | null
+          id: string | null
+          insurance_agent_email: string | null
+          insurance_agent_name: string | null
+          insurance_agent_phone: string | null
+          insurance_carrier: string | null
+          insurance_coverage: string | null
+          insurance_effective_on: string | null
+          insurance_expires_on: string | null
+          insurance_policy_number: string | null
+          insurance_status: string | null
+          internal_notes: string | null
+          key_count: number | null
+          key_location: string | null
+          key_notes: string | null
+          key_tag: string | null
+          key_type: string | null
+          last_brake_inspection_date: string | null
+          last_oil_change_miles: number | null
+          last_tire_date: string | null
+          license_plate: string | null
+          maintenance_status: string | null
+          make: string | null
+          market_id: string | null
+          miles_per_tank: number | null
+          model: string | null
+          monthly_rate: number | null
+          mpg: number | null
+          odometer_updated_at: string | null
+          oil_interval_miles: number | null
+          partner_id: string | null
+          photos: string[] | null
+          plate_expires_on: string | null
+          plate_state: string | null
+          registration_expires_on: string | null
+          registration_number: string | null
+          registration_state: string | null
+          seats: number | null
+          spare_key: boolean | null
+          status: string | null
+          title_number: string | null
+          title_on_file: boolean | null
+          title_status: string | null
+          toll_account: string | null
+          toll_transponder_id: string | null
+          trim: string | null
+          uber_eligibility: string[] | null
+          unit_number: string | null
+          vin: string | null
+          weekly_rate: number | null
+          year: number | null
+        }
+        Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          badges?: string[] | null
+          body_type?: string | null
+          color?: string | null
+          created_at?: string | null
+          current_odometer?: number | null
+          deposit?: number | null
+          description?: string | null
+          doors?: number | null
+          fuel_type?: string | null
+          gps_battery?: string | null
+          gps_device_id?: string | null
+          gps_geofence_status?: string | null
+          gps_imei?: string | null
+          gps_install_notes?: string | null
+          gps_installed_on?: string | null
+          gps_last_location?: Json | null
+          gps_last_ping_at?: string | null
+          gps_odometer?: number | null
+          gps_provider?: string | null
+          gps_serial?: string | null
+          gps_sim?: string | null
+          gps_status?: string | null
+          gps_tracking_url?: string | null
+          id?: string | null
+          insurance_agent_email?: string | null
+          insurance_agent_name?: string | null
+          insurance_agent_phone?: string | null
+          insurance_carrier?: string | null
+          insurance_coverage?: string | null
+          insurance_effective_on?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_status?: string | null
+          internal_notes?: string | null
+          key_count?: number | null
+          key_location?: string | null
+          key_notes?: string | null
+          key_tag?: string | null
+          key_type?: string | null
+          last_brake_inspection_date?: string | null
+          last_oil_change_miles?: number | null
+          last_tire_date?: string | null
+          license_plate?: string | null
+          maintenance_status?: string | null
+          make?: string | null
+          market_id?: string | null
+          miles_per_tank?: number | null
+          model?: string | null
+          monthly_rate?: number | null
+          mpg?: number | null
+          odometer_updated_at?: string | null
+          oil_interval_miles?: number | null
+          partner_id?: string | null
+          photos?: string[] | null
+          plate_expires_on?: string | null
+          plate_state?: string | null
+          registration_expires_on?: string | null
+          registration_number?: string | null
+          registration_state?: string | null
+          seats?: number | null
+          spare_key?: boolean | null
+          status?: string | null
+          title_number?: string | null
+          title_on_file?: boolean | null
+          title_status?: string | null
+          toll_account?: string | null
+          toll_transponder_id?: string | null
+          trim?: string | null
+          uber_eligibility?: string[] | null
+          unit_number?: string | null
+          vin?: string | null
+          weekly_rate?: number | null
+          year?: number | null
+        }
+        Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          badges?: string[] | null
+          body_type?: string | null
+          color?: string | null
+          created_at?: string | null
+          current_odometer?: number | null
+          deposit?: number | null
+          description?: string | null
+          doors?: number | null
+          fuel_type?: string | null
+          gps_battery?: string | null
+          gps_device_id?: string | null
+          gps_geofence_status?: string | null
+          gps_imei?: string | null
+          gps_install_notes?: string | null
+          gps_installed_on?: string | null
+          gps_last_location?: Json | null
+          gps_last_ping_at?: string | null
+          gps_odometer?: number | null
+          gps_provider?: string | null
+          gps_serial?: string | null
+          gps_sim?: string | null
+          gps_status?: string | null
+          gps_tracking_url?: string | null
+          id?: string | null
+          insurance_agent_email?: string | null
+          insurance_agent_name?: string | null
+          insurance_agent_phone?: string | null
+          insurance_carrier?: string | null
+          insurance_coverage?: string | null
+          insurance_effective_on?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_status?: string | null
+          internal_notes?: string | null
+          key_count?: number | null
+          key_location?: string | null
+          key_notes?: string | null
+          key_tag?: string | null
+          key_type?: string | null
+          last_brake_inspection_date?: string | null
+          last_oil_change_miles?: number | null
+          last_tire_date?: string | null
+          license_plate?: string | null
+          maintenance_status?: string | null
+          make?: string | null
+          market_id?: string | null
+          miles_per_tank?: number | null
+          model?: string | null
+          monthly_rate?: number | null
+          mpg?: number | null
+          odometer_updated_at?: string | null
+          oil_interval_miles?: number | null
+          partner_id?: string | null
+          photos?: string[] | null
+          plate_expires_on?: string | null
+          plate_state?: string | null
+          registration_expires_on?: string | null
+          registration_number?: string | null
+          registration_state?: string | null
+          seats?: number | null
+          spare_key?: boolean | null
+          status?: string | null
+          title_number?: string | null
+          title_on_file?: boolean | null
+          title_status?: string | null
+          toll_account?: string | null
+          toll_transponder_id?: string | null
+          trim?: string | null
+          uber_eligibility?: string[] | null
+          unit_number?: string | null
+          vin?: string | null
+          weekly_rate?: number | null
+          year?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_jonathon_hold_payments: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_jonathon_hold_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          created_at: string | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_jonathon_hold_sends: {
+        Row: {
+          agreement_id: string | null
+          application_id: string | null
+          channel: string | null
+          created_at: string | null
+          detail: string | null
+          key: string | null
+          kind: string | null
+          rental_id: string | null
+          status: string | null
+        }
+        Insert: {
+          agreement_id?: string | null
+          application_id?: string | null
+          channel?: string | null
+          created_at?: string | null
+          detail?: string | null
+          key?: string | null
+          kind?: string | null
+          rental_id?: string | null
+          status?: string | null
+        }
+        Update: {
+          agreement_id?: string | null
+          application_id?: string | null
+          channel?: string | null
+          created_at?: string | null
+          detail?: string | null
+          key?: string | null
+          kind?: string | null
+          rental_id?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_payments: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          backed_up_at: string | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          backed_up_at?: string | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          backed_up_at?: string | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          backed_up_at: string | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          created_at: string | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          backed_up_at?: string | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          backed_up_at?: string | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261119_renter_credits_backfill: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_applications: {
+        Row: {
+          address: string | null
+          ai_flags: Json | null
+          ai_score: number | null
+          ai_summary: string | null
+          ai_tier: string | null
+          background_check_status: string | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          city: string | null
+          consent_background: boolean | null
+          consent_gps: boolean | null
+          consent_prepay: boolean | null
+          consent_terms: boolean | null
+          contact_follow_up_on: string | null
+          contact_status: string | null
+          contact_status_at: string | null
+          contact_status_by: string | null
+          contact_status_note: string | null
+          contacted_at: string | null
+          contract_end_date: string | null
+          contract_start_date: string | null
+          created_at: string | null
+          current_step: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          deleted_reason: string | null
+          deposit_amount: number | null
+          deposit_paid: number | null
+          deposit_status: string | null
+          dob: string | null
+          doc_request_note: string | null
+          doc_request_sent_at: string | null
+          drive_type: string | null
+          earnings_verified_status: string | null
+          email: string | null
+          expected_duration: string | null
+          full_coverage_insurance: boolean | null
+          full_name: string | null
+          gclid: string | null
+          gig_status: string | null
+          how_heard: string | null
+          id: string | null
+          incident_count: number | null
+          income_proof_url: string | null
+          insurance_answer: string | null
+          insurance_carrier: string | null
+          insurance_doc_url: string | null
+          insurance_expires_on: string | null
+          insurance_policy_number: string | null
+          insurance_rideshare_endorsement: boolean | null
+          insurance_status: string | null
+          landing_page: string | null
+          legal_hold: boolean | null
+          license_expiration: string | null
+          license_number: string | null
+          license_photo_url: string | null
+          license_state: string | null
+          license_valid: boolean | null
+          market_id: string | null
+          mvr_status: string | null
+          notes: string | null
+          payment_method: string | null
+          payment_status: string | null
+          phone: string | null
+          pickup_date: string | null
+          pickup_time: string | null
+          platform_active: boolean | null
+          platform_status: string | null
+          platforms: string[] | null
+          primary_application_id: string | null
+          profile_screenshot_url: string | null
+          purged_at: string | null
+          rating: number | null
+          recovery_email_sent_24h: string | null
+          recovery_email_sent_72h: string | null
+          recovery_sent_at: string | null
+          referrer: string | null
+          rental_duration: string | null
+          rental_duration_days: number | null
+          rental_length: string | null
+          rental_term: string | null
+          renter_policy_status: string | null
+          requested_docs: Json | null
+          resubmission_count: number | null
+          resubmission_history: Json | null
+          return_date: string | null
+          return_time: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          rideshare_history_status: string | null
+          score: number | null
+          scored_at: string | null
+          sms_consent: boolean | null
+          sms_consent_at: string | null
+          sms_consent_page: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
+          sms_consent_version: string | null
+          sms_opt_out_at: string | null
+          source: string | null
+          start_date: string | null
+          start_timing: string | null
+          state: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          trip_screenshots: string[] | null
+          trips_completed: string | null
+          updated_at: string | null
+          user_id: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          vehicle_id: string | null
+          vehicle_size: string | null
+          waitlist_signed_up_at: string | null
+          waitlist_source: string | null
+          weekly_hours: number | null
+          weekly_rent: number | null
+          years_licensed: number | null
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
+          background_check_status?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string | null
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
+          contacted_at?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          created_at?: string | null
+          current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string | null
+          dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
+          drive_type?: string | null
+          earnings_verified_status?: string | null
+          email?: string | null
+          expected_duration?: string | null
+          full_coverage_insurance?: boolean | null
+          full_name?: string | null
+          gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
+          id?: string | null
+          incident_count?: number | null
+          income_proof_url?: string | null
+          insurance_answer?: string | null
+          insurance_carrier?: string | null
+          insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string | null
+          landing_page?: string | null
+          legal_hold?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          license_valid?: boolean | null
+          market_id?: string | null
+          mvr_status?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          pickup_time?: string | null
+          platform_active?: boolean | null
+          platform_status?: string | null
+          platforms?: string[] | null
+          primary_application_id?: string | null
+          profile_screenshot_url?: string | null
+          purged_at?: string | null
+          rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
+          referrer?: string | null
+          rental_duration?: string | null
+          rental_duration_days?: number | null
+          rental_length?: string | null
+          rental_term?: string | null
+          renter_policy_status?: string | null
+          requested_docs?: Json | null
+          resubmission_count?: number | null
+          resubmission_history?: Json | null
+          return_date?: string | null
+          return_time?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rideshare_history_status?: string | null
+          score?: number | null
+          scored_at?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          sms_opt_out_at?: string | null
+          source?: string | null
+          start_date?: string | null
+          start_timing?: string | null
+          state?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          trip_screenshots?: string[] | null
+          trips_completed?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          vehicle_id?: string | null
+          vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
+          weekly_hours?: number | null
+          weekly_rent?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
+          background_check_status?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string | null
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
+          contacted_at?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          created_at?: string | null
+          current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string | null
+          dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
+          drive_type?: string | null
+          earnings_verified_status?: string | null
+          email?: string | null
+          expected_duration?: string | null
+          full_coverage_insurance?: boolean | null
+          full_name?: string | null
+          gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
+          id?: string | null
+          incident_count?: number | null
+          income_proof_url?: string | null
+          insurance_answer?: string | null
+          insurance_carrier?: string | null
+          insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string | null
+          landing_page?: string | null
+          legal_hold?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          license_valid?: boolean | null
+          market_id?: string | null
+          mvr_status?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          pickup_time?: string | null
+          platform_active?: boolean | null
+          platform_status?: string | null
+          platforms?: string[] | null
+          primary_application_id?: string | null
+          profile_screenshot_url?: string | null
+          purged_at?: string | null
+          rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
+          referrer?: string | null
+          rental_duration?: string | null
+          rental_duration_days?: number | null
+          rental_length?: string | null
+          rental_term?: string | null
+          renter_policy_status?: string | null
+          requested_docs?: Json | null
+          resubmission_count?: number | null
+          resubmission_history?: Json | null
+          return_date?: string | null
+          return_time?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rideshare_history_status?: string | null
+          score?: number | null
+          scored_at?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          sms_opt_out_at?: string | null
+          source?: string | null
+          start_date?: string | null
+          start_timing?: string | null
+          state?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          trip_screenshots?: string[] | null
+          trips_completed?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          vehicle_id?: string | null
+          vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
+          weekly_hours?: number | null
+          weekly_rent?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_contact_leads: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          id: string | null
+          message: string | null
+          name: string | null
+          phone: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          id?: string | null
+          message?: string | null
+          name?: string | null
+          phone?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          id?: string | null
+          message?: string | null
+          name?: string | null
+          phone?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_driver_addresses: {
+        Row: {
+          application_id: string | null
+          city: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string | null
+          is_primary: boolean | null
+          label: string | null
+          line1: string | null
+          line2: string | null
+          source: string | null
+          state: string | null
+          updated_at: string | null
+          zip: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          city?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          is_primary?: boolean | null
+          label?: string | null
+          line1?: string | null
+          line2?: string | null
+          source?: string | null
+          state?: string | null
+          updated_at?: string | null
+          zip?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          city?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          is_primary?: boolean | null
+          label?: string | null
+          line1?: string | null
+          line2?: string | null
+          source?: string | null
+          state?: string | null
+          updated_at?: string | null
+          zip?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_driver_contacts: {
+        Row: {
+          application_id: string | null
+          consented_at: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string | null
+          is_primary: boolean | null
+          kind: string | null
+          label: string | null
+          receives_messages: boolean | null
+          updated_at: string | null
+          value: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          consented_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          is_primary?: boolean | null
+          kind?: string | null
+          label?: string | null
+          receives_messages?: boolean | null
+          updated_at?: string | null
+          value?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          consented_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          is_primary?: boolean | null
+          kind?: string | null
+          label?: string | null
+          receives_messages?: boolean | null
+          updated_at?: string | null
+          value?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_enrich_fleet_review_decisions: {
+        Row: {
+          application_id: string | null
+          assessment: Json | null
+          created_at: string | null
+          decided_by: string | null
+          decision: string | null
+          escalation_codes: string[] | null
+          id: string | null
+          idempotency_key: string | null
+          reason: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          assessment?: Json | null
+          created_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          escalation_codes?: string[] | null
+          id?: string | null
+          idempotency_key?: string | null
+          reason?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          assessment?: Json | null
+          created_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          escalation_codes?: string[] | null
+          id?: string | null
+          idempotency_key?: string | null
+          reason?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_enrich_identifiers: {
+        Row: {
+          blacklist_id: string | null
+          id: string | null
+          kind: string | null
+          value_norm: string | null
+        }
+        Insert: {
+          blacklist_id?: string | null
+          id?: string | null
+          kind?: string | null
+          value_norm?: string | null
+        }
+        Update: {
+          blacklist_id?: string | null
+          id?: string | null
+          kind?: string | null
+          value_norm?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_enrich_matches: {
+        Row: {
+          blacklist_id: string | null
+          clear_note: string | null
+          cleared_at: string | null
+          cleared_by: string | null
+          cleared_by_label: string | null
+          created_at: string | null
+          id: string | null
+          matched_kinds: string[] | null
+          matched_name: string | null
+          source_id: string | null
+          source_table: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          blacklist_id?: string | null
+          clear_note?: string | null
+          cleared_at?: string | null
+          cleared_by?: string | null
+          cleared_by_label?: string | null
+          created_at?: string | null
+          id?: string | null
+          matched_kinds?: string[] | null
+          matched_name?: string | null
+          source_id?: string | null
+          source_table?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          blacklist_id?: string | null
+          clear_note?: string | null
+          cleared_at?: string | null
+          cleared_by?: string | null
+          cleared_by_label?: string | null
+          created_at?: string | null
+          id?: string | null
+          matched_kinds?: string[] | null
+          matched_name?: string | null
+          source_id?: string | null
+          source_table?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_enrich_waitlist: {
+        Row: {
+          city: string | null
+          created_at: string | null
+          driver_status: string | null
+          email: string | null
+          full_name: string | null
+          gclid: string | null
+          id: string | null
+          market_id: string | null
+          notified_at: string | null
+          phone: string | null
+          pickup_date: string | null
+          promoted_application_id: string | null
+          promoted_at: string | null
+          review_flagged_at: string | null
+          review_reason: string | null
+          sms_consent: boolean | null
+          sms_consent_at: string | null
+          sms_consent_page: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
+          sms_consent_version: string | null
+          source: string | null
+          state: string | null
+          status: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+        }
+        Insert: {
+          city?: string | null
+          created_at?: string | null
+          driver_status?: string | null
+          email?: string | null
+          full_name?: string | null
+          gclid?: string | null
+          id?: string | null
+          market_id?: string | null
+          notified_at?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          promoted_application_id?: string | null
+          promoted_at?: string | null
+          review_flagged_at?: string | null
+          review_reason?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          source?: string | null
+          state?: string | null
+          status?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Update: {
+          city?: string | null
+          created_at?: string | null
+          driver_status?: string | null
+          email?: string | null
+          full_name?: string | null
+          gclid?: string | null
+          id?: string | null
+          market_id?: string | null
+          notified_at?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          promoted_application_id?: string | null
+          promoted_at?: string | null
+          review_flagged_at?: string | null
+          review_reason?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          source?: string | null
+          state?: string | null
+          status?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_fleet_review_decisions: {
+        Row: {
+          application_id: string | null
+          assessment: Json | null
+          created_at: string | null
+          decided_by: string | null
+          decision: string | null
+          escalation_codes: string[] | null
+          id: string | null
+          idempotency_key: string | null
+          reason: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          assessment?: Json | null
+          created_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          escalation_codes?: string[] | null
+          id?: string | null
+          idempotency_key?: string | null
+          reason?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          assessment?: Json | null
+          created_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          escalation_codes?: string[] | null
+          id?: string | null
+          idempotency_key?: string | null
+          reason?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_payments: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          created_at: string | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          hold_by: string | null
+          hold_reason: string | null
+          hold_started_at: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_renter_blacklist: {
+        Row: {
+          added_by: string | null
+          added_by_label: string | null
+          application_id: string | null
+          blacklisted_on: string | null
+          created_at: string | null
+          full_name: string | null
+          id: string | null
+          note: string | null
+          reason_code: string | null
+          removal_reason: string | null
+          removed_at: string | null
+          removed_by: string | null
+          removed_by_label: string | null
+        }
+        Insert: {
+          added_by?: string | null
+          added_by_label?: string | null
+          application_id?: string | null
+          blacklisted_on?: string | null
+          created_at?: string | null
+          full_name?: string | null
+          id?: string | null
+          note?: string | null
+          reason_code?: string | null
+          removal_reason?: string | null
+          removed_at?: string | null
+          removed_by?: string | null
+          removed_by_label?: string | null
+        }
+        Update: {
+          added_by?: string | null
+          added_by_label?: string | null
+          application_id?: string | null
+          blacklisted_on?: string | null
+          created_at?: string | null
+          full_name?: string | null
+          id?: string | null
+          note?: string | null
+          reason_code?: string | null
+          removal_reason?: string | null
+          removed_at?: string | null
+          removed_by?: string | null
+          removed_by_label?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_renter_blacklist_clearances: {
+        Row: {
+          application_id: string | null
+          blacklist_id: string | null
+          cleared_by: string | null
+          cleared_by_label: string | null
+          created_at: string | null
+          id: string | null
+          note: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          blacklist_id?: string | null
+          cleared_by?: string | null
+          cleared_by_label?: string | null
+          created_at?: string | null
+          id?: string | null
+          note?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          blacklist_id?: string | null
+          cleared_by?: string | null
+          cleared_by_label?: string | null
+          created_at?: string | null
+          id?: string | null
+          note?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_renter_blacklist_identifiers: {
+        Row: {
+          blacklist_id: string | null
+          id: string | null
+          kind: string | null
+          value_norm: string | null
+        }
+        Insert: {
+          blacklist_id?: string | null
+          id?: string | null
+          kind?: string | null
+          value_norm?: string | null
+        }
+        Update: {
+          blacklist_id?: string | null
+          id?: string | null
+          kind?: string | null
+          value_norm?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_renter_blacklist_matches: {
+        Row: {
+          blacklist_id: string | null
+          clear_note: string | null
+          cleared_at: string | null
+          cleared_by: string | null
+          cleared_by_label: string | null
+          created_at: string | null
+          id: string | null
+          matched_kinds: string[] | null
+          matched_name: string | null
+          source_id: string | null
+          source_table: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          blacklist_id?: string | null
+          clear_note?: string | null
+          cleared_at?: string | null
+          cleared_by?: string | null
+          cleared_by_label?: string | null
+          created_at?: string | null
+          id?: string | null
+          matched_kinds?: string[] | null
+          matched_name?: string | null
+          source_id?: string | null
+          source_table?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          blacklist_id?: string | null
+          clear_note?: string | null
+          cleared_at?: string | null
+          cleared_by?: string | null
+          cleared_by_label?: string | null
+          created_at?: string | null
+          id?: string | null
+          matched_kinds?: string[] | null
+          matched_name?: string | null
+          source_id?: string | null
+          source_table?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_blacklist_waitlist: {
+        Row: {
+          city: string | null
+          created_at: string | null
+          driver_status: string | null
+          email: string | null
+          full_name: string | null
+          gclid: string | null
+          id: string | null
+          market_id: string | null
+          notified_at: string | null
+          phone: string | null
+          pickup_date: string | null
+          promoted_application_id: string | null
+          promoted_at: string | null
+          review_flagged_at: string | null
+          review_reason: string | null
+          sms_consent: boolean | null
+          sms_consent_at: string | null
+          sms_consent_page: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
+          sms_consent_version: string | null
+          source: string | null
+          state: string | null
+          status: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+        }
+        Insert: {
+          city?: string | null
+          created_at?: string | null
+          driver_status?: string | null
+          email?: string | null
+          full_name?: string | null
+          gclid?: string | null
+          id?: string | null
+          market_id?: string | null
+          notified_at?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          promoted_application_id?: string | null
+          promoted_at?: string | null
+          review_flagged_at?: string | null
+          review_reason?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          source?: string | null
+          state?: string | null
+          status?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Update: {
+          city?: string | null
+          created_at?: string | null
+          driver_status?: string | null
+          email?: string | null
+          full_name?: string | null
+          gclid?: string | null
+          id?: string | null
+          market_id?: string | null
+          notified_at?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          promoted_application_id?: string | null
+          promoted_at?: string | null
+          review_flagged_at?: string | null
+          review_reason?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          source?: string | null
+          state?: string | null
+          status?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_insdocs_vehicle_expenses: {
+        Row: {
+          amount: number | null
+          category: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string | null
+          incurred_on: string | null
+          is_recurring: boolean | null
+          maintenance_record_id: string | null
+          notes: string | null
+          payment_method: string | null
+          receipt_mime: string | null
+          receipt_name: string | null
+          receipt_path: string | null
+          reference: string | null
+          rental_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          vendor_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          category?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string | null
+          incurred_on?: string | null
+          is_recurring?: boolean | null
+          maintenance_record_id?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          receipt_mime?: string | null
+          receipt_name?: string | null
+          receipt_path?: string | null
+          reference?: string | null
+          rental_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          vendor_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          category?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string | null
+          incurred_on?: string | null
+          is_recurring?: boolean | null
+          maintenance_record_id?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          receipt_mime?: string | null
+          receipt_name?: string | null
+          receipt_path?: string | null
+          reference?: string | null
+          rental_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          vendor_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261120_virginia_income_docs: {
+        Row: {
+          category: string | null
+          content_sha256: string | null
+          created_at: string | null
+          driver_id: string | null
+          evidence_class: string | null
+          expires_at: string | null
+          file_name: string | null
+          id: string | null
+          is_current: boolean | null
+          kind: string | null
+          label: string | null
+          mime_type: string | null
+          notes: string | null
+          page_count: number | null
+          partner_id: string | null
+          review_note: string | null
+          review_status: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          size_bytes: number | null
+          source: string | null
+          storage_bucket: string | null
+          storage_path: string | null
+          superseded_by: string | null
+          updated_at: string | null
+          uploaded_by: string | null
+          uploaded_by_role: string | null
+          vehicle_id: string | null
+          visibility: string[] | null
+        }
+        Insert: {
+          category?: string | null
+          content_sha256?: string | null
+          created_at?: string | null
+          driver_id?: string | null
+          evidence_class?: string | null
+          expires_at?: string | null
+          file_name?: string | null
+          id?: string | null
+          is_current?: boolean | null
+          kind?: string | null
+          label?: string | null
+          mime_type?: string | null
+          notes?: string | null
+          page_count?: number | null
+          partner_id?: string | null
+          review_note?: string | null
+          review_status?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          size_bytes?: number | null
+          source?: string | null
+          storage_bucket?: string | null
+          storage_path?: string | null
+          superseded_by?: string | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+          uploaded_by_role?: string | null
+          vehicle_id?: string | null
+          visibility?: string[] | null
+        }
+        Update: {
+          category?: string | null
+          content_sha256?: string | null
+          created_at?: string | null
+          driver_id?: string | null
+          evidence_class?: string | null
+          expires_at?: string | null
+          file_name?: string | null
+          id?: string | null
+          is_current?: boolean | null
+          kind?: string | null
+          label?: string | null
+          mime_type?: string | null
+          notes?: string | null
+          page_count?: number | null
+          partner_id?: string | null
+          review_note?: string | null
+          review_status?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          size_bytes?: number | null
+          source?: string | null
+          storage_bucket?: string | null
+          storage_path?: string | null
+          superseded_by?: string | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+          uploaded_by_role?: string | null
+          vehicle_id?: string | null
+          visibility?: string[] | null
+        }
+        Relationships: []
+      }
+      _backup_20261121_damayia_decline: {
+        Row: {
+          address: string | null
+          ai_flags: Json | null
+          ai_score: number | null
+          ai_summary: string | null
+          ai_tier: string | null
+          backed_up_at: string | null
+          background_check_status: string | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          city: string | null
+          consent_background: boolean | null
+          consent_gps: boolean | null
+          consent_prepay: boolean | null
+          consent_terms: boolean | null
+          contact_follow_up_on: string | null
+          contact_status: string | null
+          contact_status_at: string | null
+          contact_status_by: string | null
+          contact_status_note: string | null
+          contacted_at: string | null
+          contract_end_date: string | null
+          contract_start_date: string | null
+          created_at: string | null
+          current_step: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          deleted_reason: string | null
+          deposit_amount: number | null
+          deposit_paid: number | null
+          deposit_status: string | null
+          dob: string | null
+          doc_request_note: string | null
+          doc_request_sent_at: string | null
+          drive_type: string | null
+          earnings_verified_status: string | null
+          email: string | null
+          expected_duration: string | null
+          full_coverage_insurance: boolean | null
+          full_name: string | null
+          gclid: string | null
+          gig_status: string | null
+          how_heard: string | null
+          id: string | null
+          incident_count: number | null
+          income_proof_url: string | null
+          insurance_answer: string | null
+          insurance_carrier: string | null
+          insurance_doc_url: string | null
+          insurance_expires_on: string | null
+          insurance_policy_number: string | null
+          insurance_rideshare_endorsement: boolean | null
+          insurance_status: string | null
+          landing_page: string | null
+          legal_hold: boolean | null
+          license_expiration: string | null
+          license_number: string | null
+          license_photo_url: string | null
+          license_state: string | null
+          license_valid: boolean | null
+          market_id: string | null
+          mvr_status: string | null
+          notes: string | null
+          payment_method: string | null
+          payment_status: string | null
+          phone: string | null
+          pickup_date: string | null
+          pickup_time: string | null
+          platform_active: boolean | null
+          platform_status: string | null
+          platforms: string[] | null
+          primary_application_id: string | null
+          profile_screenshot_url: string | null
+          purged_at: string | null
+          rating: number | null
+          recovery_email_sent_24h: string | null
+          recovery_email_sent_72h: string | null
+          recovery_sent_at: string | null
+          referrer: string | null
+          rental_duration: string | null
+          rental_duration_days: number | null
+          rental_length: string | null
+          rental_term: string | null
+          renter_policy_status: string | null
+          requested_docs: Json | null
+          resubmission_count: number | null
+          resubmission_history: Json | null
+          return_date: string | null
+          return_time: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          rideshare_history_status: string | null
+          score: number | null
+          scored_at: string | null
+          sms_consent: boolean | null
+          sms_consent_at: string | null
+          sms_consent_page: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
+          sms_consent_version: string | null
+          sms_opt_out_at: string | null
+          source: string | null
+          start_date: string | null
+          start_timing: string | null
+          state: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          trip_screenshots: string[] | null
+          trips_completed: string | null
+          updated_at: string | null
+          user_id: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          vehicle_id: string | null
+          vehicle_size: string | null
+          waitlist_signed_up_at: string | null
+          waitlist_source: string | null
+          weekly_hours: number | null
+          weekly_rent: number | null
+          years_licensed: number | null
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
+          backed_up_at?: string | null
+          background_check_status?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string | null
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
+          contacted_at?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          created_at?: string | null
+          current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string | null
+          dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
+          drive_type?: string | null
+          earnings_verified_status?: string | null
+          email?: string | null
+          expected_duration?: string | null
+          full_coverage_insurance?: boolean | null
+          full_name?: string | null
+          gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
+          id?: string | null
+          incident_count?: number | null
+          income_proof_url?: string | null
+          insurance_answer?: string | null
+          insurance_carrier?: string | null
+          insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string | null
+          landing_page?: string | null
+          legal_hold?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          license_valid?: boolean | null
+          market_id?: string | null
+          mvr_status?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          pickup_time?: string | null
+          platform_active?: boolean | null
+          platform_status?: string | null
+          platforms?: string[] | null
+          primary_application_id?: string | null
+          profile_screenshot_url?: string | null
+          purged_at?: string | null
+          rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
+          referrer?: string | null
+          rental_duration?: string | null
+          rental_duration_days?: number | null
+          rental_length?: string | null
+          rental_term?: string | null
+          renter_policy_status?: string | null
+          requested_docs?: Json | null
+          resubmission_count?: number | null
+          resubmission_history?: Json | null
+          return_date?: string | null
+          return_time?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rideshare_history_status?: string | null
+          score?: number | null
+          scored_at?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          sms_opt_out_at?: string | null
+          source?: string | null
+          start_date?: string | null
+          start_timing?: string | null
+          state?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          trip_screenshots?: string[] | null
+          trips_completed?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          vehicle_id?: string | null
+          vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
+          weekly_hours?: number | null
+          weekly_rent?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
+          backed_up_at?: string | null
+          background_check_status?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string | null
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
+          contacted_at?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          created_at?: string | null
+          current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string | null
+          dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
+          drive_type?: string | null
+          earnings_verified_status?: string | null
+          email?: string | null
+          expected_duration?: string | null
+          full_coverage_insurance?: boolean | null
+          full_name?: string | null
+          gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
+          id?: string | null
+          incident_count?: number | null
+          income_proof_url?: string | null
+          insurance_answer?: string | null
+          insurance_carrier?: string | null
+          insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string | null
+          landing_page?: string | null
+          legal_hold?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          license_valid?: boolean | null
+          market_id?: string | null
+          mvr_status?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          pickup_time?: string | null
+          platform_active?: boolean | null
+          platform_status?: string | null
+          platforms?: string[] | null
+          primary_application_id?: string | null
+          profile_screenshot_url?: string | null
+          purged_at?: string | null
+          rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
+          referrer?: string | null
+          rental_duration?: string | null
+          rental_duration_days?: number | null
+          rental_length?: string | null
+          rental_term?: string | null
+          renter_policy_status?: string | null
+          requested_docs?: Json | null
+          resubmission_count?: number | null
+          resubmission_history?: Json | null
+          return_date?: string | null
+          return_time?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rideshare_history_status?: string | null
+          score?: number | null
+          scored_at?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          sms_opt_out_at?: string | null
+          source?: string | null
+          start_date?: string | null
+          start_timing?: string | null
+          state?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          trip_screenshots?: string[] | null
+          trips_completed?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          vehicle_id?: string | null
+          vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
+          weekly_hours?: number | null
+          weekly_rent?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261121_regina_app_settings: {
+        Row: {
+          key: string | null
+          updated_at: string | null
+          value: Json | null
+        }
+        Insert: {
+          key?: string | null
+          updated_at?: string | null
+          value?: Json | null
+        }
+        Update: {
+          key?: string | null
+          updated_at?: string | null
+          value?: Json | null
+        }
+        Relationships: []
+      }
+      _backup_20261121_regina_payments: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261121_regina_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          created_at: string | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          hold_by: string | null
+          hold_reason: string | null
+          hold_started_at: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_applications_test_invalid: {
+        Row: {
+          address: string | null
+          ai_flags: Json | null
+          ai_score: number | null
+          ai_summary: string | null
+          ai_tier: string | null
+          background_check_status: string | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          city: string | null
+          consent_background: boolean | null
+          consent_gps: boolean | null
+          consent_prepay: boolean | null
+          consent_terms: boolean | null
+          contact_follow_up_on: string | null
+          contact_status: string | null
+          contact_status_at: string | null
+          contact_status_by: string | null
+          contact_status_note: string | null
+          contacted_at: string | null
+          contract_end_date: string | null
+          contract_start_date: string | null
+          created_at: string | null
+          current_step: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          deleted_reason: string | null
+          deposit_amount: number | null
+          deposit_paid: number | null
+          deposit_status: string | null
+          dob: string | null
+          doc_request_note: string | null
+          doc_request_sent_at: string | null
+          drive_type: string | null
+          earnings_verified_status: string | null
+          email: string | null
+          expected_duration: string | null
+          full_coverage_insurance: boolean | null
+          full_name: string | null
+          gclid: string | null
+          gig_status: string | null
+          how_heard: string | null
+          id: string | null
+          incident_count: number | null
+          income_proof_url: string | null
+          insurance_answer: string | null
+          insurance_carrier: string | null
+          insurance_doc_url: string | null
+          insurance_expires_on: string | null
+          insurance_policy_number: string | null
+          insurance_rideshare_endorsement: boolean | null
+          insurance_status: string | null
+          landing_page: string | null
+          legal_hold: boolean | null
+          license_expiration: string | null
+          license_number: string | null
+          license_photo_url: string | null
+          license_state: string | null
+          license_valid: boolean | null
+          market_id: string | null
+          mvr_status: string | null
+          notes: string | null
+          payment_method: string | null
+          payment_status: string | null
+          phone: string | null
+          pickup_date: string | null
+          pickup_time: string | null
+          platform_active: boolean | null
+          platform_status: string | null
+          platforms: string[] | null
+          primary_application_id: string | null
+          profile_screenshot_url: string | null
+          purged_at: string | null
+          rating: number | null
+          recovery_email_sent_24h: string | null
+          recovery_email_sent_72h: string | null
+          recovery_sent_at: string | null
+          referrer: string | null
+          rental_duration: string | null
+          rental_duration_days: number | null
+          rental_length: string | null
+          rental_term: string | null
+          renter_policy_status: string | null
+          requested_docs: Json | null
+          resubmission_count: number | null
+          resubmission_history: Json | null
+          return_date: string | null
+          return_time: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          rideshare_history_status: string | null
+          score: number | null
+          scored_at: string | null
+          sms_consent: boolean | null
+          sms_consent_at: string | null
+          sms_consent_page: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
+          sms_consent_version: string | null
+          sms_opt_out_at: string | null
+          source: string | null
+          start_date: string | null
+          start_timing: string | null
+          state: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          trip_screenshots: string[] | null
+          trips_completed: string | null
+          updated_at: string | null
+          user_id: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          vehicle_id: string | null
+          vehicle_size: string | null
+          waitlist_signed_up_at: string | null
+          waitlist_source: string | null
+          weekly_hours: number | null
+          weekly_rent: number | null
+          years_licensed: number | null
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
+          background_check_status?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string | null
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
+          contacted_at?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          created_at?: string | null
+          current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string | null
+          dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
+          drive_type?: string | null
+          earnings_verified_status?: string | null
+          email?: string | null
+          expected_duration?: string | null
+          full_coverage_insurance?: boolean | null
+          full_name?: string | null
+          gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
+          id?: string | null
+          incident_count?: number | null
+          income_proof_url?: string | null
+          insurance_answer?: string | null
+          insurance_carrier?: string | null
+          insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string | null
+          landing_page?: string | null
+          legal_hold?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          license_valid?: boolean | null
+          market_id?: string | null
+          mvr_status?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          pickup_time?: string | null
+          platform_active?: boolean | null
+          platform_status?: string | null
+          platforms?: string[] | null
+          primary_application_id?: string | null
+          profile_screenshot_url?: string | null
+          purged_at?: string | null
+          rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
+          referrer?: string | null
+          rental_duration?: string | null
+          rental_duration_days?: number | null
+          rental_length?: string | null
+          rental_term?: string | null
+          renter_policy_status?: string | null
+          requested_docs?: Json | null
+          resubmission_count?: number | null
+          resubmission_history?: Json | null
+          return_date?: string | null
+          return_time?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rideshare_history_status?: string | null
+          score?: number | null
+          scored_at?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          sms_opt_out_at?: string | null
+          source?: string | null
+          start_date?: string | null
+          start_timing?: string | null
+          state?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          trip_screenshots?: string[] | null
+          trips_completed?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          vehicle_id?: string | null
+          vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
+          weekly_hours?: number | null
+          weekly_rent?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
+          background_check_status?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string | null
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
+          contacted_at?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          created_at?: string | null
+          current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string | null
+          dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
+          drive_type?: string | null
+          earnings_verified_status?: string | null
+          email?: string | null
+          expected_duration?: string | null
+          full_coverage_insurance?: boolean | null
+          full_name?: string | null
+          gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
+          id?: string | null
+          incident_count?: number | null
+          income_proof_url?: string | null
+          insurance_answer?: string | null
+          insurance_carrier?: string | null
+          insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string | null
+          landing_page?: string | null
+          legal_hold?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          license_valid?: boolean | null
+          market_id?: string | null
+          mvr_status?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          pickup_time?: string | null
+          platform_active?: boolean | null
+          platform_status?: string | null
+          platforms?: string[] | null
+          primary_application_id?: string | null
+          profile_screenshot_url?: string | null
+          purged_at?: string | null
+          rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
+          referrer?: string | null
+          rental_duration?: string | null
+          rental_duration_days?: number | null
+          rental_length?: string | null
+          rental_term?: string | null
+          renter_policy_status?: string | null
+          requested_docs?: Json | null
+          resubmission_count?: number | null
+          resubmission_history?: Json | null
+          return_date?: string | null
+          return_time?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rideshare_history_status?: string | null
+          score?: number | null
+          scored_at?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          sms_opt_out_at?: string | null
+          source?: string | null
+          start_date?: string | null
+          start_timing?: string | null
+          state?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          trip_screenshots?: string[] | null
+          trips_completed?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          vehicle_id?: string | null
+          vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
+          weekly_hours?: number | null
+          weekly_rent?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_collections_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          created_at: string | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          hold_by: string | null
+          hold_reason: string | null
+          hold_started_at: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_damon_merge_payments: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_damon_pay_payments: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_damon_pay_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          created_at: string | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          hold_by: string | null
+          hold_reason: string | null
+          hold_started_at: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_damon_waive_payments: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_damon_waive_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          created_at: string | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          hold_by: string | null
+          hold_reason: string | null
+          hold_started_at: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_damon_waive_waivers: {
+        Row: {
+          amount_waived: number | null
+          created_at: string | null
+          due_date: string | null
+          id: string | null
+          reason: string | null
+          rental_id: string | null
+          updated_at: string | null
+          waived_by: string | null
+          waived_by_email: string | null
+          waived_through: string | null
+        }
+        Insert: {
+          amount_waived?: number | null
+          created_at?: string | null
+          due_date?: string | null
+          id?: string | null
+          reason?: string | null
+          rental_id?: string | null
+          updated_at?: string | null
+          waived_by?: string | null
+          waived_by_email?: string | null
+          waived_through?: string | null
+        }
+        Update: {
+          amount_waived?: number | null
+          created_at?: string | null
+          due_date?: string | null
+          id?: string | null
+          reason?: string | null
+          rental_id?: string | null
+          updated_at?: string | null
+          waived_by?: string | null
+          waived_by_email?: string | null
+          waived_through?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_email_deliveries_defs: {
+        Row: {
+          definition: string | null
+          kind: string | null
+          name: string | null
+          taken_at: string | null
+        }
+        Insert: {
+          definition?: string | null
+          kind?: string | null
+          name?: string | null
+          taken_at?: string | null
+        }
+        Update: {
+          definition?: string | null
+          kind?: string | null
+          name?: string | null
+          taken_at?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_email_deliveries_leadalert_cleanup: {
+        Row: {
+          accepted_at: string | null
+          bounced_at: string | null
+          complained_at: string | null
+          created_at: string | null
+          delivered_at: string | null
+          failed_at: string | null
+          id: string | null
+          provider_reason: string | null
+          recipient: string | null
+          resend_message_id: string | null
+          state: string | null
+          updated_at: string | null
+          workflow: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          bounced_at?: string | null
+          complained_at?: string | null
+          created_at?: string | null
+          delivered_at?: string | null
+          failed_at?: string | null
+          id?: string | null
+          provider_reason?: string | null
+          recipient?: string | null
+          resend_message_id?: string | null
+          state?: string | null
+          updated_at?: string | null
+          workflow?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          bounced_at?: string | null
+          complained_at?: string | null
+          created_at?: string | null
+          delivered_at?: string | null
+          failed_at?: string | null
+          id?: string | null
+          provider_reason?: string | null
+          recipient?: string | null
+          resend_message_id?: string | null
+          state?: string | null
+          updated_at?: string | null
+          workflow?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_james_swap_agreements: {
+        Row: {
+          application_id: string | null
+          archive_attempts: number | null
+          archive_error: string | null
+          archive_last_attempt_at: string | null
+          archive_status: string | null
+          auth_method: string | null
+          body: string | null
+          body_sha256: string | null
+          company_signer_name: string | null
+          company_signer_title: string | null
+          completed_at: string | null
+          completed_document_id: string | null
+          created_at: string | null
+          created_by: string | null
+          document_id: string | null
+          email_attempted_at: string | null
+          email_error: string | null
+          email_status: string | null
+          expires_at: string | null
+          id: string | null
+          merge_data: Json | null
+          metadata: Json | null
+          rental_id: string | null
+          sent_at: string | null
+          sha256: string | null
+          signed_at: string | null
+          signer_email: string | null
+          signer_ip: string | null
+          signer_name: string | null
+          signer_user_agent: string | null
+          signing_started_at: string | null
+          sms_attempted_at: string | null
+          sms_error: string | null
+          sms_status: string | null
+          source: string | null
+          status: string | null
+          template_id: string | null
+          title: string | null
+          token_expires_at: string | null
+          token_hash: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          viewed_at: string | null
+          voided_at: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          archive_attempts?: number | null
+          archive_error?: string | null
+          archive_last_attempt_at?: string | null
+          archive_status?: string | null
+          auth_method?: string | null
+          body?: string | null
+          body_sha256?: string | null
+          company_signer_name?: string | null
+          company_signer_title?: string | null
+          completed_at?: string | null
+          completed_document_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          document_id?: string | null
+          email_attempted_at?: string | null
+          email_error?: string | null
+          email_status?: string | null
+          expires_at?: string | null
+          id?: string | null
+          merge_data?: Json | null
+          metadata?: Json | null
+          rental_id?: string | null
+          sent_at?: string | null
+          sha256?: string | null
+          signed_at?: string | null
+          signer_email?: string | null
+          signer_ip?: string | null
+          signer_name?: string | null
+          signer_user_agent?: string | null
+          signing_started_at?: string | null
+          sms_attempted_at?: string | null
+          sms_error?: string | null
+          sms_status?: string | null
+          source?: string | null
+          status?: string | null
+          template_id?: string | null
+          title?: string | null
+          token_expires_at?: string | null
+          token_hash?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          viewed_at?: string | null
+          voided_at?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          archive_attempts?: number | null
+          archive_error?: string | null
+          archive_last_attempt_at?: string | null
+          archive_status?: string | null
+          auth_method?: string | null
+          body?: string | null
+          body_sha256?: string | null
+          company_signer_name?: string | null
+          company_signer_title?: string | null
+          completed_at?: string | null
+          completed_document_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          document_id?: string | null
+          email_attempted_at?: string | null
+          email_error?: string | null
+          email_status?: string | null
+          expires_at?: string | null
+          id?: string | null
+          merge_data?: Json | null
+          metadata?: Json | null
+          rental_id?: string | null
+          sent_at?: string | null
+          sha256?: string | null
+          signed_at?: string | null
+          signer_email?: string | null
+          signer_ip?: string | null
+          signer_name?: string | null
+          signer_user_agent?: string | null
+          signing_started_at?: string | null
+          sms_attempted_at?: string | null
+          sms_error?: string | null
+          sms_status?: string | null
+          source?: string | null
+          status?: string | null
+          template_id?: string | null
+          title?: string | null
+          token_expires_at?: string | null
+          token_hash?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          viewed_at?: string | null
+          voided_at?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_james_swap_applications: {
+        Row: {
+          address: string | null
+          ai_flags: Json | null
+          ai_score: number | null
+          ai_summary: string | null
+          ai_tier: string | null
+          background_check_status: string | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          city: string | null
+          consent_background: boolean | null
+          consent_gps: boolean | null
+          consent_prepay: boolean | null
+          consent_terms: boolean | null
+          contact_follow_up_on: string | null
+          contact_status: string | null
+          contact_status_at: string | null
+          contact_status_by: string | null
+          contact_status_note: string | null
+          contacted_at: string | null
+          contract_end_date: string | null
+          contract_start_date: string | null
+          created_at: string | null
+          current_step: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          deleted_reason: string | null
+          deposit_amount: number | null
+          deposit_paid: number | null
+          deposit_status: string | null
+          dob: string | null
+          doc_request_note: string | null
+          doc_request_sent_at: string | null
+          drive_type: string | null
+          earnings_verified_status: string | null
+          email: string | null
+          expected_duration: string | null
+          full_coverage_insurance: boolean | null
+          full_name: string | null
+          gclid: string | null
+          gig_status: string | null
+          how_heard: string | null
+          id: string | null
+          incident_count: number | null
+          income_proof_url: string | null
+          insurance_answer: string | null
+          insurance_carrier: string | null
+          insurance_doc_url: string | null
+          insurance_expires_on: string | null
+          insurance_policy_number: string | null
+          insurance_rideshare_endorsement: boolean | null
+          insurance_status: string | null
+          landing_page: string | null
+          legal_hold: boolean | null
+          license_expiration: string | null
+          license_number: string | null
+          license_photo_url: string | null
+          license_state: string | null
+          license_valid: boolean | null
+          market_id: string | null
+          mvr_status: string | null
+          notes: string | null
+          payment_method: string | null
+          payment_status: string | null
+          phone: string | null
+          pickup_date: string | null
+          pickup_time: string | null
+          platform_active: boolean | null
+          platform_status: string | null
+          platforms: string[] | null
+          primary_application_id: string | null
+          profile_screenshot_url: string | null
+          purged_at: string | null
+          rating: number | null
+          recovery_email_sent_24h: string | null
+          recovery_email_sent_72h: string | null
+          recovery_sent_at: string | null
+          referrer: string | null
+          rental_duration: string | null
+          rental_duration_days: number | null
+          rental_length: string | null
+          rental_term: string | null
+          renter_policy_status: string | null
+          requested_docs: Json | null
+          resubmission_count: number | null
+          resubmission_history: Json | null
+          return_date: string | null
+          return_time: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          rideshare_history_status: string | null
+          score: number | null
+          scored_at: string | null
+          sms_consent: boolean | null
+          sms_consent_at: string | null
+          sms_consent_page: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
+          sms_consent_version: string | null
+          sms_opt_out_at: string | null
+          source: string | null
+          start_date: string | null
+          start_timing: string | null
+          state: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          trip_screenshots: string[] | null
+          trips_completed: string | null
+          updated_at: string | null
+          user_id: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          vehicle_id: string | null
+          vehicle_size: string | null
+          waitlist_signed_up_at: string | null
+          waitlist_source: string | null
+          weekly_hours: number | null
+          weekly_rent: number | null
+          years_licensed: number | null
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
+          background_check_status?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string | null
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
+          contacted_at?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          created_at?: string | null
+          current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string | null
+          dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
+          drive_type?: string | null
+          earnings_verified_status?: string | null
+          email?: string | null
+          expected_duration?: string | null
+          full_coverage_insurance?: boolean | null
+          full_name?: string | null
+          gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
+          id?: string | null
+          incident_count?: number | null
+          income_proof_url?: string | null
+          insurance_answer?: string | null
+          insurance_carrier?: string | null
+          insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string | null
+          landing_page?: string | null
+          legal_hold?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          license_valid?: boolean | null
+          market_id?: string | null
+          mvr_status?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          pickup_time?: string | null
+          platform_active?: boolean | null
+          platform_status?: string | null
+          platforms?: string[] | null
+          primary_application_id?: string | null
+          profile_screenshot_url?: string | null
+          purged_at?: string | null
+          rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
+          referrer?: string | null
+          rental_duration?: string | null
+          rental_duration_days?: number | null
+          rental_length?: string | null
+          rental_term?: string | null
+          renter_policy_status?: string | null
+          requested_docs?: Json | null
+          resubmission_count?: number | null
+          resubmission_history?: Json | null
+          return_date?: string | null
+          return_time?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rideshare_history_status?: string | null
+          score?: number | null
+          scored_at?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          sms_opt_out_at?: string | null
+          source?: string | null
+          start_date?: string | null
+          start_timing?: string | null
+          state?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          trip_screenshots?: string[] | null
+          trips_completed?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          vehicle_id?: string | null
+          vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
+          weekly_hours?: number | null
+          weekly_rent?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
+          background_check_status?: string | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string | null
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
+          contacted_at?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          created_at?: string | null
+          current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string | null
+          dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
+          drive_type?: string | null
+          earnings_verified_status?: string | null
+          email?: string | null
+          expected_duration?: string | null
+          full_coverage_insurance?: boolean | null
+          full_name?: string | null
+          gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
+          id?: string | null
+          incident_count?: number | null
+          income_proof_url?: string | null
+          insurance_answer?: string | null
+          insurance_carrier?: string | null
+          insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string | null
+          landing_page?: string | null
+          legal_hold?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          license_valid?: boolean | null
+          market_id?: string | null
+          mvr_status?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          phone?: string | null
+          pickup_date?: string | null
+          pickup_time?: string | null
+          platform_active?: boolean | null
+          platform_status?: string | null
+          platforms?: string[] | null
+          primary_application_id?: string | null
+          profile_screenshot_url?: string | null
+          purged_at?: string | null
+          rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
+          referrer?: string | null
+          rental_duration?: string | null
+          rental_duration_days?: number | null
+          rental_length?: string | null
+          rental_term?: string | null
+          renter_policy_status?: string | null
+          requested_docs?: Json | null
+          resubmission_count?: number | null
+          resubmission_history?: Json | null
+          return_date?: string | null
+          return_time?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          rideshare_history_status?: string | null
+          score?: number | null
+          scored_at?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
+          sms_opt_out_at?: string | null
+          source?: string | null
+          start_date?: string | null
+          start_timing?: string | null
+          state?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          trip_screenshots?: string[] | null
+          trips_completed?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          vehicle_id?: string | null
+          vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
+          weekly_hours?: number | null
+          weekly_rent?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_james_swap_payments: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_james_swap_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          created_at: string | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          hold_by: string | null
+          hold_reason: string | null
+          hold_started_at: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          created_at?: string | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_james_swap_swaps: {
+        Row: {
+          agreement_id: string | null
+          application_id: string | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string | null
+          from_vehicle_id: string | null
+          from_vehicle_status: string | null
+          id: string | null
+          idempotency_key: string | null
+          insurance_override_at: string | null
+          insurance_override_by: string | null
+          insurance_override_reason: string | null
+          note: string | null
+          pickup_fuel: string | null
+          pickup_mileage: number | null
+          pickup_reading_id: string | null
+          previous_agreement_id: string | null
+          previous_document_id: string | null
+          reason: string | null
+          reason_code: string | null
+          rental_id: string | null
+          replaced_pickup_reading_id: string | null
+          requested_by: string | null
+          requested_by_label: string | null
+          return_fuel: string | null
+          return_mileage: number | null
+          return_reading_id: string | null
+          signed_at: string | null
+          status: string | null
+          swap_number: number | null
+          to_vehicle_id: string | null
+          updated_at: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          agreement_id?: string | null
+          application_id?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string | null
+          from_vehicle_id?: string | null
+          from_vehicle_status?: string | null
+          id?: string | null
+          idempotency_key?: string | null
+          insurance_override_at?: string | null
+          insurance_override_by?: string | null
+          insurance_override_reason?: string | null
+          note?: string | null
+          pickup_fuel?: string | null
+          pickup_mileage?: number | null
+          pickup_reading_id?: string | null
+          previous_agreement_id?: string | null
+          previous_document_id?: string | null
+          reason?: string | null
+          reason_code?: string | null
+          rental_id?: string | null
+          replaced_pickup_reading_id?: string | null
+          requested_by?: string | null
+          requested_by_label?: string | null
+          return_fuel?: string | null
+          return_mileage?: number | null
+          return_reading_id?: string | null
+          signed_at?: string | null
+          status?: string | null
+          swap_number?: number | null
+          to_vehicle_id?: string | null
+          updated_at?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          agreement_id?: string | null
+          application_id?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string | null
+          from_vehicle_id?: string | null
+          from_vehicle_status?: string | null
+          id?: string | null
+          idempotency_key?: string | null
+          insurance_override_at?: string | null
+          insurance_override_by?: string | null
+          insurance_override_reason?: string | null
+          note?: string | null
+          pickup_fuel?: string | null
+          pickup_mileage?: number | null
+          pickup_reading_id?: string | null
+          previous_agreement_id?: string | null
+          previous_document_id?: string | null
+          reason?: string | null
+          reason_code?: string | null
+          rental_id?: string | null
+          replaced_pickup_reading_id?: string | null
+          requested_by?: string | null
+          requested_by_label?: string | null
+          return_fuel?: string | null
+          return_mileage?: number | null
+          return_reading_id?: string | null
+          signed_at?: string | null
+          status?: string | null
+          swap_number?: number | null
+          to_vehicle_id?: string | null
+          updated_at?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261122_james_swap_vehicles: {
+        Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          badges: string[] | null
+          body_type: string | null
+          color: string | null
+          created_at: string | null
+          current_odometer: number | null
+          deposit: number | null
+          description: string | null
+          doors: number | null
+          fuel_type: string | null
+          gps_battery: string | null
+          gps_device_id: string | null
+          gps_geofence_status: string | null
+          gps_imei: string | null
+          gps_install_notes: string | null
+          gps_installed_on: string | null
+          gps_last_location: Json | null
+          gps_last_ping_at: string | null
+          gps_odometer: number | null
+          gps_provider: string | null
+          gps_serial: string | null
+          gps_sim: string | null
+          gps_status: string | null
+          gps_tracking_url: string | null
+          id: string | null
+          insurance_agent_email: string | null
+          insurance_agent_name: string | null
+          insurance_agent_phone: string | null
+          insurance_carrier: string | null
+          insurance_coverage: string | null
+          insurance_effective_on: string | null
+          insurance_expires_on: string | null
+          insurance_policy_number: string | null
+          insurance_status: string | null
+          internal_notes: string | null
+          key_count: number | null
+          key_location: string | null
+          key_notes: string | null
+          key_tag: string | null
+          key_type: string | null
+          last_brake_inspection_date: string | null
+          last_oil_change_miles: number | null
+          last_tire_date: string | null
+          license_plate: string | null
+          maintenance_status: string | null
+          make: string | null
+          market_id: string | null
+          miles_per_tank: number | null
+          model: string | null
+          monthly_rate: number | null
+          mpg: number | null
+          odometer_updated_at: string | null
+          oil_interval_miles: number | null
+          partner_id: string | null
+          photos: string[] | null
+          plate_expires_on: string | null
+          plate_state: string | null
+          registration_expires_on: string | null
+          registration_number: string | null
+          registration_state: string | null
+          seats: number | null
+          spare_key: boolean | null
+          status: string | null
+          title_number: string | null
+          title_on_file: boolean | null
+          title_status: string | null
+          toll_account: string | null
+          toll_transponder_id: string | null
+          trim: string | null
+          uber_eligibility: string[] | null
+          unit_number: string | null
+          vin: string | null
+          weekly_rate: number | null
+          year: number | null
+        }
+        Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          badges?: string[] | null
+          body_type?: string | null
+          color?: string | null
+          created_at?: string | null
+          current_odometer?: number | null
+          deposit?: number | null
+          description?: string | null
+          doors?: number | null
+          fuel_type?: string | null
+          gps_battery?: string | null
+          gps_device_id?: string | null
+          gps_geofence_status?: string | null
+          gps_imei?: string | null
+          gps_install_notes?: string | null
+          gps_installed_on?: string | null
+          gps_last_location?: Json | null
+          gps_last_ping_at?: string | null
+          gps_odometer?: number | null
+          gps_provider?: string | null
+          gps_serial?: string | null
+          gps_sim?: string | null
+          gps_status?: string | null
+          gps_tracking_url?: string | null
+          id?: string | null
+          insurance_agent_email?: string | null
+          insurance_agent_name?: string | null
+          insurance_agent_phone?: string | null
+          insurance_carrier?: string | null
+          insurance_coverage?: string | null
+          insurance_effective_on?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_status?: string | null
+          internal_notes?: string | null
+          key_count?: number | null
+          key_location?: string | null
+          key_notes?: string | null
+          key_tag?: string | null
+          key_type?: string | null
+          last_brake_inspection_date?: string | null
+          last_oil_change_miles?: number | null
+          last_tire_date?: string | null
+          license_plate?: string | null
+          maintenance_status?: string | null
+          make?: string | null
+          market_id?: string | null
+          miles_per_tank?: number | null
+          model?: string | null
+          monthly_rate?: number | null
+          mpg?: number | null
+          odometer_updated_at?: string | null
+          oil_interval_miles?: number | null
+          partner_id?: string | null
+          photos?: string[] | null
+          plate_expires_on?: string | null
+          plate_state?: string | null
+          registration_expires_on?: string | null
+          registration_number?: string | null
+          registration_state?: string | null
+          seats?: number | null
+          spare_key?: boolean | null
+          status?: string | null
+          title_number?: string | null
+          title_on_file?: boolean | null
+          title_status?: string | null
+          toll_account?: string | null
+          toll_transponder_id?: string | null
+          trim?: string | null
+          uber_eligibility?: string[] | null
+          unit_number?: string | null
+          vin?: string | null
+          weekly_rate?: number | null
+          year?: number | null
+        }
+        Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          badges?: string[] | null
+          body_type?: string | null
+          color?: string | null
+          created_at?: string | null
+          current_odometer?: number | null
+          deposit?: number | null
+          description?: string | null
+          doors?: number | null
+          fuel_type?: string | null
+          gps_battery?: string | null
+          gps_device_id?: string | null
+          gps_geofence_status?: string | null
+          gps_imei?: string | null
+          gps_install_notes?: string | null
+          gps_installed_on?: string | null
+          gps_last_location?: Json | null
+          gps_last_ping_at?: string | null
+          gps_odometer?: number | null
+          gps_provider?: string | null
+          gps_serial?: string | null
+          gps_sim?: string | null
+          gps_status?: string | null
+          gps_tracking_url?: string | null
+          id?: string | null
+          insurance_agent_email?: string | null
+          insurance_agent_name?: string | null
+          insurance_agent_phone?: string | null
+          insurance_carrier?: string | null
+          insurance_coverage?: string | null
+          insurance_effective_on?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_status?: string | null
+          internal_notes?: string | null
+          key_count?: number | null
+          key_location?: string | null
+          key_notes?: string | null
+          key_tag?: string | null
+          key_type?: string | null
+          last_brake_inspection_date?: string | null
+          last_oil_change_miles?: number | null
+          last_tire_date?: string | null
+          license_plate?: string | null
+          maintenance_status?: string | null
+          make?: string | null
+          market_id?: string | null
+          miles_per_tank?: number | null
+          model?: string | null
+          monthly_rate?: number | null
+          mpg?: number | null
+          odometer_updated_at?: string | null
+          oil_interval_miles?: number | null
+          partner_id?: string | null
+          photos?: string[] | null
+          plate_expires_on?: string | null
+          plate_state?: string | null
+          registration_expires_on?: string | null
+          registration_number?: string | null
+          registration_state?: string | null
+          seats?: number | null
+          spare_key?: boolean | null
+          status?: string | null
+          title_number?: string | null
+          title_on_file?: boolean | null
+          title_status?: string | null
+          toll_account?: string | null
+          toll_transponder_id?: string | null
+          trim?: string | null
+          uber_eligibility?: string[] | null
+          unit_number?: string | null
+          vin?: string | null
+          weekly_rate?: number | null
+          year?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261123_automation_controls: {
+        Row: {
+          key: string | null
+          updated_at: string | null
+          value: Json | null
+        }
+        Insert: {
+          key?: string | null
+          updated_at?: string | null
+          value?: Json | null
+        }
+        Update: {
+          key?: string | null
+          updated_at?: string | null
+          value?: Json | null
+        }
+        Relationships: []
+      }
+      _backup_20261123_maintenance_schedule_roll_next_fn: {
+        Row: {
+          backed_up_at: string | null
+          definition: string | null
+        }
+        Insert: {
+          backed_up_at?: string | null
+          definition?: string | null
+        }
+        Update: {
+          backed_up_at?: string | null
+          definition?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261123_maintenance_schedules: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          default_id: string | null
+          id: string | null
+          interval_days: number | null
+          interval_miles: number | null
+          is_active: boolean | null
+          is_override: boolean | null
+          item: string | null
+          last_done_miles: number | null
+          last_done_on: string | null
+          next_due_miles: number | null
+          next_due_on: string | null
+          notes: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          default_id?: string | null
+          id?: string | null
+          interval_days?: number | null
+          interval_miles?: number | null
+          is_active?: boolean | null
+          is_override?: boolean | null
+          item?: string | null
+          last_done_miles?: number | null
+          last_done_on?: string | null
+          next_due_miles?: number | null
+          next_due_on?: string | null
+          notes?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          default_id?: string | null
+          id?: string | null
+          interval_days?: number | null
+          interval_miles?: number | null
+          is_active?: boolean | null
+          is_override?: boolean | null
+          item?: string | null
+          last_done_miles?: number | null
+          last_done_on?: string | null
+          next_due_miles?: number | null
+          next_due_on?: string | null
+          notes?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      _backup_20261123_regina_app_settings: {
+        Row: {
+          key: string | null
+          updated_at: string | null
+          value: Json | null
+        }
+        Insert: {
+          key?: string | null
+          updated_at?: string | null
+          value?: Json | null
+        }
+        Update: {
+          key?: string | null
+          updated_at?: string | null
+          value?: Json | null
+        }
+        Relationships: []
+      }
+      _backup_20261123_regina_autopay_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          close_reason: string | null
+          created_at: string | null
+          days_late_at_repo: number | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          hold_by: string | null
+          hold_reason: string | null
+          hold_started_at: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          repossessed_on: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          close_reason?: string | null
+          created_at?: string | null
+          days_late_at_repo?: number | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          repossessed_on?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          close_reason?: string | null
+          created_at?: string | null
+          days_late_at_repo?: number | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          repossessed_on?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261123_regina_enddate_rentals: {
+        Row: {
+          application_id: string | null
+          autopay_active: boolean | null
+          balance_due_cents: number | null
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
+          close_reason: string | null
+          created_at: string | null
+          days_late_at_repo: number | null
+          deposit_amount: number | null
+          deposit_held: boolean | null
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string | null
+          driver_id: string | null
+          end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
+          hold_by: string | null
+          hold_reason: string | null
+          hold_started_at: string | null
+          id: string | null
+          next_payment_due: string | null
+          payment_status: string | null
+          pickup_reading_id: string | null
+          repossessed_on: string | null
+          reservation_deposit_amount: number | null
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean | null
+          reservation_deposit_status: string | null
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
+          return_reading_id: string | null
+          start_date: string | null
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          close_reason?: string | null
+          created_at?: string | null
+          days_late_at_repo?: number | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          repossessed_on?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          autopay_active?: boolean | null
+          balance_due_cents?: number | null
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
+          close_reason?: string | null
+          created_at?: string | null
+          days_late_at_repo?: number | null
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string | null
+          driver_id?: string | null
+          end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
+          id?: string | null
+          next_payment_due?: string | null
+          payment_status?: string | null
+          pickup_reading_id?: string | null
+          repossessed_on?: string | null
+          reservation_deposit_amount?: number | null
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean | null
+          reservation_deposit_status?: string | null
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
+          return_reading_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
+      _backup_20261123_regina_payments: {
+        Row: {
+          amount: number | null
+          attempt_count: number | null
+          balance_due: number | null
+          created_at: string | null
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string | null
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number | null
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number | null
+          refunded_at: string | null
+          rental_id: string | null
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string | null
+          updated_at: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          attempt_count?: number | null
+          balance_due?: number | null
+          created_at?: string | null
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string | null
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number | null
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number | null
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string | null
+          updated_at?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
       agreement_templates: {
         Row: {
           body: string
@@ -58,6 +6547,7 @@ export type Database = {
           idempotency_key: string | null
           message_id: string | null
           recorded_by: string
+          staff_event_id: string | null
           start_date: string
           summary: string
           vehicle_id: string
@@ -77,6 +6567,7 @@ export type Database = {
           idempotency_key?: string | null
           message_id?: string | null
           recorded_by: string
+          staff_event_id?: string | null
           start_date: string
           summary: string
           vehicle_id: string
@@ -96,6 +6587,7 @@ export type Database = {
           idempotency_key?: string | null
           message_id?: string | null
           recorded_by?: string
+          staff_event_id?: string | null
           start_date?: string
           summary?: string
           vehicle_id?: string
@@ -108,6 +6600,13 @@ export type Database = {
             columns: ["application_id"]
             isOneToOne: false
             referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agreement_terms_confirmations_staff_event_id_fkey"
+            columns: ["staff_event_id"]
+            isOneToOne: false
+            referencedRelation: "staff_terms_confirmations"
             referencedColumns: ["id"]
           },
         ]
@@ -723,6 +7222,7 @@ export type Database = {
           rental_duration_days: number | null
           rental_length: string | null
           rental_term: string | null
+          renter_policy_status: string | null
           requested_docs: Json
           resubmission_count: number
           resubmission_history: Json
@@ -851,6 +7351,7 @@ export type Database = {
           rental_duration_days?: number | null
           rental_length?: string | null
           rental_term?: string | null
+          renter_policy_status?: string | null
           requested_docs?: Json
           resubmission_count?: number
           resubmission_history?: Json
@@ -979,6 +7480,7 @@ export type Database = {
           rental_duration_days?: number | null
           rental_length?: string | null
           rental_term?: string | null
+          renter_policy_status?: string | null
           requested_docs?: Json
           resubmission_count?: number
           resubmission_history?: Json
@@ -1168,6 +7670,7 @@ export type Database = {
       automation_steps: {
         Row: {
           body: string
+          body_not_driving: string | null
           channel: string
           created_at: string
           delay_minutes: number
@@ -1176,11 +7679,13 @@ export type Database = {
           skip_when_profile_complete: boolean
           step_order: number
           subject: string | null
+          subject_not_driving: string | null
           updated_at: string
           workflow_id: string
         }
         Insert: {
           body: string
+          body_not_driving?: string | null
           channel?: string
           created_at?: string
           delay_minutes?: number
@@ -1189,11 +7694,13 @@ export type Database = {
           skip_when_profile_complete?: boolean
           step_order?: number
           subject?: string | null
+          subject_not_driving?: string | null
           updated_at?: string
           workflow_id: string
         }
         Update: {
           body?: string
+          body_not_driving?: string | null
           channel?: string
           created_at?: string
           delay_minutes?: number
@@ -1202,6 +7709,7 @@ export type Database = {
           skip_when_profile_complete?: boolean
           step_order?: number
           subject?: string | null
+          subject_not_driving?: string | null
           updated_at?: string
           workflow_id?: string
         }
@@ -1256,6 +7764,134 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      background_report_documents: {
+        Row: {
+          added_at: string
+          document_id: string
+          report_id: string
+        }
+        Insert: {
+          added_at?: string
+          document_id: string
+          report_id: string
+        }
+        Update: {
+          added_at?: string
+          document_id?: string
+          report_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "background_report_documents_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "background_report_documents_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "background_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      background_reports: {
+        Row: {
+          application_id: string
+          checked_at: string | null
+          created_at: string
+          criminal_case_count: number | null
+          criminal_cases: Json
+          criminal_record: string | null
+          id: string
+          idempotency_key: string | null
+          identity_result: string | null
+          license_state: string | null
+          license_status: string | null
+          note: string | null
+          order_key: string | null
+          ordered_at: string | null
+          products: string[]
+          provider: string
+          provider_name: string | null
+          recorded_by: string | null
+          recorded_by_label: string | null
+          reference: string | null
+          renter_name: string | null
+          report_ref: string | null
+          report_type: string
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          application_id: string
+          checked_at?: string | null
+          created_at?: string
+          criminal_case_count?: number | null
+          criminal_cases?: Json
+          criminal_record?: string | null
+          id?: string
+          idempotency_key?: string | null
+          identity_result?: string | null
+          license_state?: string | null
+          license_status?: string | null
+          note?: string | null
+          order_key?: string | null
+          ordered_at?: string | null
+          products?: string[]
+          provider: string
+          provider_name?: string | null
+          recorded_by?: string | null
+          recorded_by_label?: string | null
+          reference?: string | null
+          renter_name?: string | null
+          report_ref?: string | null
+          report_type: string
+          source: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          application_id?: string
+          checked_at?: string | null
+          created_at?: string
+          criminal_case_count?: number | null
+          criminal_cases?: Json
+          criminal_record?: string | null
+          id?: string
+          idempotency_key?: string | null
+          identity_result?: string | null
+          license_state?: string | null
+          license_status?: string | null
+          note?: string | null
+          order_key?: string | null
+          ordered_at?: string | null
+          products?: string[]
+          provider?: string
+          provider_name?: string | null
+          recorded_by?: string | null
+          recorded_by_label?: string | null
+          reference?: string | null
+          renter_name?: string | null
+          report_ref?: string | null
+          report_type?: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "background_reports_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       checklist_evidence_events: {
         Row: {
@@ -1313,6 +7949,244 @@ export type Database = {
             columns: ["supersedes_id"]
             isOneToOne: false
             referencedRelation: "checklist_evidence_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collection_item_attachments: {
+        Row: {
+          created_at: string
+          file_name: string | null
+          id: string
+          item_id: string
+          mime_type: string | null
+          storage_bucket: string
+          storage_path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          item_id: string
+          mime_type?: string | null
+          storage_bucket?: string
+          storage_path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          item_id?: string
+          mime_type?: string | null
+          storage_bucket?: string
+          storage_path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_item_attachments_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "collection_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collection_item_events: {
+        Row: {
+          actor_label: string | null
+          actor_user_id: string | null
+          amount: number | null
+          created_at: string
+          from_status: string | null
+          id: string
+          item_id: string
+          kind: string
+          note: string | null
+          payment_id: string | null
+          to_status: string | null
+        }
+        Insert: {
+          actor_label?: string | null
+          actor_user_id?: string | null
+          amount?: number | null
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          item_id: string
+          kind: string
+          note?: string | null
+          payment_id?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          actor_label?: string | null
+          actor_user_id?: string | null
+          amount?: number | null
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          item_id?: string
+          kind?: string
+          note?: string | null
+          payment_id?: string | null
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_item_events_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "collection_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collection_items: {
+        Row: {
+          amount: number
+          amount_paid: number
+          application_id: string
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          incurred_on: string | null
+          notes: string | null
+          original_amount: number | null
+          proration: Json | null
+          reason: string
+          rental_id: string | null
+          source_kind: string
+          source_payment_id: string | null
+          status: string
+          stripe_invoice_id: string | null
+          updated_at: string
+          vehicle_id: string | null
+          week_start: string | null
+        }
+        Insert: {
+          amount: number
+          amount_paid?: number
+          application_id: string
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          incurred_on?: string | null
+          notes?: string | null
+          original_amount?: number | null
+          proration?: Json | null
+          reason: string
+          rental_id?: string | null
+          source_kind?: string
+          source_payment_id?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+          week_start?: string | null
+        }
+        Update: {
+          amount?: number
+          amount_paid?: number
+          application_id?: string
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          incurred_on?: string | null
+          notes?: string | null
+          original_amount?: number | null
+          proration?: Json | null
+          reason?: string
+          rental_id?: string | null
+          source_kind?: string
+          source_payment_id?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+          week_start?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_items_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_items_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_items_source_payment_id_fkey"
+            columns: ["source_payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_items_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_items_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collection_payment_allocations: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          item_id: string
+          payment_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          item_id: string
+          payment_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          item_id?: string
+          payment_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_payment_allocations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "collection_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_payment_allocations_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
             referencedColumns: ["id"]
           },
         ]
@@ -2022,10 +8896,12 @@ export type Database = {
           delivered_at: string | null
           failed_at: string | null
           id: string
+          meta: Json | null
           provider_reason: string | null
           recipient: string
           resend_message_id: string | null
           state: string
+          subject: string | null
           updated_at: string
           workflow: string
         }
@@ -2037,10 +8913,12 @@ export type Database = {
           delivered_at?: string | null
           failed_at?: string | null
           id?: string
+          meta?: Json | null
           provider_reason?: string | null
           recipient: string
           resend_message_id?: string | null
           state?: string
+          subject?: string | null
           updated_at?: string
           workflow: string
         }
@@ -2052,10 +8930,12 @@ export type Database = {
           delivered_at?: string | null
           failed_at?: string | null
           id?: string
+          meta?: Json | null
           provider_reason?: string | null
           recipient?: string
           resend_message_id?: string | null
           state?: string
+          subject?: string | null
           updated_at?: string
           workflow?: string
         }
@@ -2069,6 +8949,11 @@ export type Database = {
           email: string | null
           id: string
           ip: string | null
+          last_viewed_at: string | null
+          link_channel: string | null
+          link_email_status: string | null
+          link_sms_status: string | null
+          link_token: string | null
           name: string | null
           phone: string | null
           role: string
@@ -2090,6 +8975,11 @@ export type Database = {
           email?: string | null
           id?: string
           ip?: string | null
+          last_viewed_at?: string | null
+          link_channel?: string | null
+          link_email_status?: string | null
+          link_sms_status?: string | null
+          link_token?: string | null
           name?: string | null
           phone?: string | null
           role?: string
@@ -2111,6 +9001,11 @@ export type Database = {
           email?: string | null
           id?: string
           ip?: string | null
+          last_viewed_at?: string | null
+          link_channel?: string | null
+          link_email_status?: string | null
+          link_sms_status?: string | null
+          link_token?: string | null
           name?: string | null
           phone?: string | null
           role?: string
@@ -2910,6 +9805,87 @@ export type Database = {
         }
         Relationships: []
       }
+      fleet_license_readings: {
+        Row: {
+          address_city: string | null
+          address_line1: string | null
+          address_state: string | null
+          address_zip: string | null
+          application_id: string
+          applied_fields: string[]
+          confidence: number | null
+          conflicts: Json
+          created_at: string
+          dob: string | null
+          document_id: string | null
+          id: string
+          idempotency_key: string | null
+          license_expiration: string | null
+          license_number: string | null
+          license_state: string | null
+          note: string | null
+          read_by: string
+          source_label: string
+        }
+        Insert: {
+          address_city?: string | null
+          address_line1?: string | null
+          address_state?: string | null
+          address_zip?: string | null
+          application_id: string
+          applied_fields?: string[]
+          confidence?: number | null
+          conflicts?: Json
+          created_at?: string
+          dob?: string | null
+          document_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_state?: string | null
+          note?: string | null
+          read_by?: string
+          source_label?: string
+        }
+        Update: {
+          address_city?: string | null
+          address_line1?: string | null
+          address_state?: string | null
+          address_zip?: string | null
+          application_id?: string
+          applied_fields?: string[]
+          confidence?: number | null
+          conflicts?: Json
+          created_at?: string
+          dob?: string | null
+          document_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_state?: string | null
+          note?: string | null
+          read_by?: string
+          source_label?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_license_readings_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_license_readings_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_owner_submissions: {
         Row: {
           condition: string | null
@@ -3186,6 +10162,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      held_notices: {
+        Row: {
+          amount: number
+          attempts: number
+          created_at: string
+          id: string
+          kind: string
+          last_note: string | null
+          outcome: string
+          payment_ids: string[]
+          reason: string | null
+          rental_id: string | null
+          source_ref: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          attempts?: number
+          created_at?: string
+          id?: string
+          kind: string
+          last_note?: string | null
+          outcome: string
+          payment_ids?: string[]
+          reason?: string | null
+          rental_id?: string | null
+          source_ref: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          attempts?: number
+          created_at?: string
+          id?: string
+          kind?: string
+          last_note?: string | null
+          outcome?: string
+          payment_ids?: string[]
+          reason?: string | null
+          rental_id?: string | null
+          source_ref?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       inbound_emails: {
         Row: {
@@ -4830,6 +11854,117 @@ export type Database = {
           },
         ]
       }
+      payments_stripe_paid_at_unpaid_backup_20261116: {
+        Row: {
+          amount: number
+          attempt_count: number
+          balance_due: number
+          created_at: string
+          driver_id: string | null
+          due_date: string | null
+          failure_reason: string | null
+          id: string
+          last_attempt_at: string | null
+          late_fee_applied_through: string | null
+          late_fees: number
+          net_collected: number | null
+          notes: string | null
+          notified_status: string | null
+          paid_date: string | null
+          payment_method: string | null
+          reason: string | null
+          refunded_amount: number
+          refunded_at: string | null
+          rental_id: string | null
+          status: string
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_paid_at: string | null
+          stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
+          stripe_subscription_id: string | null
+          type: string
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number
+          attempt_count?: number
+          balance_due?: number
+          created_at?: string
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number
+          attempt_count?: number
+          balance_due?: number
+          created_at?: string
+          driver_id?: string | null
+          due_date?: string | null
+          failure_reason?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          late_fee_applied_through?: string | null
+          late_fees?: number
+          net_collected?: number | null
+          notes?: string | null
+          notified_status?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          reason?: string | null
+          refunded_amount?: number
+          refunded_at?: string | null
+          rental_id?: string | null
+          status?: string
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_paid_at?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
+          stripe_subscription_id?: string | null
+          type?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
       payouts: {
         Row: {
           created_at: string
@@ -4954,6 +12089,147 @@ export type Database = {
           updated_by?: string | null
         }
         Relationships: []
+      }
+      photo_studio_spend: {
+        Row: {
+          cost_cents: number
+          created_at: string
+          created_by: string | null
+          id: string
+          model: string
+          outcome: string
+          provider: string
+          shot_slot: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          cost_cents: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          model: string
+          outcome: string
+          provider: string
+          shot_slot?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          cost_cents?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          model?: string
+          outcome?: string
+          provider?: string
+          shot_slot?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_studio_spend_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "photo_studio_spend_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pickup_handovers: {
+        Row: {
+          activated_rental_id: string | null
+          activation_detail: string | null
+          activation_status: string
+          application_id: string
+          completed_at: string
+          completed_by: string
+          created_at: string
+          fuel_level: string
+          odometer: number
+          rental_id: string
+          renter_signature_ip: string | null
+          renter_signature_name: string
+          renter_signature_user_agent: string | null
+          renter_signed_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          activated_rental_id?: string | null
+          activation_detail?: string | null
+          activation_status?: string
+          application_id: string
+          completed_at?: string
+          completed_by: string
+          created_at?: string
+          fuel_level: string
+          odometer: number
+          rental_id: string
+          renter_signature_ip?: string | null
+          renter_signature_name: string
+          renter_signature_user_agent?: string | null
+          renter_signed_at: string
+          vehicle_id: string
+        }
+        Update: {
+          activated_rental_id?: string | null
+          activation_detail?: string | null
+          activation_status?: string
+          application_id?: string
+          completed_at?: string
+          completed_by?: string
+          created_at?: string
+          fuel_level?: string
+          odometer?: number
+          rental_id?: string
+          renter_signature_ip?: string | null
+          renter_signature_name?: string
+          renter_signature_user_agent?: string | null
+          renter_signed_at?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_handovers_activated_rental_id_fkey"
+            columns: ["activated_rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_handovers_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_handovers_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: true
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_handovers_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_handovers_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       portal_signin_challenges: {
         Row: {
@@ -5204,6 +12480,513 @@ export type Database = {
           },
         ]
       }
+      rental_additional_drivers: {
+        Row: {
+          application_id: string | null
+          approved_at: string | null
+          created_at: string
+          dob: string | null
+          email: string | null
+          id: string
+          insurance_added_at: string | null
+          license_expiration: string | null
+          license_number: string | null
+          license_photo_path: string | null
+          license_state: string | null
+          name: string
+          phone: string | null
+          relationship: string | null
+          removed_at: string | null
+          rental_id: string | null
+          screening_status: string
+          signed_at: string | null
+          sms_consent: boolean
+          stripe_subscription_item_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          application_id?: string | null
+          approved_at?: string | null
+          created_at?: string
+          dob?: string | null
+          email?: string | null
+          id?: string
+          insurance_added_at?: string | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_path?: string | null
+          license_state?: string | null
+          name: string
+          phone?: string | null
+          relationship?: string | null
+          removed_at?: string | null
+          rental_id?: string | null
+          screening_status?: string
+          signed_at?: string | null
+          sms_consent?: boolean
+          stripe_subscription_item_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          application_id?: string | null
+          approved_at?: string | null
+          created_at?: string
+          dob?: string | null
+          email?: string | null
+          id?: string
+          insurance_added_at?: string | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_path?: string | null
+          license_state?: string | null
+          name?: string
+          phone?: string | null
+          relationship?: string | null
+          removed_at?: string | null
+          rental_id?: string | null
+          screening_status?: string
+          signed_at?: string | null
+          sms_consent?: boolean
+          stripe_subscription_item_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_additional_drivers_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_additional_drivers_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_rate_amendments: {
+        Row: {
+          agreement_id: string | null
+          application_id: string
+          applied_at: string | null
+          apply_on: string | null
+          created_at: string
+          effective_date: string
+          id: string
+          idempotency_key: string | null
+          new_weekly_rate: number
+          note: string | null
+          old_weekly_rate: number
+          out_of_bounds_ack: boolean
+          previous_agreement_id: string | null
+          reason: string
+          rental_id: string
+          renter_consent: Json | null
+          requested_by: string
+          requested_by_user: string | null
+          signed_at: string | null
+          source: string
+          status: string
+          stripe_update_required: boolean
+          updated_at: string
+        }
+        Insert: {
+          agreement_id?: string | null
+          application_id: string
+          applied_at?: string | null
+          apply_on?: string | null
+          created_at?: string
+          effective_date: string
+          id?: string
+          idempotency_key?: string | null
+          new_weekly_rate: number
+          note?: string | null
+          old_weekly_rate: number
+          out_of_bounds_ack?: boolean
+          previous_agreement_id?: string | null
+          reason: string
+          rental_id: string
+          renter_consent?: Json | null
+          requested_by: string
+          requested_by_user?: string | null
+          signed_at?: string | null
+          source: string
+          status?: string
+          stripe_update_required?: boolean
+          updated_at?: string
+        }
+        Update: {
+          agreement_id?: string | null
+          application_id?: string
+          applied_at?: string | null
+          apply_on?: string | null
+          created_at?: string
+          effective_date?: string
+          id?: string
+          idempotency_key?: string | null
+          new_weekly_rate?: number
+          note?: string | null
+          old_weekly_rate?: number
+          out_of_bounds_ack?: boolean
+          previous_agreement_id?: string | null
+          reason?: string
+          rental_id?: string
+          renter_consent?: Json | null
+          requested_by?: string
+          requested_by_user?: string | null
+          signed_at?: string | null
+          source?: string
+          status?: string
+          stripe_update_required?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_rate_amendments_agreement_id_fkey"
+            columns: ["agreement_id"]
+            isOneToOne: false
+            referencedRelation: "agreements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_rate_amendments_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_rate_amendments_previous_agreement_id_fkey"
+            columns: ["previous_agreement_id"]
+            isOneToOne: false
+            referencedRelation: "agreements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_rate_amendments_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_vehicle_swap_documents: {
+        Row: {
+          created_at: string
+          doc_kind: string
+          document_id: string
+          id: string
+          swap_id: string
+          uploaded_by: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          doc_kind: string
+          document_id: string
+          id?: string
+          swap_id: string
+          uploaded_by?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          doc_kind?: string
+          document_id?: string
+          id?: string
+          swap_id?: string
+          uploaded_by?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_vehicle_swap_documents_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swap_documents_swap_id_fkey"
+            columns: ["swap_id"]
+            isOneToOne: false
+            referencedRelation: "rental_vehicle_swaps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swap_documents_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swap_documents_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_vehicle_swap_photos: {
+        Row: {
+          created_at: string
+          file_name: string | null
+          id: string
+          mime_type: string
+          size_bytes: number | null
+          storage_bucket: string
+          storage_path: string
+          swap_id: string
+          uploaded_by: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          mime_type: string
+          size_bytes?: number | null
+          storage_bucket?: string
+          storage_path: string
+          swap_id: string
+          uploaded_by?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          mime_type?: string
+          size_bytes?: number | null
+          storage_bucket?: string
+          storage_path?: string
+          swap_id?: string
+          uploaded_by?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_vehicle_swap_photos_swap_id_fkey"
+            columns: ["swap_id"]
+            isOneToOne: false
+            referencedRelation: "rental_vehicle_swaps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swap_photos_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swap_photos_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_vehicle_swaps: {
+        Row: {
+          agreement_id: string | null
+          application_id: string
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          from_vehicle_id: string
+          from_vehicle_status: string | null
+          id: string
+          idempotency_key: string | null
+          insurance_override_at: string | null
+          insurance_override_by: string | null
+          insurance_override_reason: string | null
+          note: string | null
+          pickup_fuel: string | null
+          pickup_mileage: number | null
+          pickup_reading_id: string | null
+          previous_agreement_id: string | null
+          previous_document_id: string | null
+          reason: string
+          reason_code: string
+          rental_id: string
+          replaced_pickup_reading_id: string | null
+          requested_by: string | null
+          requested_by_label: string
+          return_fuel: string | null
+          return_mileage: number | null
+          return_reading_id: string | null
+          signed_at: string | null
+          status: string
+          swap_number: number
+          to_vehicle_id: string
+          updated_at: string
+          weekly_rate: number
+        }
+        Insert: {
+          agreement_id?: string | null
+          application_id: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          from_vehicle_id: string
+          from_vehicle_status?: string | null
+          id?: string
+          idempotency_key?: string | null
+          insurance_override_at?: string | null
+          insurance_override_by?: string | null
+          insurance_override_reason?: string | null
+          note?: string | null
+          pickup_fuel?: string | null
+          pickup_mileage?: number | null
+          pickup_reading_id?: string | null
+          previous_agreement_id?: string | null
+          previous_document_id?: string | null
+          reason: string
+          reason_code: string
+          rental_id: string
+          replaced_pickup_reading_id?: string | null
+          requested_by?: string | null
+          requested_by_label: string
+          return_fuel?: string | null
+          return_mileage?: number | null
+          return_reading_id?: string | null
+          signed_at?: string | null
+          status?: string
+          swap_number?: number
+          to_vehicle_id: string
+          updated_at?: string
+          weekly_rate: number
+        }
+        Update: {
+          agreement_id?: string | null
+          application_id?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          from_vehicle_id?: string
+          from_vehicle_status?: string | null
+          id?: string
+          idempotency_key?: string | null
+          insurance_override_at?: string | null
+          insurance_override_by?: string | null
+          insurance_override_reason?: string | null
+          note?: string | null
+          pickup_fuel?: string | null
+          pickup_mileage?: number | null
+          pickup_reading_id?: string | null
+          previous_agreement_id?: string | null
+          previous_document_id?: string | null
+          reason?: string
+          reason_code?: string
+          rental_id?: string
+          replaced_pickup_reading_id?: string | null
+          requested_by?: string | null
+          requested_by_label?: string
+          return_fuel?: string | null
+          return_mileage?: number | null
+          return_reading_id?: string | null
+          signed_at?: string | null
+          status?: string
+          swap_number?: number
+          to_vehicle_id?: string
+          updated_at?: string
+          weekly_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_vehicle_swaps_agreement_id_fkey"
+            columns: ["agreement_id"]
+            isOneToOne: false
+            referencedRelation: "agreements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_from_vehicle_id_fkey"
+            columns: ["from_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_from_vehicle_id_fkey"
+            columns: ["from_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_pickup_reading_id_fkey"
+            columns: ["pickup_reading_id"]
+            isOneToOne: false
+            referencedRelation: "odometer_readings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_previous_agreement_id_fkey"
+            columns: ["previous_agreement_id"]
+            isOneToOne: false
+            referencedRelation: "agreements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_previous_document_id_fkey"
+            columns: ["previous_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_replaced_pickup_reading_id_fkey"
+            columns: ["replaced_pickup_reading_id"]
+            isOneToOne: false
+            referencedRelation: "odometer_readings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_return_reading_id_fkey"
+            columns: ["return_reading_id"]
+            isOneToOne: false
+            referencedRelation: "odometer_readings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_to_vehicle_id_fkey"
+            columns: ["to_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_vehicle_swaps_to_vehicle_id_fkey"
+            columns: ["to_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rentals: {
         Row: {
           application_id: string | null
@@ -5214,7 +12997,9 @@ export type Database = {
           card_exp_year: number | null
           card_last4: string | null
           card_on_file_at: string | null
+          close_reason: string | null
           created_at: string
+          days_late_at_repo: number | null
           deposit_amount: number
           deposit_held: boolean
           deposit_notes: string | null
@@ -5225,10 +13010,14 @@ export type Database = {
           end_date: string | null
           final_invoice_id: string | null
           final_invoice_url: string | null
+          hold_by: string | null
+          hold_reason: string | null
+          hold_started_at: string | null
           id: string
           next_payment_due: string | null
           payment_status: string
           pickup_reading_id: string | null
+          repossessed_on: string | null
           reservation_deposit_amount: number
           reservation_deposit_payment_id: string | null
           reservation_deposit_required: boolean
@@ -5254,7 +13043,9 @@ export type Database = {
           card_exp_year?: number | null
           card_last4?: string | null
           card_on_file_at?: string | null
+          close_reason?: string | null
           created_at?: string
+          days_late_at_repo?: number | null
           deposit_amount?: number
           deposit_held?: boolean
           deposit_notes?: string | null
@@ -5265,10 +13056,14 @@ export type Database = {
           end_date?: string | null
           final_invoice_id?: string | null
           final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
           id?: string
           next_payment_due?: string | null
           payment_status?: string
           pickup_reading_id?: string | null
+          repossessed_on?: string | null
           reservation_deposit_amount?: number
           reservation_deposit_payment_id?: string | null
           reservation_deposit_required?: boolean
@@ -5294,7 +13089,9 @@ export type Database = {
           card_exp_year?: number | null
           card_last4?: string | null
           card_on_file_at?: string | null
+          close_reason?: string | null
           created_at?: string
+          days_late_at_repo?: number | null
           deposit_amount?: number
           deposit_held?: boolean
           deposit_notes?: string | null
@@ -5305,10 +13102,14 @@ export type Database = {
           end_date?: string | null
           final_invoice_id?: string | null
           final_invoice_url?: string | null
+          hold_by?: string | null
+          hold_reason?: string | null
+          hold_started_at?: string | null
           id?: string
           next_payment_due?: string | null
           payment_status?: string
           pickup_reading_id?: string | null
+          repossessed_on?: string | null
           reservation_deposit_amount?: number
           reservation_deposit_payment_id?: string | null
           reservation_deposit_required?: boolean
@@ -5366,6 +13167,269 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      renter_blacklist: {
+        Row: {
+          added_by: string | null
+          added_by_label: string
+          application_id: string | null
+          blacklisted_on: string
+          created_at: string
+          full_name: string | null
+          id: string
+          note: string
+          reason_code: string
+          removal_reason: string | null
+          removed_at: string | null
+          removed_by: string | null
+          removed_by_label: string | null
+        }
+        Insert: {
+          added_by?: string | null
+          added_by_label: string
+          application_id?: string | null
+          blacklisted_on: string
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          note: string
+          reason_code: string
+          removal_reason?: string | null
+          removed_at?: string | null
+          removed_by?: string | null
+          removed_by_label?: string | null
+        }
+        Update: {
+          added_by?: string | null
+          added_by_label?: string
+          application_id?: string | null
+          blacklisted_on?: string
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          note?: string
+          reason_code?: string
+          removal_reason?: string | null
+          removed_at?: string | null
+          removed_by?: string | null
+          removed_by_label?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renter_blacklist_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      renter_blacklist_clearances: {
+        Row: {
+          application_id: string
+          blacklist_id: string
+          cleared_by: string | null
+          cleared_by_label: string
+          created_at: string
+          id: string
+          note: string | null
+        }
+        Insert: {
+          application_id: string
+          blacklist_id: string
+          cleared_by?: string | null
+          cleared_by_label: string
+          created_at?: string
+          id?: string
+          note?: string | null
+        }
+        Update: {
+          application_id?: string
+          blacklist_id?: string
+          cleared_by?: string | null
+          cleared_by_label?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renter_blacklist_clearances_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "renter_blacklist_clearances_blacklist_id_fkey"
+            columns: ["blacklist_id"]
+            isOneToOne: false
+            referencedRelation: "renter_blacklist"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      renter_blacklist_identifiers: {
+        Row: {
+          blacklist_id: string
+          id: string
+          kind: string
+          value_norm: string
+        }
+        Insert: {
+          blacklist_id: string
+          id?: string
+          kind: string
+          value_norm: string
+        }
+        Update: {
+          blacklist_id?: string
+          id?: string
+          kind?: string
+          value_norm?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renter_blacklist_identifiers_blacklist_id_fkey"
+            columns: ["blacklist_id"]
+            isOneToOne: false
+            referencedRelation: "renter_blacklist"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      renter_blacklist_matches: {
+        Row: {
+          blacklist_id: string
+          clear_note: string | null
+          cleared_at: string | null
+          cleared_by: string | null
+          cleared_by_label: string | null
+          created_at: string
+          id: string
+          matched_kinds: string[]
+          matched_name: string | null
+          source_id: string
+          source_table: string
+          updated_at: string
+        }
+        Insert: {
+          blacklist_id: string
+          clear_note?: string | null
+          cleared_at?: string | null
+          cleared_by?: string | null
+          cleared_by_label?: string | null
+          created_at?: string
+          id?: string
+          matched_kinds: string[]
+          matched_name?: string | null
+          source_id: string
+          source_table: string
+          updated_at?: string
+        }
+        Update: {
+          blacklist_id?: string
+          clear_note?: string | null
+          cleared_at?: string | null
+          cleared_by?: string | null
+          cleared_by_label?: string | null
+          created_at?: string
+          id?: string
+          matched_kinds?: string[]
+          matched_name?: string | null
+          source_id?: string
+          source_table?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renter_blacklist_matches_blacklist_id_fkey"
+            columns: ["blacklist_id"]
+            isOneToOne: false
+            referencedRelation: "renter_blacklist"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      renter_credits: {
+        Row: {
+          amount: number
+          application_id: string
+          applied_at: string | null
+          applied_to_rental_id: string | null
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          reason: string | null
+          source_payment_id: string | null
+          source_rental_id: string | null
+          status: string
+          updated_at: string
+          void_reason: string | null
+        }
+        Insert: {
+          amount: number
+          application_id: string
+          applied_at?: string | null
+          applied_to_rental_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          reason?: string | null
+          source_payment_id?: string | null
+          source_rental_id?: string | null
+          status?: string
+          updated_at?: string
+          void_reason?: string | null
+        }
+        Update: {
+          amount?: number
+          application_id?: string
+          applied_at?: string | null
+          applied_to_rental_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          reason?: string | null
+          source_payment_id?: string | null
+          source_rental_id?: string | null
+          status?: string
+          updated_at?: string
+          void_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renter_credits_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "renter_credits_applied_to_rental_id_fkey"
+            columns: ["applied_to_rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "renter_credits_source_payment_id_fkey"
+            columns: ["source_payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "renter_credits_source_rental_id_fkey"
+            columns: ["source_rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
             referencedColumns: ["id"]
           },
         ]
@@ -5477,6 +13541,117 @@ export type Database = {
           },
         ]
       }
+      renter_reminder_sends: {
+        Row: {
+          agreement_id: string | null
+          application_id: string | null
+          channel: string | null
+          created_at: string
+          detail: string | null
+          key: string
+          kind: string
+          rental_id: string | null
+          status: string
+        }
+        Insert: {
+          agreement_id?: string | null
+          application_id?: string | null
+          channel?: string | null
+          created_at?: string
+          detail?: string | null
+          key: string
+          kind: string
+          rental_id?: string | null
+          status?: string
+        }
+        Update: {
+          agreement_id?: string | null
+          application_id?: string | null
+          channel?: string | null
+          created_at?: string
+          detail?: string | null
+          key?: string
+          kind?: string
+          rental_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renter_reminder_sends_agreement_id_fkey"
+            columns: ["agreement_id"]
+            isOneToOne: false
+            referencedRelation: "agreements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "renter_reminder_sends_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "renter_reminder_sends_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      renter_strikes: {
+        Row: {
+          added_by: string | null
+          added_by_label: string
+          application_id: string | null
+          created_at: string
+          id: string
+          kind: string
+          note: string
+          occurred_on: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+          voided_by_label: string | null
+        }
+        Insert: {
+          added_by?: string | null
+          added_by_label: string
+          application_id?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          note: string
+          occurred_on: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+          voided_by_label?: string | null
+        }
+        Update: {
+          added_by?: string | null
+          added_by_label?: string
+          application_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          note?: string
+          occurred_on?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+          voided_by_label?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renter_strikes_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       renter_vendors: {
         Row: {
           address: string | null
@@ -5564,6 +13739,76 @@ export type Database = {
             foreignKeyName: "reservation_confirmations_rental_id_fkey"
             columns: ["rental_id"]
             isOneToOne: true
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reservation_fee_refunds: {
+        Row: {
+          amount: number
+          application_id: string | null
+          id: string
+          note: string | null
+          payment_id: string
+          reason: string
+          refunded_at: string
+          refunded_by: string | null
+          refunded_by_email: string | null
+          rental_id: string | null
+          source: string
+          stripe_payment_intent_id: string | null
+          stripe_refund_id: string | null
+        }
+        Insert: {
+          amount: number
+          application_id?: string | null
+          id?: string
+          note?: string | null
+          payment_id: string
+          reason: string
+          refunded_at?: string
+          refunded_by?: string | null
+          refunded_by_email?: string | null
+          rental_id?: string | null
+          source: string
+          stripe_payment_intent_id?: string | null
+          stripe_refund_id?: string | null
+        }
+        Update: {
+          amount?: number
+          application_id?: string | null
+          id?: string
+          note?: string | null
+          payment_id?: string
+          reason?: string
+          refunded_at?: string
+          refunded_by?: string | null
+          refunded_by_email?: string | null
+          rental_id?: string | null
+          source?: string
+          stripe_payment_intent_id?: string | null
+          stripe_refund_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_fee_refunds_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_fee_refunds_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_fee_refunds_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
             referencedRelation: "rentals"
             referencedColumns: ["id"]
           },
@@ -5990,6 +14235,95 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_terms_confirmations: {
+        Row: {
+          application_id: string
+          clicked_at: string
+          clicked_by: string
+          clicked_by_name: string
+          created_at: string
+          deposit: number
+          fleet_delivery_id: string | null
+          id: string
+          reservation_fee: number
+          start_date: string
+          terms_key: string
+          vehicle_id: string
+          vehicle_label: string | null
+          weekly_rate: number
+        }
+        Insert: {
+          application_id: string
+          clicked_at?: string
+          clicked_by: string
+          clicked_by_name: string
+          created_at?: string
+          deposit: number
+          fleet_delivery_id?: string | null
+          id?: string
+          reservation_fee?: number
+          start_date: string
+          terms_key: string
+          vehicle_id: string
+          vehicle_label?: string | null
+          weekly_rate: number
+        }
+        Update: {
+          application_id?: string
+          clicked_at?: string
+          clicked_by?: string
+          clicked_by_name?: string
+          created_at?: string
+          deposit?: number
+          fleet_delivery_id?: string | null
+          id?: string
+          reservation_fee?: number
+          start_date?: string
+          terms_key?: string
+          vehicle_id?: string
+          vehicle_label?: string | null
+          weekly_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_terms_confirmations_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_alert_sends: {
+        Row: {
+          created_at: string
+          detail: string | null
+          key: string
+          kind: string
+          rental_id: string | null
+          status: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          detail?: string | null
+          key: string
+          kind: string
+          rental_id?: string | null
+          status?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          detail?: string | null
+          key?: string
+          kind?: string
+          rental_id?: string | null
+          status?: string
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
       toll_charges: {
         Row: {
           admin_fee: number
@@ -6085,6 +14419,84 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      unmatched_stripe_payments: {
+        Row: {
+          amount_cents: number
+          assigned_by: string | null
+          created_at: string
+          currency: string
+          dismissed_by: string | null
+          email: string | null
+          id: string
+          note: string | null
+          payment_id: string | null
+          rental_id: string | null
+          renter_name: string | null
+          status: string
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_invoice_id: string | null
+          stripe_payment_intent_id: string | null
+          updated_at: string
+          why: string
+        }
+        Insert: {
+          amount_cents: number
+          assigned_by?: string | null
+          created_at?: string
+          currency?: string
+          dismissed_by?: string | null
+          email?: string | null
+          id?: string
+          note?: string | null
+          payment_id?: string | null
+          rental_id?: string | null
+          renter_name?: string | null
+          status?: string
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_invoice_id?: string | null
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          why: string
+        }
+        Update: {
+          amount_cents?: number
+          assigned_by?: string | null
+          created_at?: string
+          currency?: string
+          dismissed_by?: string | null
+          email?: string | null
+          id?: string
+          note?: string | null
+          payment_id?: string | null
+          rental_id?: string | null
+          renter_name?: string | null
+          status?: string
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_invoice_id?: string | null
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          why?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unmatched_stripe_payments_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unmatched_stripe_payments_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
             referencedColumns: ["id"]
           },
         ]
@@ -6526,16 +14938,21 @@ export type Database = {
       }
       vehicle_media: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           caption: string | null
           created_at: string
           derived_from_id: string | null
           enhancement_mode: string | null
           enhancement_provider: string | null
           file_name: string | null
+          fleet_inbox_item_id: string | null
+          generation_model: string | null
           id: string
           is_primary: boolean
           kind: string
           mime_type: string | null
+          photo_class: string | null
           processing_ms: number | null
           provenance: string
           published: boolean
@@ -6543,24 +14960,33 @@ export type Database = {
           review_status: string | null
           reviewed_at: string | null
           reviewed_by: string | null
+          shot_slot: string | null
           size_bytes: number | null
           sort_order: number
+          source_media_ids: string[]
           storage_bucket: string
           storage_path: string
+          studio_check: Json | null
+          studio_review_status: string | null
           uploaded_by: string | null
           vehicle_id: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           caption?: string | null
           created_at?: string
           derived_from_id?: string | null
           enhancement_mode?: string | null
           enhancement_provider?: string | null
           file_name?: string | null
+          fleet_inbox_item_id?: string | null
+          generation_model?: string | null
           id?: string
           is_primary?: boolean
           kind: string
           mime_type?: string | null
+          photo_class?: string | null
           processing_ms?: number | null
           provenance?: string
           published?: boolean
@@ -6568,24 +14994,33 @@ export type Database = {
           review_status?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          shot_slot?: string | null
           size_bytes?: number | null
           sort_order?: number
+          source_media_ids?: string[]
           storage_bucket?: string
           storage_path: string
+          studio_check?: Json | null
+          studio_review_status?: string | null
           uploaded_by?: string | null
           vehicle_id: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           caption?: string | null
           created_at?: string
           derived_from_id?: string | null
           enhancement_mode?: string | null
           enhancement_provider?: string | null
           file_name?: string | null
+          fleet_inbox_item_id?: string | null
+          generation_model?: string | null
           id?: string
           is_primary?: boolean
           kind?: string
           mime_type?: string | null
+          photo_class?: string | null
           processing_ms?: number | null
           provenance?: string
           published?: boolean
@@ -6593,10 +15028,14 @@ export type Database = {
           review_status?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          shot_slot?: string | null
           size_bytes?: number | null
           sort_order?: number
+          source_media_ids?: string[]
           storage_bucket?: string
           storage_path?: string
+          studio_check?: Json | null
+          studio_review_status?: string | null
           uploaded_by?: string | null
           vehicle_id?: string
         }
@@ -7232,6 +15671,29 @@ export type Database = {
         }
         Returns: string
       }
+      add_collection_attachment: {
+        Args: {
+          _actor: string
+          _file_name: string
+          _item_id: string
+          _mime: string
+          _path: string
+        }
+        Returns: string
+      }
+      add_collection_item: {
+        Args: {
+          _actor: string
+          _amount: number
+          _application_id: string
+          _description: string
+          _incurred_on: string
+          _notes: string
+          _reason: string
+          _rental_id: string
+        }
+        Returns: string
+      }
       application_accepts_uploads: {
         Args: { _application_id: string }
         Returns: boolean
@@ -7246,11 +15708,80 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_payment_to_collections: {
+        Args: { _payment_id: string }
+        Returns: number
+      }
+      apply_rental_rate_amendment: {
+        Args: { _id: string; _today: string }
+        Returns: string
+      }
+      automation_cron_health: {
+        Args: never
+        Returns: {
+          active: boolean
+          jobname: string
+          last_run_at: string
+          last_status: string
+        }[]
+      }
       cars_available: { Args: never; Returns: number }
+      collection_actor_label: { Args: { _actor: string }; Returns: string }
+      collection_log: {
+        Args: {
+          _actor: string
+          _amount: number
+          _from: string
+          _item: string
+          _kind: string
+          _note: string
+          _payment: string
+          _to: string
+        }
+        Returns: undefined
+      }
+      collection_reason_for_payment: {
+        Args: { _reason: string; _type: string }
+        Returns: string
+      }
+      collection_recalc_item: {
+        Args: { _actor?: string; _item: string }
+        Returns: undefined
+      }
+      collection_rent_row_covered: {
+        Args: { _payment: string }
+        Returns: boolean
+      }
+      collection_status_is_open: { Args: { _s: string }; Returns: boolean }
+      collections_apply_proration: {
+        Args: { _actor?: string; _rental_id: string }
+        Returns: number
+      }
+      complete_rental_vehicle_swap_tx: {
+        Args: {
+          _actor: string
+          _from_vehicle_status: string
+          _pickup_fuel: string
+          _pickup_miles: number
+          _return_fuel: string
+          _return_miles: number
+          _swap_id: string
+        }
+        Returns: Json
+      }
       driver_deletion_blocker: { Args: { _id: string }; Returns: string }
       email_delivery_attach: {
         Args: { _id: string; _resend_id: string }
         Returns: undefined
+      }
+      email_delivery_claim_pending: {
+        Args: {
+          _recipient: string
+          _resend_id: string
+          _sent_at: string
+          _subject: string
+        }
+        Returns: string
       }
       email_delivery_event: {
         Args: {
@@ -7374,7 +15905,19 @@ export type Database = {
       }
       fleet_inbox_wake: { Args: never; Returns: undefined }
       get_cron_token: { Args: { _name: string }; Returns: string }
+      move_payment_to_collections: {
+        Args: { _actor?: string; _note?: string; _payment_id: string }
+        Returns: number
+      }
+      move_rental_to_collections: {
+        Args: { _actor?: string; _note?: string; _rental_id: string }
+        Returns: number
+      }
       next_unit_number: { Args: { _prefix?: string }; Returns: string }
+      normalize_driver_email: { Args: { raw: string }; Returns: string }
+      normalize_driver_phone: { Args: { raw: string }; Returns: string }
+      normalize_driver_state: { Args: { raw: string }; Returns: string }
+      normalize_driver_zip: { Args: { raw: string }; Returns: string }
       promote_waitlist_entry: { Args: { _entry: string }; Returns: Json }
       purge_application: { Args: { _id: string }; Returns: Json }
       record_checklist_evidence: {
@@ -7389,9 +15932,26 @@ export type Database = {
         }
         Returns: Json
       }
+      record_rental_repossession: {
+        Args: {
+          _actor?: string
+          _note?: string
+          _rental_id: string
+          _repo_date: string
+        }
+        Returns: Json
+      }
       rental_at_time: {
         Args: { _at: string; _vehicle_id: string }
         Returns: string
+      }
+      renter_blacklist_check: {
+        Args: { _application_id: string }
+        Returns: Json
+      }
+      renter_blacklist_suppressed: {
+        Args: { _application_id: string; _email: string; _phone: string }
+        Returns: boolean
       }
       renter_portal_file: {
         Args: { _id: string; _kind: string }
@@ -7424,6 +15984,16 @@ export type Database = {
         Returns: Json
       }
       restore_application: { Args: { _id: string }; Returns: Json }
+      set_collection_item_status: {
+        Args: {
+          _actor: string
+          _expected?: string
+          _item_id: string
+          _note?: string
+          _to: string
+        }
+        Returns: string
+      }
       set_insurance_verification: {
         Args: { _application_id: string; _note: string; _verified: boolean }
         Returns: Json
@@ -7442,6 +16012,17 @@ export type Database = {
         Returns: boolean
       }
       sync_vehicle_photos: { Args: { _vehicle_id: string }; Returns: undefined }
+      update_collection_item: {
+        Args: {
+          _actor: string
+          _amount: number
+          _description: string
+          _item_id: string
+          _notes: string
+          _reason: string
+        }
+        Returns: undefined
+      }
       vehicle_listing_ready_missing: {
         Args: { _vehicle_id: string }
         Returns: string[]

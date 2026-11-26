@@ -34,11 +34,11 @@ export type OwnerFeeStripeGateway = {
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 
-export async function readOwnerPnlFees(
+export async function readOwnerPnlFeeLines(
   gateway: OwnerFeeStripeGateway,
   window: { gte: number; lt: number },
   options: { signal?: AbortSignal; timeoutMs?: number; now?: () => number } = {},
-): Promise<OwnerFeeRead> {
+): Promise<{ ok: true; txns: OwnerFeeTxn[] } | { ok: false }> {
   if (!Number.isSafeInteger(window.gte) || !Number.isSafeInteger(window.lt) || window.lt <= window.gte) return { ok: false };
   const now = options.now ?? Date.now;
   const deadline = now() + (options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
@@ -58,14 +58,28 @@ export async function readOwnerPnlFees(
       if (mapped === "bad") return { ok: false };
       txns.push(mapped);
     }
-    return stripeFeeCostCents(txns, window);
+    return { ok: true, txns };
   } catch {
     return { ok: false };
   }
 }
 
+export async function readOwnerPnlFees(
+  gateway: OwnerFeeStripeGateway,
+  window: { gte: number; lt: number },
+  options: { signal?: AbortSignal; timeoutMs?: number; now?: () => number } = {},
+): Promise<OwnerFeeRead> {
+  const listed = await readOwnerPnlFeeLines(gateway, window, options);
+  if (!listed.ok) return { ok: false };
+  return stripeFeeCostCents(listed.txns, window);
+}
+
 export function readLiveOwnerPnlFees(window: { gte: number; lt: number }, signal?: AbortSignal) {
   return readOwnerPnlFees(createReadOnlyStripe("live", { cache: true }) as unknown as OwnerFeeStripeGateway, window, { signal });
+}
+
+export function readLiveOwnerPnlFeeLines(window: { gte: number; lt: number }, timeoutMs?: number, signal?: AbortSignal) {
+  return readOwnerPnlFeeLines(createReadOnlyStripe("live", { cache: true }) as unknown as OwnerFeeStripeGateway, window, { signal, timeoutMs });
 }
 
 function remaining(deadline: number, now: () => number): number {

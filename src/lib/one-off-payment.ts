@@ -5,6 +5,7 @@
 // Payment Link with no metadata was received and silently dropped (Regina's
 // $50, Nov 16 2026). Pure helpers; the database and Stripe reads live in
 // one-off-payment.server.ts.
+import { stripeChargePaymentMethod } from "@/lib/stripe-payment-method";
 import { stripeId } from "@/lib/stripe-unmatched";
 
 type Obj = Record<string, any> | null | undefined;
@@ -56,7 +57,8 @@ export type OneOffIdentity = {
   purpose: string | null;
   reason: string | null;
   receiptUrl: string | null;
-  cardPayment: boolean;
+  /** card, link, ach, cash_app, or the raw Stripe type. Null when the charge did not say. */
+  paymentMethod: string | null;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -237,7 +239,7 @@ export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charg
     purpose: text(sm.purpose) ?? text(pm.purpose) ?? text(cm.purpose) ?? text(lm.purpose) ?? text(pi?.description) ?? null,
     reason: text(pm.reason) ?? text(sm.reason) ?? text(cm.reason) ?? text(lm.reason),
     receiptUrl: text(charge?.receipt_url),
-    cardPayment: (charge?.payment_method_details?.type ?? null) === "card",
+    paymentMethod: stripeChargePaymentMethod(charge),
   };
 }
 
