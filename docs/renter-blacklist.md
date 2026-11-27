@@ -52,14 +52,17 @@ Any new or edited application, extra phone/email/address on a driver, signed agr
 | DOB + Last Name | Date of birth plus last name (Jr/Sr/II/III ignored) |
 | Saved Card | Card brand + last 4 + expiry month/year as stored on the application |
 | Signer IP | The public IP the agreement was signed from (private/office IPs ignored) |
+| Reference / Emergency Contact Phone | The applicant's reference or emergency contact phone is a blacklisted person's phone |
+| Reference / Emergency Contact Name | The applicant lists a blacklisted person by name (first + last, suffixes ignored) |
 
 Waitlist signups and website leads only carry phone and email, so those two are compared.
 
 A match is recorded in `renter_blacklist_matches` (which fields, which blacklisted person) and shown as a red alert at the top of the Drivers list and on the driver profile. Applications also get Needs Staff with reason "blacklist match: <Fields> (matches <Name>)", are never auto-approved, and approval/rentals stay refused until an Owner / Admin clicks Not The Same Person (recorded with a reason). Waitlist rows are marked for review. Nothing is declined automatically, and matched (linked) people still receive normal messages; only the blacklisted person is silenced.
 
-When the blacklisted person's own record gains a new detail (new phone, address, signed IP), it is added to their match list and existing records are re-checked. Blacklisting someone also checks everyone already on file.
+When the blacklisted person's own record gains a new detail (new phone, address, signed IP), it is added to their match list and existing records are re-checked. Blacklisting someone also checks everyone already on file, including applicants who list them as a reference or emergency contact.
+
+Reference and emergency contact (name, phone, relationship) are optional. The applicant fills them in the driver-profile section "Reference And Emergency Contact (Optional)". Staff see the same answers on Drivers → Application, under "Reference And Emergency Contact". Manager and above can edit them; a Coordinator sees them read-only. The columns and the match rules are in `20261126213000_application_references.sql`. That migration is not applied. Apply it before publishing this code, because the wizard resume query reads the new columns and fails closed if they are missing.
 
 ### Not possible with today's data
-- Emergency contact / reference phones: the app has no such fields. Extra phones staff add to a profile are compared. Flagging an applicant who lists a blacklisted person as a reference needs those fields added first.
 - Stripe card fingerprint: not stored. Getting it would need new Stripe API calls with server keys, so it was not done; matching uses brand + last 4 + expiry instead (weaker: two different cards can share these).
 - Device / IP: only the agreement signer IP is captured; nothing is captured at application time.
