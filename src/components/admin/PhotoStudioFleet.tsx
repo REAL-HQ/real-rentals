@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   approveAndPublishStudio, approveAndPublishStudioReady, getStudioFleetProgress, runStudioNextCar,
 } from "@/lib/photo-studio-fleet.functions";
-import { describeStudioRun, studioRunToast, type StudioLabelCounts, type StudioRunHold } from "@/lib/photo-studio-fleet";
+import { FAILED_CHECK_ATTENTION, describeStudioRun, studioRunToast, type StudioLabelCounts, type StudioRunHold } from "@/lib/photo-studio-fleet";
 
 type Row = Awaited<ReturnType<typeof getStudioFleetProgress>>["rows"][number];
 
@@ -151,7 +151,7 @@ export function PhotoStudioFleet({ onChanged }: { onChanged?: () => void }) {
                   <td className="py-1.5 pr-3">{row.generated}</td>
                   <td className="py-1.5 pr-3">{row.approved}</td>
                   <td className="py-1.5 pr-3">{row.published}</td>
-                  <td className="py-1.5 pr-3">{row.state}</td>
+                  <td className={`py-1.5 pr-3${row.state === FAILED_CHECK_ATTENTION ? " font-medium text-[#9A6A00]" : ""}`}>{row.state}</td>
                   {canPublish && (
                     <td className="py-1.5 text-right">
                       {row.ready && row.state !== "Published" && (

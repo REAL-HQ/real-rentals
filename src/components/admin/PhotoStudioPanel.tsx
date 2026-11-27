@@ -11,7 +11,7 @@ import { PhotoClassLabel, PhotoClassSelect } from "./PhotoClassSelect";
 import { AutoLabelPhotos } from "./AutoLabelPhotos";
 import { PhotoStudioFleet } from "./PhotoStudioFleet";
 import { approveAndPublishStudio } from "@/lib/photo-studio-fleet.functions";
-import { carReadyToPublish } from "@/lib/photo-studio-fleet";
+import { FAILED_CHECK_ATTENTION, carReadyToPublish } from "@/lib/photo-studio-fleet";
 import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 type Media = Awaited<ReturnType<typeof listStudioMedia>>["items"][number];
@@ -27,6 +27,7 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
   const setClass = useServerFn(setOriginalPhotoClass);
   const approvePublish = useServerFn(approveAndPublishStudio);
   const [items, setItems] = useState<Media[]>([]);
+  const [attentionSlots, setAttentionSlots] = useState<string[]>([]);
   const [classAvailable, setClassAvailable] = useState(true);
   const [st, setSt] = useState<Awaited<ReturnType<typeof getPhotoStudioStatus>> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,10 +36,12 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
     try {
       const [l, s] = await Promise.all([list({ data: { vehicleId } }), status()]);
       setItems(l.items as Media[]);
+      setAttentionSlots(l.attentionSlots ?? []);
       setClassAvailable(l.photoClassAvailable !== false);
       setSt(s);
     } catch {
       setItems([]);
+      setAttentionSlots([]);
     }
   }, [vehicleId, list, status]);
   useEffect(() => { void load(); }, [load]);
@@ -126,9 +129,9 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
               <MicroLabel>{SLOT_LABELS[slot]}</MicroLabel>
               {s ? (<>
                 <div className="relative">
-                  <img src={s.url ?? ""} alt={`${SLOT_LABELS[slot]} (AI-generated)`} className="w-full aspect-[4/3] object-cover rounded" />
-                  <span className="absolute left-1 top-1 rounded bg-black/70 px-1 text-[10px] text-white">AI-generated</span>
-                  {s.studio_check?.inferred && <span className="absolute right-1 top-1 rounded bg-amber-600 px-1 text-[10px] text-white">angle inferred</span>}
+                  <img src={s.url ?? ""} alt={`${SLOT_LABELS[slot]} (AI-Generated)`} className="w-full aspect-[4/3] object-cover rounded" />
+                  <span className="absolute left-1 top-1 rounded bg-[#111114] px-1 text-[10px] text-white">AI-Generated</span>
+                  {s.studio_check?.inferred && <span className="absolute right-1 top-1 rounded bg-[#9A6A00] px-1 text-[10px] text-white">Angle Inferred</span>}
                 </div>
                 <div className="mt-1 flex items-center gap-1 text-xs">
                   <Badge variant="outline">{formatStatusLabel(s.studio_review_status)}</Badge>
@@ -136,9 +139,14 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
                     <Button size="sm" variant="ghost" onClick={() => decide(s.id, "approved")}>Approve</Button>
                     <Button size="sm" variant="ghost" onClick={() => decide(s.id, "rejected")}>Reject</Button>
                   </>)}
-                  {canEdit && <Button size="sm" variant="ghost" disabled={busy} onClick={() => run([slot])}>Redo</Button>}
+                  {canEdit && <Button size="sm" variant="ghost" disabled={busy} onClick={() => run([slot])}>Regenerate</Button>}
                 </div>
-              </>) : <div className="aspect-[4/3] grid place-items-center text-xs text-muted-foreground">No shot</div>}
+              </>) : attentionSlots.includes(slot) ? (
+                <>
+                  <div className="aspect-[4/3] grid place-items-center rounded bg-[#F4F4F6] px-2 text-center text-[11px] font-medium leading-snug text-[#111114]">{FAILED_CHECK_ATTENTION}</div>
+                  {canEdit && <Button size="sm" variant="ghost" className="mt-1" disabled={busy || !st?.enabled} onClick={() => run([slot])}>Regenerate</Button>}
+                </>
+              ) : <div className="aspect-[4/3] grid place-items-center text-xs text-muted-foreground">No Shot</div>}
             </div>
           );
         })}

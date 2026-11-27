@@ -43,6 +43,16 @@ export async function runCar(car: Car, originals: Original[], onlySlots: ShotSlo
       if (isolated.status === 402 || isolated.status === 403 || isolated.status === 429) break;
       continue;
     }
+    // The plate is usually already wrong on the grey cutout. Reject before the
+    // scene image so a failed shot spends one generation, not two. The same
+    // identityCheck still runs on the finished scene below.
+    const cutoutRead = await deps.provider.readIdentity({ bytes: isolated.bytes, mime: isolated.mime });
+    const cutoutCheck = cutoutRead.ok ? identityCheck(car, cutoutRead) : { ok: false as const, reason: "identity re-read failed" };
+    if (!cutoutCheck.ok) {
+      await deps.logSpend({ slot: p.slot, costCents: unitCost, outcome: "rejected_check" });
+      outcomes.push({ slot: p.slot, status: "rejected", reason: cutoutCheck.reason });
+      continue;
+    }
     await deps.logSpend({ slot: p.slot, costCents: unitCost, outcome: paidOutcome });
     const sceneBudget = spendRefusal(deps.settings, await deps.usage(), 1, deps.model);
     if (sceneBudget) {

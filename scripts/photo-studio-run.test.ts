@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { runCar } from "../src/lib/photo-studio-run";
 import { mockProvider, geminiProvider } from "../src/lib/photo-studio-provider.server";
-import { PHOTO_STUDIO_DEFAULTS, pickScene } from "../src/lib/photo-studio";
+import { PHOTO_STUDIO_DEFAULTS, costCentsFor, pickScene } from "../src/lib/photo-studio";
 
 const car = { id: "c", year: 2015, make: "Ford", model: "Fusion", color: "silver", plate: "CZ07DA", vin: "1FA6P0H74F5118769" };
 const originals = [
@@ -38,10 +38,69 @@ describe("runCar", () => {
     const r = await runCar(car, originals, null, t.d as any);
     expect(r.ok).toBe(false); expect(t.saved.length).toBe(0);
   });
-  test("invented plate rejected, not saved", async () => {
-    const t = deps({ provider: mockProvider({ plates: ["ABC123"] }) });
+  test("invented plate rejected on the cutout, scene not called", async () => {
+    let calls = 0;
+    const base = mockProvider({ plates: ["ABC123"] });
+    const provider = {
+      name: base.name,
+      generate: async (model: string, input: { prompt: string; images: { bytes: Uint8Array; mime: string }[] }) => {
+        calls++;
+        return base.generate(model, input);
+      },
+      readIdentity: base.readIdentity.bind(base),
+    };
+    const t = deps({ provider });
     const r = await runCar(car, originals, ["front"], t.d as any);
-    expect(r.outcomes[0].status).toBe("rejected"); expect(t.saved.length).toBe(0);
+    expect(r.outcomes[0].status).toBe("rejected");
+    expect(r.outcomes[0].reason).toMatch(/does not match/);
+    expect(t.saved.length).toBe(0);
+    expect(calls).toBe(1);
+    expect(t.spend).toHaveLength(1);
+    expect(t.spend[0].outcome).toBe("rejected_check");
+    expect(t.spend[0].costCents).toBe(0);
+  });
+  test("a wrong plate on the cutout costs one paid image", async () => {
+    let calls = 0;
+    const provider = {
+      name: "gemini",
+      generate: async () => {
+        calls++;
+        return { ok: true as const, bytes: new Uint8Array([calls]), mime: "image/png" };
+      },
+      readIdentity: async () => ({ ok: true as const, plates: ["XLK331"], vins: [] as string[] }),
+    };
+    const t = deps({ provider });
+    const r = await runCar(car, originals, ["rear"], t.d as any);
+    expect(r.outcomes[0].status).toBe("rejected");
+    expect(r.outcomes[0].reason).toMatch(/does not match/);
+    expect(calls).toBe(1);
+    expect(t.saved).toHaveLength(0);
+    expect(t.spend).toEqual([{ slot: "rear", costCents: costCentsFor("gemini-2.5-flash-image"), outcome: "rejected_check" }]);
+  });
+  test("a plate that first appears in the scene still costs two images", async () => {
+    let calls = 0;
+    const provider = {
+      name: "gemini",
+      generate: async () => {
+        calls++;
+        return { ok: true as const, bytes: new Uint8Array([calls]), mime: "image/png" };
+      },
+      readIdentity: async (image: { bytes: Uint8Array }) => ({
+        ok: true as const,
+        plates: image.bytes[0] === 1 ? [] : ["XLK331"],
+        vins: [] as string[],
+      }),
+    };
+    const t = deps({ provider });
+    const r = await runCar(car, originals, ["front"], t.d as any);
+    expect(r.outcomes[0].status).toBe("rejected");
+    expect(calls).toBe(2);
+    expect(t.saved).toHaveLength(0);
+    const unit = costCentsFor("gemini-2.5-flash-image");
+    expect(t.spend).toEqual([
+      { slot: "front", costCents: unit, outcome: "ok" },
+      { slot: "front", costCents: unit, outcome: "rejected_check" },
+    ]);
   });
   test("provider failure saves nothing", async () => {
     const t = deps({ provider: mockProvider({ fail: true }) });

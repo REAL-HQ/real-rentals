@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  carReadyToPublish, describeStudioRun, fleetProgress, isStudioFleetCar, shotPassedIdentity, studioRunToast,
+  FAILED_CHECK_ATTENTION, carReadyToPublish, classifyStudioGaps, describeStudioRun, fleetProgress, fleetRow,
+  isStudioFleetCar, shotHeldAfterFailedCheck, shotPassedIdentity, studioRunToast,
   type FleetCarInput, type FleetShot,
 } from "../src/lib/photo-studio-fleet";
 
@@ -71,6 +72,86 @@ describe("fleet progress", () => {
     expect(rows.find((r) => r.vehicleId === "empty")!.state).toBe("No Photos");
     const unblocked = fleetProgress([car({ id: "open" })], false);
     expect(unblocked[0].state).toBe("Needs Shots");
+  });
+
+  test("a dashboard made from a front-seat photo does not keep the car in the run", () => {
+    const exteriors = [
+      { photoClass: "exterior_front" }, { photoClass: "exterior_driver" },
+      { photoClass: "exterior_passenger" }, { photoClass: "exterior_rear" },
+    ];
+    const made = fleetRow(car({
+      originals: [...exteriors, { photoClass: "interior_front", createdAt: "2026-11-01T00:00:00.000Z" }],
+      shots: [...exterior("approved"), shot("interior_1", "pending"), shot("interior_2", "pending")],
+    }), false)!;
+    expect(made.ready).toBe(true);
+    expect(made.needsWork).toBe(false);
+    expect(made.state).toBe("Ready");
+    const gaps = classifyStudioGaps(
+      [...exteriors, { photoClass: "interior_front", createdAt: "2026-11-01T00:00:00.000Z" }],
+      [...exterior("approved"), shot("interior_2", "pending")],
+    );
+    expect(gaps.retry).not.toContain("interior_1");
+    expect(gaps.held).not.toContain("interior_1");
+    const withoutFrontSeats = classifyStudioGaps(
+      [...exteriors, { photoClass: "interior_front", createdAt: "2026-11-01T00:00:00.000Z" }],
+      exterior("approved"),
+    );
+    expect(withoutFrontSeats.retry).toEqual(["interior_2"]);
+    expect(withoutFrontSeats.held).toEqual([]);
+    expect(carReadyToPublish(exterior("approved"))).toBe(true);
+  });
+
+  test("a failed inferred dashboard is shown for Regenerate and does not retrigger the run", () => {
+    const originals = [
+      { photoClass: "exterior_front", createdAt: "2026-11-01T00:00:00.000Z" },
+      { photoClass: "exterior_driver", createdAt: "2026-11-01T00:00:00.000Z" },
+      { photoClass: "exterior_passenger", createdAt: "2026-11-01T00:00:00.000Z" },
+      { photoClass: "exterior_rear", createdAt: "2026-11-01T00:00:00.000Z" },
+      { photoClass: "interior_front", createdAt: "2026-11-01T00:00:00.000Z" },
+    ];
+    const shots = [...exterior("approved"), shot("interior_2", "approved")];
+    const failed = [{ slot: "interior_1", failedAt: "2026-11-02T00:00:00.000Z" }];
+    const gaps = classifyStudioGaps(originals, shots, failed);
+    expect(gaps.held).toContain("interior_1");
+    expect(gaps.retry).not.toContain("interior_1");
+    const row = fleetRow(car({ originals, shots, failedChecks: failed }), false)!;
+    expect(row.ready).toBe(true);
+    expect(row.needsWork).toBe(false);
+    expect(row.state).toBe("Ready");
+    expect(carReadyToPublish(shots)).toBe(true);
+  });
+
+  test("a real dashboard original is still a shot to generate", () => {
+    const gaps = classifyStudioGaps(
+      [{ photoClass: "interior_dash", createdAt: "2026-11-01T00:00:00.000Z" }],
+      [],
+    );
+    expect(gaps.retry).toContain("interior_1");
+  });
+
+  test("a failed check is not retried until the originals change", () => {
+    const originals = [
+      { photoClass: "exterior_front", createdAt: "2026-11-01T00:00:00.000Z" },
+      { photoClass: "exterior_driver", createdAt: "2026-11-01T00:00:00.000Z" },
+      { photoClass: "exterior_passenger", createdAt: "2026-11-01T00:00:00.000Z" },
+      { photoClass: "exterior_rear", createdAt: "2026-11-01T00:00:00.000Z" },
+    ];
+    const shots = exterior().filter((s) => s.slot !== "rear");
+    const failed = [{ slot: "rear", failedAt: "2026-11-02T00:00:00.000Z" }];
+    expect(shotHeldAfterFailedCheck("rear", failed, "2026-11-01T00:00:00.000Z")).toBe(true);
+    expect(shotHeldAfterFailedCheck("rear", failed, "2026-11-03T00:00:00.000Z")).toBe(false);
+    const held = classifyStudioGaps(originals, shots, failed);
+    expect(held.retry).not.toContain("rear");
+    expect(held.held).toEqual(["rear"]);
+    const row = fleetRow(car({ originals, shots, failedChecks: failed }), false)!;
+    expect(row.ready).toBe(false);
+    expect(row.needsWork).toBe(false);
+    expect(row.state).toBe(FAILED_CHECK_ATTENTION);
+    const newer = originals.map((o, i) => i === 3 ? { ...o, createdAt: "2026-11-03T00:00:00.000Z" } : o);
+    const again = classifyStudioGaps(newer, shots, failed);
+    expect(again.retry).toContain("rear");
+    expect(again.held).not.toContain("rear");
+    expect(fleetRow(car({ originals: newer, shots, failedChecks: failed }), false)!.needsWork).toBe(true);
   });
 
   test("a published identity-checked set is Published", () => {
