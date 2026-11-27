@@ -112,3 +112,34 @@ sends FLEET the `applicant_ready_for_agreement` webhook. FLEET then sends:
 - No `idempotency_key` needed: the event id is the key (`staff:<event_id>`).
 - The contact belongs to the staff member, so FLEET does not stamp
   contacted_at; the agreement step is still recorded as sent by FLEET.
+
+## Staff-approved applicants: no terms confirmation (Nov 27 2026)
+
+Dolmar (Nov 27 2026): "I don't want this block. I need to move fast." When
+staff or the owner approved the applicant in the back office, FLEET may send the
+agreement without `terms_confirmation`:
+
+```json
+{ "lead_id": "…", "idempotency_key": "…" }
+```
+
+- "Approved by staff" means the applicant is `approved` and the latest
+  `application.approved` audit entry has a signed-in actor (`actor_user_id`) and
+  no `decided_by`. FLEET's own automated approval does not count, so an
+  applicant FLEET approved still needs `terms_confirmation` (400
+  `terms_confirmation is required.`).
+- Every other check still runs: FLEET auth, Approved status, the internal DNC
+  List (409, nothing sent), no agreement already out or signed, the agreement
+  blockers (vehicle, weekly rate, start date, template…), and the same
+  `issueAgreement` send.
+- Each waiver writes `agreement.terms_confirmation_waived_approved` to the audit
+  log (actor FLEET, application id, approver user/email/role, approved_at, the
+  approval audit id, the terms sent), then the usual `agreement.fleet_sent`
+  with `channel: "waived_approved"`. No `agreement_terms_confirmations` row is
+  stored and `contacted_at` is not stamped.
+- Response: `201 { ok, lead_id, agreement_id, confirmation_id: null,
+  terms_confirmation_waived: true, approved_by, approved_at, delivery, terms }`.
+  A repeat call refuses with 409 "already out" once the agreement exists.
+- Sending `terms_confirmation` anyway keeps the confirmed-terms flow exactly as above.
+
+The DNC List check applies to every FLEET agreement send, confirmed or waived.
