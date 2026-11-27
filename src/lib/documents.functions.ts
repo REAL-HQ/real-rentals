@@ -218,11 +218,15 @@ export async function listStoredDriverDocuments(
   includeUrls: boolean,
 ): Promise<StoredDriverDocument[]> {
   if (applicationIds.length === 0) return [];
+  // The driver's own records (licence, insurance card, gig profile, income,
+  // trip history, application, agreement), including files staff or FLEET
+  // filed team only. See src/lib/driver-portal-documents.ts.
+  const { DRIVER_PORTAL_CATEGORIES } = await import("@/lib/driver-portal-documents");
   const { data, error } = await admin
     .from("documents")
     .select(SELECT)
     .in("driver_id", applicationIds)
-    .in("category", [...STAFF_FILED_CATEGORIES])
+    .in("category", [...new Set([...STAFF_FILED_CATEGORIES, ...DRIVER_PORTAL_CATEGORIES])])
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   const rows = data ?? [];
@@ -1275,8 +1279,18 @@ export const getMyVault = createServerFn({ method: "GET" })
         .eq("driver_id", app.id)
         .order("created_at", { ascending: false });
 
-      const visible = (rows ?? []).filter((d: any) => (d.visibility ?? []).includes("driver"));
-      return { applicationId: app.id as string, documents: await withUrls(supabaseAdmin, visible) };
+      // Rows came through the renter's own session (RLS: their application
+      // only); the driver's own records filed team only are added by
+      // application id. Signed as the service role: renters have no storage
+      // read policy, so signing as the renter returned no link.
+      const { driverPortalShows } = await import("@/lib/driver-portal-documents");
+      const shared = (rows ?? []).filter((d: any) => driverPortalShows(d));
+      const own = await withUrls(supabaseAdmin, shared);
+      const stored = await listStoredDriverDocuments(supabaseAdmin, [app.id as string], true);
+      const merged = new Map<string, VaultDocument>();
+      for (const d of [...own, ...stored]) merged.set(d.id, { ...d, review_note: null });
+      const documents = [...merged.values()].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+      return { applicationId: app.id as string, documents };
     },
   );
 
