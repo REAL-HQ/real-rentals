@@ -5,6 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { rowNav } from "@/lib/row-click";
 import { ManageLateFeesDialog } from "./ManageLateFeesDialog";
 import { useEffect, useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { supabase } from "@/integrations/supabase/client";
 import type { Payment, Application, Vehicle } from "./types";
@@ -31,7 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check, ListFilter } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
-import { FAILED_RECENT_FILTER, awaitingReservationFee, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, isZeroMoneyRow, rowOwed } from "@/lib/payments-summary";
+import { FAILED_RECENT_FILTER, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, isZeroMoneyRow, rowOwed } from "@/lib/payments-summary";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { PaymentSummaryCards } from "./PaymentSummaryCards";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
@@ -52,6 +53,8 @@ import { getStripeEnvironment } from "@/lib/stripe";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 import { StripeCollections } from "./StripeCollections";
 import { RefundReservationDialog } from "./RefundReservationDialog";
+import { OfferCreditDialog } from "./OfferCreditDialog";
+import { offerReservationFeeCreditAction } from "@/lib/rental-hold.functions";
 import { RESERVATION_FEE_REASON } from "@/lib/reservation-fee";
 import { refundReasonFromNotes, reservationFeeRefundedDetail } from "@/lib/reservation-fee-refund";
 const STATUSES = [
@@ -131,6 +134,8 @@ function isReservationFeePayment(p: { reason?: string | null; notes?: string | n
   return p.reason === RESERVATION_FEE_REASON || /reservation_fee:/.test(String(p.notes ?? ""));
 }
 function paymentStatusLabel(p: { status?: string | null; type?: string | null; reason?: string | null; notes?: string | null }) {
+  if (String(p.notes ?? "").includes("reservation_fee_no_hold") && String(p.status ?? "") === "paid") return "Paid · No Car Held";
+  if (String(p.status ?? "").toLowerCase() === "expired") return "Expired";
   if (isUnpaidReservationFee(p)) return "Awaiting Reservation Fee";
   if (isReservationFeePayment(p) && (p.status === "refunded" || refundReasonFromNotes(p.notes))) {
     return reservationFeeRefundedDetail(refundReasonFromNotes(p.notes));
@@ -138,10 +143,27 @@ function paymentStatusLabel(p: { status?: string | null; type?: string | null; r
   return STATUS_LABEL[String(p.status ?? "")] ?? enumDisplayLabel(String(p.status ?? ""));
 }
 
-export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initialRecordId }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null; initialRecordId?: string } = {}) {
+export function PaymentsPanel({
+  initialFilter,
+  autoOpenAdd,
+  tier = null,
+  initialRecordId,
+  previewPayments,
+  previewDrivers,
+}: {
+  initialFilter?: string;
+  autoOpenAdd?: boolean;
+  tier?: StaffTier | null;
+  initialRecordId?: string;
+  /** Skip the payments read. Screenshots and tests pass the rows. */
+  previewPayments?: Payment[];
+  /** Skip the driver read when previewing the ledger. */
+  previewDrivers?: Application[];
+} = {}) {
   const navigate = useNavigate();
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [drivers, setDrivers] = useState<Application[]>([]);
+  const preview = previewPayments != null;
+  const [payments, setPayments] = useState<Payment[]>(previewPayments ?? []);
+  const [drivers, setDrivers] = useState<Application[]>(previewDrivers ?? []);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   // Arriving from the dashboard's Collections card asks for everything
   // unresolved at once, which no single status covers.
@@ -157,9 +179,13 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
   const [collectionItems, setCollectionItems] = useState<{ amount: number; amount_paid: number; status: string; application_id: string }[] | null>(null);
   const [collectionsNonce, setCollectionsNonce] = useState(0);
   const [refundRow, setRefundRow] = useState<{ id: string; name: string; amount: number } | null>(null);
+  const [offerRow, setOfferRow] = useState<{ id: string; name: string; amount: number } | null>(null);
+  const [offering, setOffering] = useState(false);
+  const offerCredit = useServerFn(offerReservationFeeCreditAction);
   const [lateFeeRow, setLateFeeRow] = useState<{ rentalId: string; name: string } | null>(null);
 
   useEffect(() => {
+    if (preview) return;
     supabase
       .from("payments")
       .select("*")
@@ -177,16 +203,16 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
       .select("id,status,next_payment_due,weekly_rate,autopay_active,stripe_subscription_id")
       .eq("status", "active")
       .then(({ data }) => setRentals((data as any) || []));
-  }, []);
+  }, [preview]);
   useEffect(() => {
-    if (!canSeeCollections) return setCollectionItems(null);
+    if (preview || !canSeeCollections) return setCollectionItems(null);
     (supabase as any)
       .from("collection_items")
       .select("amount,amount_paid,status,application_id")
       .then(({ data, error }: { data: any[] | null; error: unknown }) =>
         setCollectionItems(error ? null : (data ?? []).map((i) => ({ ...i, amount: Number(i.amount), amount_paid: Number(i.amount_paid) }))),
       );
-  }, [canSeeCollections, collectionsNonce]);
+  }, [preview, canSeeCollections, collectionsNonce]);
 
   const driverMap = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d])), [drivers]);
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
@@ -297,9 +323,13 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
     }
   }
 
-  // $0 invoices (a paused subscription) are not ledger rows. They owe nothing,
-  // so Outstanding, which still sums countsAsOwed on this list, does not change.
-  const ledgerPayments = useMemo(() => payments.filter((p) => !isZeroMoneyRow(p)), [payments]);
+  // $0 invoices owe nothing. Unpaid Reservation Fees are holds, shown on
+  // Reserved. Paid, refunded, void and waived fees stay on this list.
+  // Outstanding already skips unpaid fees via countsAsOwed.
+  const ledgerPayments = useMemo(
+    () => payments.filter((p) => !isZeroMoneyRow(p) && !isUnpaidReservationFee(p)),
+    [payments],
+  );
 
   // Filter first, then sort a copy. Outstanding is computed from the filtered
   // set so clicking a header never changes the total.
@@ -353,7 +383,6 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
   const totalDue = filtered
     .filter((p) => countsAsOwed(p as any, coveredIds))
     .reduce((s, p) => s + rowOwed(p as any), 0);
-  const awaiting = awaitingReservationFee(filtered);
   const summary = useMemo(
     () => buildPaymentsSummary({ payments: payments as any, coveredIds, rentals, collectionItems }),
     [payments, coveredIds, rentals, collectionItems],
@@ -452,11 +481,6 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
                 <span>
                   Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
                 </span>
-                {awaiting.count > 0 ? (
-                  <span className="text-xs" data-testid="awaiting-reservation-fee">
-                    {`Awaiting Reservation Fee: $${awaiting.total.toLocaleString()} (${awaiting.count})`}
-                  </span>
-                ) : null}
               </div>
             </>
           ) : null}
@@ -635,6 +659,11 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
                             Refund Reservation
                           </DropdownMenuItem>
                         )}
+                        {isReservationFeePayment(p) && p.status === "paid" && tierAllows(tier, "manager") && (
+                          <DropdownMenuItem onClick={() => setOfferRow({ id: p.id, name: driverName, amount: Number(p.amount ?? 0) })}>
+                            Offer Credit
+                          </DropdownMenuItem>
+                        )}
                         {isReservationFeePayment(p) && p.status === "refunded" && (
                           <DropdownMenuItem disabled>{paymentStatusLabel(p)}</DropdownMenuItem>
                         )}
@@ -687,6 +716,25 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
             // Forgiving lowers the open rent row's late fees and balance: show it right away.
             const { data } = await supabase.from("payments").select("*").eq("rental_id", lateFeeRow.rentalId);
             if (data) setPayments((rows) => rows.map((r) => (data as Payment[]).find((x) => x.id === r.id) ?? r));
+          }}
+        />
+      ) : null}
+      {offerRow ? (
+        <OfferCreditDialog
+          open
+          driverName={offerRow.name === "—" ? null : offerRow.name}
+          amount={offerRow.amount}
+          busy={offering}
+          onOpenChange={(v) => { if (!v && !offering) setOfferRow(null); }}
+          onConfirm={(note) => {
+            setOffering(true);
+            void offerCredit({ data: { paymentId: offerRow.id, note } })
+              .then((r) => {
+                toast.success(`Credit Offered · Expires ${formatDate(r.expiresAt)}`);
+                setOfferRow(null);
+              })
+              .catch((e) => toast.error(e instanceof Error ? e.message : "Could Not Offer Credit"))
+              .finally(() => setOffering(false));
           }}
         />
       ) : null}

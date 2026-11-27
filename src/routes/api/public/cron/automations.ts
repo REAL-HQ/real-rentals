@@ -110,5 +110,23 @@ async function handle(request: Request): Promise<Response> {
   } catch (err) {
     console.error("[lead-alert-sweep] failed", err);
   }
-  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments, creditRetry, licenseAutoRead, leadAlertSweep });
+  // Unpaid Reservation Fee holds older than the window (default 24 hours).
+  // Staff can release earlier from Bookings. A failure here must not fail the cron.
+  let reservationFeeHolds: unknown = null;
+  try {
+    const { releaseExpiredReservationHolds } = await import("@/lib/reservation-fee-hold.server");
+    reservationFeeHolds = await releaseExpiredReservationHolds(supabaseAdmin);
+  } catch (err) {
+    console.error("[reservation-fee-hold] sweep failed", err);
+  }
+  // Offered Reservation Fee credits past their expiry. Null expiry (a kept
+  // missed-pickup credit) is left alone. Nothing is deleted.
+  let reservationFeeCredits: unknown = null;
+  try {
+    const { expireDueReservationFeeCredits } = await import("@/lib/rental-hold.server");
+    reservationFeeCredits = await expireDueReservationFeeCredits(supabaseAdmin);
+  } catch (err) {
+    console.error("[reservation-fee-credit] sweep failed", err);
+  }
+  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments, creditRetry, licenseAutoRead, leadAlertSweep, reservationFeeHolds, reservationFeeCredits });
 }

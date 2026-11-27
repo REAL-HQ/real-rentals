@@ -49,6 +49,6 @@ describe("Fee lookup", () => {
   });
   it("returns paid when the direct lookup has a paid fee", async () => {
     const r = await reservationFeeStatusForApplication(fake({ payments: [{ id: "p1", status: "paid", notes: "reservation_fee:r1" }] }), "a1");
-    expect(r).toEqual({ status: "paid", reason: null, paymentId: "p1" });
+    expect(r).toEqual({ status: "paid", reason: null, paymentId: "p1", amount: null, dueDate: null });
   });
 });

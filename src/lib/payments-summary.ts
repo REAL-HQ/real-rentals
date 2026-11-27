@@ -82,11 +82,12 @@ export function isZeroMoneyRow(p: { amount?: unknown; balance_due?: unknown }): 
 }
 
 /**
- * A Reservation Fee that is not paid, refunded, void or waived. Checkout leaves
- * the row unpaid while the renter still holds the car; that is a pending hold,
- * not money owed. isReservationRow reads type, reason and notes.
+ * A Reservation Fee that is not paid, refunded, void, waived, or expired.
+ * Checkout leaves the row unpaid while the renter still holds the car; that
+ * is a pending hold, not money owed. Expired is a released hold (the 24-hour
+ * window, or staff Release). isReservationRow reads type, reason and notes.
  */
-const RESERVATION_FEE_SETTLED = new Set(["paid", "refunded", "void", "waived"]);
+const RESERVATION_FEE_SETTLED = new Set(["paid", "refunded", "void", "waived", "expired"]);
 export function isUnpaidReservationFee(row: { type?: unknown; reason?: unknown; notes?: unknown; status?: unknown }): boolean {
   if (!isReservationRow(row)) return false;
   return !RESERVATION_FEE_SETTLED.has(String(row.status ?? "").trim().toLowerCase());
@@ -114,8 +115,9 @@ export function isOverdueRow(p: SummaryPayment): boolean {
   return OVERDUE_STATUSES.has(String(p.status ?? ""));
 }
 
-/** A charge that failed or a card declined in the last FAILED_RECENT_DAYS days and is still unpaid. */
+/** A charge that failed or a card declined in the last FAILED_RECENT_DAYS days and is still unpaid. An unpaid Reservation Fee is not on the Payments list, so it is not a Failed Payment either. */
 export function isRecentFailure(p: SummaryPayment, now: Date = new Date()): boolean {
+  if (isUnpaidReservationFee(p)) return false;
   const s = String(p.status ?? "");
   if (s !== "failed" && !(s === "unpaid" && p.failure_reason)) return false;
   const at = Date.parse(String(p.last_attempt_at ?? p.updated_at ?? ""));

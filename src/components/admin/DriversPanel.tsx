@@ -80,6 +80,7 @@ import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { ReserveCarDialog } from "./ReserveCarDialog";
 import { PickupLinkDialog } from "./PickupLinkDialog";
 import { NextStepCard } from "./NextStepCard";
+import { RenterCreditsCard } from "./RenterCreditsCard";
 import { ReturnFlowDialog } from "./ReturnFlowDialog";
 import { DriverSwapDialog } from "./DriverSwapDialog";
 import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
@@ -93,7 +94,8 @@ import { DriverStatement } from "./DriverStatement";
 import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
 import { endRental, getActivationReadiness, type ActivationReadiness } from "@/lib/rentals.functions";
-import { clearReservationAfterActivate, getOpenReservationForApplication, getReservationDepositSettings } from "@/lib/reservations.functions";
+import { clearReservationAfterActivate, getOpenReservationForApplication, getReservationDepositSettings, releaseUnpaidReservationFee } from "@/lib/reservations.functions";
+import { ReleaseReservationFeeDialog } from "./ReleaseReservationFeeDialog";
 import { getPickupNotBooked } from "@/lib/pickup-not-booked.functions";
 import type { PickupNotBookedState } from "@/lib/pickup-not-booked";
 import { reservationBlocksStart } from "@/lib/reservations";
@@ -2198,10 +2200,17 @@ function DriverDetail({
   const [activateOpen, setActivateOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [bookPickupOpen, setBookPickupOpen] = useState(false);
+  const [releaseFeeOpen, setReleaseFeeOpen] = useState(false);
+  const [releasingFee, setReleasingFee] = useState(false);
+  const releaseFee = useServerFn(releaseUnpaidReservationFee);
   const [pickupLinkOpen, setPickupLinkOpen] = useState(false);
   const [pickupGap, setPickupGap] = useState<PickupNotBookedState | null>(null);
+  const navigate = useNavigate();
   const [hasReservation, setHasReservation] = useState(false);
+  const [reservationId, setReservationId] = useState<string | null>(null);
   const [reservationDepositStatus, setReservationDepositStatus] = useState<string | null>(null);
+  const [reservationFeeAmount, setReservationFeeAmount] = useState<number | null>(null);
+  const [reservationFeeDue, setReservationFeeDue] = useState<string | null>(null);
   const [reservationFeeRequired, setReservationFeeRequired] = useState(false);
   const [blockStartWhenPending, setBlockStartWhenPending] = useState(false);
   // Rental tab: Activate Rental entry and the server's readiness checklist.
@@ -2231,12 +2240,17 @@ function DriverDetail({
   useEffect(() => {
     if (rentalActive || !approved) {
       setHasReservation(false);
+      setReservationId(null);
       setReservationFeeRequired(false);
       setReservationDepositStatus(null);
+      setReservationFeeAmount(null);
+      setReservationFeeDue(null);
       return;
     }
     let cancelled = false;
     setReservationDepositStatus(null);
+    setReservationFeeAmount(null);
+    setReservationFeeDue(null);
     void Promise.all([
       loadOpenReservation({ data: { applicationId: driver.id } }),
       // A settings failure must not blank the reservation and fee facts.
@@ -2245,14 +2259,20 @@ function DriverDetail({
       .then(([open, settings]) => {
         if (cancelled) return;
         setHasReservation(!!open.reservation);
+        setReservationId(open.reservation?.id ?? null);
         setReservationFeeRequired(open.reservation?.depositRequired === true);
         setReservationDepositStatus(open.feeDisplayStatus ?? open.reservation?.depositStatus ?? null);
+        setReservationFeeAmount(typeof open.feeAmount === "number" ? open.feeAmount : null);
+        setReservationFeeDue(open.feeDueDate ?? null);
         setBlockStartWhenPending(settings.blockStartWhenPending === true);
       })
       .catch(() => {
         if (cancelled) return;
         setHasReservation(false);
+        setReservationId(null);
         setReservationDepositStatus(null);
+        setReservationFeeAmount(null);
+        setReservationFeeDue(null);
       });
     return () => {
       cancelled = true;
@@ -2632,6 +2652,17 @@ function DriverDetail({
     else if (t.kind === "approve") requestApprove();
     else if (t.kind === "reserve") { if (!reserveOpen) setReserveOpen(true); }
     else if (t.kind === "book_pickup") { if (!bookPickupOpen) setBookPickupOpen(true); }
+    else if (t.kind === "release_reservation_fee") setReleaseFeeOpen(true);
+    else if (t.kind === "bookings_reserved") {
+      void navigate({
+        to: "/admin",
+        search: {
+          tab: "bookings",
+          view: "reserved",
+          ...(reservationId ? { id: reservationId } : {}),
+        } as never,
+      });
+    }
     else if (t.kind === "activate") {
       if (reservationBlocksStart({ depositStatus: reservationDepositStatus, blockStartWhenPending })) {
         toast.error("The Reservation Payment Is Still Pending. Record It Or Turn Off Block Start When Pending In Settings → Deposits.");
@@ -3159,6 +3190,8 @@ function DriverDetail({
                   renderEvidence={renderChecklistEvidence}
                   evidence={evidencePresentation}
                   reservationPaymentStatus={reservationDepositStatus}
+                  reservationFeeAmount={reservationFeeAmount}
+                  reservationFeeDue={reservationFeeDue}
                   termsConfirmed={termsConfirmedRow}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
@@ -3168,6 +3201,13 @@ function DriverDetail({
                   canReserve={canReserve && !hasReservation}
                   canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
+                />
+                <RenterCreditsCard
+                  canManage={isManager}
+                  applicationId={driver.id}
+                  driverName={driver.full_name ?? null}
+                  rentals={[]}
+                  showOffer
                 />
                 <BlacklistCard
                   applicationId={driver.id}
@@ -3362,6 +3402,9 @@ function DriverDetail({
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
                   evidence={evidencePresentation}
+                  reservationPaymentStatus={reservationDepositStatus}
+                  reservationFeeAmount={reservationFeeAmount}
+                  reservationFeeDue={reservationFeeDue}
                   termsConfirmed={termsConfirmedRow}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
@@ -3600,6 +3643,24 @@ function DriverDetail({
           }}
         />
       ) : null}
+      <ReleaseReservationFeeDialog
+        open={releaseFeeOpen}
+        driverName={driver.full_name ?? null}
+        busy={releasingFee}
+        onOpenChange={(open) => { if (!releasingFee) setReleaseFeeOpen(open); }}
+        onConfirm={() => {
+          if (releasingFee) return;
+          setReleasingFee(true);
+          void releaseFee({ data: { applicationId: driver.id } })
+            .then(() => {
+              toast.success("Hold Released");
+              setReleaseFeeOpen(false);
+              setReadinessNonce((n) => n + 1);
+            })
+            .catch((e) => toast.error(e instanceof Error ? e.message : "Could Not Release The Hold"))
+            .finally(() => setReleasingFee(false));
+        }}
+      />
       {bookPickupOpen ? (
         <ReserveCarDialog
           open={bookPickupOpen}
