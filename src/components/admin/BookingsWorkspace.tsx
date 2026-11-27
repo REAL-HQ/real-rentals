@@ -89,7 +89,7 @@ export function BookingsWorkspace({
       </div>
 
       {effective === "reserved" ? (
-        <ReservationsPanel canManage={canManageReservations} />
+        <ReservationsPanel canManage={canManageReservations} focusRentalId={openId} />
       ) : effective === "active" ? (
         <ActiveRentalsPanel />
       ) : (

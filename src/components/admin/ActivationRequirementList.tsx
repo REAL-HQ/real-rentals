@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { FixTarget } from "@/lib/next-step";
 import type { Blocker } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";
-import { checklistAction } from "./checklist-actions";
+import { checklistAction, reservationFeeReleaseAction } from "./checklist-actions";
 import type { EvidencePresentationMap } from "@/lib/checklist-evidence";
 
 // Renders the server's readiness checklist. Nothing here decides anything:
@@ -51,6 +51,7 @@ export function ActivationRequirementList({
         {requirements.filter((r) => r.key !== "gig_platform" && r.key !== "insurance_document" && (!embedded || (NEXT_STEP_REQUIREMENT_KEYS as readonly ActivationRequirementKey[]).includes(r.key))).map((r) => {
           const blocker = blockers.find((item) => item.key === r.key || (item.key === "local" && r.key === "interview" && item.target.kind === "record_call"));
           const action = onRun ? blocker ? { label: blocker.fix, target: blocker.target } : checklistAction(r) : null;
+          const release = onRun ? reservationFeeReleaseAction(r) : null;
           const fileState = evidence?.[r.key];
           const fileControls = renderEvidence?.(r.key);
           const status = fileState?.label ?? (r.key === "reservation_paid" || r.key === "terms_confirmed" ? r.detail ?? "Not Done" : r.met === true ? "Complete" : r.met === null ? "Choose A Vehicle" : ENFORCEMENT_LABEL[r.enforcement]);
@@ -92,11 +93,12 @@ export function ActivationRequirementList({
           >
             {/* Status markers never navigate or pretend an unsaved attestation
                 is complete. Explicit review/upload actions remain separate. */}
-            <span className="flex min-w-0 items-center gap-2 px-1 py-2">{marker}<span className="min-w-0 break-words text-foreground">{r.label}{r.key === "inspection" && r.met !== true ? <span className="text-muted-foreground"> · Pickup Photos Optional; Inspection Report Optional</span> : r.detail && r.met !== true && r.key !== "terms_confirmed" ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span></span>
+            <span className="flex min-w-0 items-center gap-2 px-1 py-2">{marker}<span className="min-w-0 break-words text-foreground">{r.label}{r.key === "inspection" && r.met !== true ? <span className="text-muted-foreground"> · Pickup Photos Optional; Inspection Report Optional</span> : r.detail && r.met !== true && r.key !== "terms_confirmed" && r.key !== "reservation_paid" ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span></span>
             <div className={embedded ? "ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 max-sm:w-full" : `flex shrink-0 flex-col items-end gap-1 ${fileState ? "max-w-80 max-sm:w-full" : "max-w-36"}`}>
               <span className="text-right text-[10px] text-muted-foreground">{status}</span>
               {embedded ? fileControls : null}
-              {action && onRun && !fileControls ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => onRun(action.target)}>{action.label}</Button> : null}
+              {action && onRun && !fileControls ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" data-testid={r.key === "reservation_paid" ? "reservation-paid-view" : undefined} onClick={() => onRun(action.target)}>{action.label}</Button> : null}
+              {release && onRun && !fileControls ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" data-testid="release-reservation-fee" onClick={() => onRun(release.target)}>{release.label}</Button> : null}
               {!embedded ? fileControls : null}
             </div>
           </li>
