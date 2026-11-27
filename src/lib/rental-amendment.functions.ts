@@ -7,6 +7,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { staffContactMiddleware } from "@/lib/dnc-middleware";
 
 const SendInput = z.object({
   rentalId: z.string().uuid(),
@@ -35,7 +36,7 @@ const SendInput = z.object({
 });
 
 export const sendUpdatedAgreement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireSupabaseAuth, staffContactMiddleware])
   .inputValidator((d: unknown) => SendInput.parse(d))
   .handler(async ({ data, context }) => {
     const { requireTier } = await import("@/lib/roles.server");

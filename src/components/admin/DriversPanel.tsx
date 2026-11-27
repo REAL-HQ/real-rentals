@@ -155,6 +155,7 @@ import {
   ChevronDown,
   Mail,
   Phone,
+  PhoneOff,
   MapPin,
   Car,
   CreditCard,
@@ -280,6 +281,9 @@ import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-revie
 import { listBlacklist } from "@/lib/blacklist.functions";
 import type { BlacklistEntry } from "@/lib/blacklist";
 import { BlacklistCard, BlacklistedBadge } from "@/components/admin/BlacklistCard";
+import { DncBadge, useDnc } from "@/components/admin/DncGuard";
+import { DncCard, openDncDialog } from "@/components/admin/DncControls";
+import { MOVE_TO_DNC_LABEL, REMOVE_FROM_DNC_LABEL } from "@/lib/dnc";
 import { AdditionalDriversSection } from "@/components/admin/AdditionalDriversSection";
 import { CollectionsCard } from "@/components/admin/CollectionsCard";
 import { BackgroundReportsCard } from "@/components/admin/BackgroundReportsCard";
@@ -580,6 +584,8 @@ export function DriversPanel({
   const loadNeedsStaff = useServerFn(listFleetNeedsStaff);
   const [needsStaffFlags, setNeedsStaffFlags] = useState<FleetNeedsStaffFlag[] | null>(null);
   const needsStaff = useMemo(() => new Map((needsStaffFlags ?? []).map((f) => [f.applicationId, f])), [needsStaffFlags]);
+  // Internal DNC List (dnc_list): badge only; the shared DncProvider holds the list.
+  const { lookup: dncLookup } = useDnc();
   // Active Renter Blacklist entries (renter_blacklist). Empty until installed.
   const loadBlacklist = useServerFn(listBlacklist);
   const [blacklistEntries, setBlacklistEntries] = useState<BlacklistEntry[] | null>(null);
@@ -1593,6 +1599,10 @@ setDocCounts(requiredDocCounts(rows));
                         campaign={a.utm_campaign}
                         className="ml-2 align-middle"
                       />
+                      <DncBadge
+                        entry={dncLookup({ applicationId: a.id, phone: a.phone, email: a.email })}
+                        className="ml-2 align-middle"
+                      />
                       {dupeCount > 0 && (
                         <button
                           onClick={(e) => {
@@ -2035,6 +2045,10 @@ function DriverDetail({
 
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  // Internal DNC List: header badge, More Actions item and contact warnings.
+  const { lookup: dncLookup, confirmContact } = useDnc();
+  const dncWho = { applicationId: driver.id, phone: driver.phone, email: driver.email };
+  const dncEntry = dncLookup(dncWho);
   const [profileAudits, setProfileAudits] = useState<{ at: string; summary: string }[]>([]);
   const [profileAuditNonce, setProfileAuditNonce] = useState(0);
   const loadProfileUpdates = useServerFn(listDriverProfileUpdates);
@@ -2919,6 +2933,7 @@ function DriverDetail({
                     </button>
                   ) : null}
                   {blacklistEntry ? <BlacklistedBadge title={blacklistEntry.reasonLabel} /> : null}
+                  <DncBadge entry={dncEntry} />
                   <StatusPill status={driver.status} />
                   {driver.gclid && (
                     <span className="text-[10px] font-semibold tracking-[0.04em] text-[#C68A12] bg-[rgba(240,192,64,0.08)] rounded px-1.5 py-0.5">
@@ -3028,12 +3043,12 @@ function DriverDetail({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-2rem)] [&>button]:gap-2 [&>*>svg]:mr-0 [&>*>svg]:size-4 [&>*>svg]:shrink-0">
                   {driver.phone && (
-                    <DropdownMenuItem className="sm:hidden" onClick={() => (window.location.href = `tel:${driver.phone}`)}>
+                    <DropdownMenuItem className="sm:hidden" onClick={() => void confirmContact(dncWho, "Call Them").then((ok) => { if (ok) window.location.href = `tel:${driver.phone}`; })}>
                       <Phone className="w-4 h-4 mr-2" /> Call
                     </DropdownMenuItem>
                   )}
                   {driver.email && (
-                    <DropdownMenuItem className="sm:hidden" onClick={() => (window.location.href = `mailto:${driver.email}`)}>
+                    <DropdownMenuItem className="sm:hidden" onClick={() => void confirmContact(dncWho, "Email Them").then((ok) => { if (ok) window.location.href = `mailto:${driver.email}`; })}>
                       <Mail className="w-4 h-4 mr-2" /> Email
                     </DropdownMenuItem>
                   )}
@@ -3048,6 +3063,11 @@ function DriverDetail({
                   <DropdownMenuItem title="Optional Interview Script" aria-label="Interview Script" onClick={() => setInterviewOpen(true)}>
                     <ClipboardList className="w-4 h-4 mr-2" /> Interview Script
                   </DropdownMenuItem>
+                  {!dncEntry || (dncEntry.applicationId === driver.id && (isManager || isOwner)) ? (
+                    <DropdownMenuItem data-testid="dnc-menu-item" onClick={() => openDncDialog({ applicationId: driver.id })}>
+                      <PhoneOff className="w-4 h-4 mr-2" /> {dncEntry ? REMOVE_FROM_DNC_LABEL : MOVE_TO_DNC_LABEL}
+                    </DropdownMenuItem>
+                  ) : null}
                   <RequestDocumentsAction driver={driver} onUpdate={onSaved} />
                   <ReissueLinkAction applicationId={driver.id} />
                   <CardOnFileActions driver={driver} onUpdate={onSaved} canIssue={canIssueCardLink} />
@@ -3156,6 +3176,13 @@ function DriverDetail({
                   isManager={isManager}
                   onNotesChanged={(notes) => onSaved({ notes })}
                   onBlacklistChanged={onBlacklistChanged}
+                />
+                <DncCard
+                  applicationId={driver.id}
+                  name={driver.full_name ? displayPersonName(driver.full_name) : null}
+                  phone={driver.phone}
+                  email={driver.email}
+                  canRemove={isManager || isOwner}
                 />
                 {isManager ? <AdditionalDriversSection applicationId={driver.id} /> : null}
                 <CollectionsCard applicationId={driver.id} canSee={isOwner || isManager} />
@@ -4100,6 +4127,7 @@ function VehiclePicker({
 
 function ReissueLinkAction({ applicationId }: { applicationId: string }) {
   const reissue = useServerFn(reissueApplicantLink);
+  const { confirmContact } = useDnc();
   const [busy, setBusy] = useState(false);
   return (
     <DropdownMenuItem
@@ -4108,6 +4136,7 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
       onSelect={async (e) => {
         e.preventDefault();
         if (busy) return;
+        if (!(await confirmContact({ applicationId }, "Copy An Application Link To Send"))) return;
         setBusy(true);
         try {
           const res = await reissue({ data: { id: applicationId } });
@@ -4237,8 +4266,11 @@ const handoffItemClass =
 function CardOnFileActions({ driver, onUpdate, canIssue }: { driver: any; onUpdate: (p: any) => void; canIssue: boolean }) {
   const { ensure: ensureLink, cached } = useCardOnFileLink(driver.id);
   const feeLink = useServerFn(staffReservationFeeLink);
+  const { confirmContact } = useDnc();
+  const dncWho = { applicationId: driver.id, phone: driver.phone, email: driver.email };
   // One server call per click, shared by the clipboard item and its fallback.
-  function copyReservationFeeLink() {
+  async function copyReservationFeeLink() {
+    if (!(await confirmContact(dncWho, "Copy A Reservation Fee Link To Send"))) return;
     let pending: Promise<string> | null = null;
     const ensure = () => (pending ??= feeLink({ data: { applicationId: driver.id } }).then((r) => r.url));
     copyCardLink(ensure, "Reservation Fee link copied. Nothing was sent to the renter.", (e) =>
@@ -4251,7 +4283,8 @@ function CardOnFileActions({ driver, onUpdate, canIssue }: { driver: any; onUpda
   const ready = cached && cardLinkFresh(cached.expiresAt) ? cached : null;
   const canHandoff = !!(driver.phone || driver.email);
 
-  function copyLink() {
+  async function copyLink() {
+    if (!(await confirmContact(dncWho, "Copy A Card-On-File Link To Send"))) return;
     copyCardLink(cardLinkText(ensureLink), "Card-on-file link copied");
   }
 
@@ -4622,6 +4655,7 @@ function RequestDocumentsAction({
   onUpdate: (patch: Partial<Application>) => void;
 }) {
   const requestDocs = useServerFn(requestApplicationDocuments);
+  const { confirmContact } = useDnc();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
@@ -4643,6 +4677,7 @@ function RequestDocumentsAction({
   async function send() {
     if (items.size === 0) return toast.error("Select at least one item");
     if (!driver.email) return toast.error("No email on file for this applicant");
+    if (!(await confirmContact({ applicationId: driver.id, phone: driver.phone, email: driver.email }, "Email A Document Request"))) return;
     setSending(true);
     try {
       const res: any = await requestDocs({

@@ -321,11 +321,22 @@ export const sendStaffMessage = createServerFn({ method: "POST" })
       subject: z.string().trim().max(200).optional(),
       /** Quo number id; checked against the server allowlist in sendSms. */
       fromId: z.string().trim().regex(/^PN[A-Za-z0-9]{1,40}$/).optional(),
+      /** Set only after the staff member chose Contact Anyway on the "On DNC List" popup. */
+      dncAcknowledged: z.boolean().optional(),
     }).parse(d),
   )
   .handler(async ({ data, context }): Promise<{ ok: boolean; state: string; error?: string }> => {
     await requireStaff(context.userId);
     const sb = await admin();
+    // Internal DNC List: the popup is the warning; the server refuses a send the
+    // browser did not confirm (an old tab, a missed entry point).
+    if (!data.dncAcknowledged) {
+      const { activeDncForApplication } = await import("@/lib/dnc.server");
+      if (await activeDncForApplication(sb, data.applicationId)) {
+        const { DNC_UNCONFIRMED_ERROR } = await import("@/lib/dnc");
+        return { ok: false, state: "skipped", error: DNC_UNCONFIRMED_ERROR };
+      }
+    }
     const { data: app } = await sb
       .from("applications")
       .select("id, full_name, email, phone, sms_consent, sms_opt_out_at")

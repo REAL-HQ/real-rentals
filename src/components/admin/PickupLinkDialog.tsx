@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { prepareStaffPickupLink, sendStaffPickupLink } from "@/lib/pickup-not-booked.functions";
+import { useDnc } from "@/components/admin/DncGuard";
 
 const primary = "inline-flex h-9 items-center justify-center rounded-md bg-[#D03020] px-4 text-sm font-semibold text-white hover:bg-[#B52818] disabled:opacity-50";
 const secondary = "inline-flex h-9 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-4 text-sm font-medium text-[#111114] hover:bg-[#FAFAFB] disabled:opacity-50";
@@ -24,6 +25,7 @@ export function PickupLinkDialog({
 }) {
   const prepare = useServerFn(prepareStaffPickupLink);
   const send = useServerFn(sendStaffPickupLink);
+  const { confirmContact } = useDnc();
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -63,6 +65,7 @@ export function PickupLinkDialog({
   };
 
   const email = async () => {
+    if (!(await confirmContact({ applicationId }, "Email The Pickup Link"))) return;
     setSending(true);
     try {
       const r = await send({ data: { applicationId } });

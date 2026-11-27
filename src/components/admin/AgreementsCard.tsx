@@ -25,6 +25,7 @@ import { PrepareAgreementDialog } from "./PrepareAgreementDialog";
 import { formatStatusLabel } from "@/lib/ui-display-labels";
 import { SEND_DOCUMENT_FOR_SIGNATURE_ENABLED } from "@/lib/send-document-flag";
 import { SendDocumentDialog } from "./SendDocumentDialog";
+import { useDnc } from "@/components/admin/DncGuard";
 
 const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
 const chTone = (v: string) =>
@@ -60,6 +61,7 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus, re
   const doSend = useServerFn(sendAgreement);
   const [companyAck, setCompanyAck] = useState(false);
   const doResend = useServerFn(resendAgreement);
+  const { confirmContact } = useDnc();
   const doVoid = useServerFn(voidAgreement);
   const doRetry = useServerFn(retryAgreementArchive);
   const doPdf = useServerFn(getAgreementPdf);
@@ -117,6 +119,7 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus, re
 
   async function send() {
     if (!preview?.fingerprint || !preview.canSend) return;
+    if (!(await confirmContact({ applicationId, email: renterEmail }, "Send The Agreement For Signature"))) return;
     setBusy(true);
     try {
       const res = await doSend({ data: { applicationId, fingerprint: preview.fingerprint, companyAck: companyAck || undefined } });
@@ -133,6 +136,7 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus, re
   }
 
   async function runResend(agreementId: string, signerId?: string, channels?: "email" | "email_and_sms") {
+    if (!(await confirmContact({ applicationId, email: renterEmail }, "Resend The Signing Link"))) return;
     const r = await doResend({ data: { agreementId, signerId, channels } });
     const url = r.url;
     if (url) setLinks((l) => ({ ...l, [agreementId]: url }));

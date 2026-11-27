@@ -83,7 +83,7 @@ const fakeAdmin = {
 
 const stubs = {
   "@tanstack/react-start/server": "export const getRequest=()=>({headers:new Map()});",
-  "@tanstack/react-start": `export const createServerFn=()=>{let validate=x=>x;const api={middleware:()=>api,inputValidator:v=>{validate=v;return api},handler:fn=>async args=>fn({...args,data:validate(args.data)})};return api}; export const createServerOnlyFn=fn=>fn;`,
+  "@tanstack/react-start": `export const createServerFn=()=>{let validate=x=>x;const api={middleware:()=>api,inputValidator:v=>{validate=v;return api},handler:fn=>async args=>fn({...args,data:validate(args.data)})};return api}; export const createServerOnlyFn=fn=>fn; export const createMiddleware=()=>{const m={middleware:()=>m,server:()=>m};return m};`,
   "@/integrations/supabase/auth-middleware": "export const requireSupabaseAuth={};",
   "@/integrations/supabase/client.server":
     "export const supabaseAdmin=new Proxy({}, {get:(_,p)=>globalThis.__lock.admin[p]});",

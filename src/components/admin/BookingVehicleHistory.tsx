@@ -40,6 +40,7 @@ import {
   sendSwapVehicleAgreement,
   type SwapHistoryEntry,
 } from "@/lib/vehicle-swap.functions";
+import { useDnc } from "@/components/admin/DncGuard";
 
 // Vehicle swaps for a booking (with the Swap Vehicle action) or a vehicle.
 //
@@ -212,6 +213,7 @@ export function SwapVehiclePanel({
 function SwapForm({ rentalId, opt, onClose, onSent }: { rentalId: string; opt: Options; onClose: () => void; onSent: () => void }) {
   const preview = useServerFn(previewSwapVehicle);
   const send = useServerFn(sendSwapVehicleAgreement);
+  const { confirmContact } = useDnc();
   const candidates = (opt.candidates ?? []) as VehicleComboboxVehicle[];
   const prevTerms = (opt.previousTerms ?? {}) as { damageWaiver: string | null; paymentSchedule: string | null; paymentMethod: string | null; vehicleOwner: string | null };
   const previous = opt.previous as { isPaper: boolean; label: string } | undefined;
@@ -272,6 +274,7 @@ function SwapForm({ rentalId, opt, onClose, onSent }: { rentalId: string; opt: O
 
   async function onSend() {
     if (!pv?.fingerprint) return;
+    if (!(await confirmContact({ rentalId }, "Send The Swap Agreement For Signature"))) return;
     setBusy(true);
     setError(null);
     try {

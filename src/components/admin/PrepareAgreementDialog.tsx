@@ -16,6 +16,7 @@ import { HOME_ADDRESS_LABEL, missingHomeAddressParts } from "@/lib/agreement-hom
 import { DANGER_BADGE } from "@/lib/badge-tone";
 import { listStaffAdditionalDrivers } from "@/lib/additional-drivers.functions";
 import { prepDriversFromApproved } from "@/lib/additional-drivers";
+import { useDnc } from "@/components/admin/DncGuard";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
 type Note = { field: string; label: string; why: string };
@@ -76,6 +77,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
 }) {
   const doPreview = useServerFn(previewAgreement);
   const doSend = useServerFn(sendAgreement);
+  const { confirmContact } = useDnc();
   const doReadLicense = useServerFn(readAgreementLicense);
   const doReadAgreement = useServerFn(readWrittenAgreement);
   const loadExtraDrivers = useServerFn(listStaffAdditionalDrivers);
@@ -279,6 +281,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
 
   async function send() {
     if (!canSend || !res?.fingerprint) return;
+    if (!(await confirmContact({ applicationId }, "Send The Agreement For Signature"))) return;
     setBusy(true);
     try {
       const r = await doSend({ data: { applicationId, fingerprint: res.fingerprint, companyAck: companyAck || undefined, prep, templateKey: (templateKey || undefined) as any } });

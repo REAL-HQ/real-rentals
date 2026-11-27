@@ -7,6 +7,9 @@ import { toast } from "sonner";
 import { Car, Hourglass, MailCheck, MapPin, ShieldAlert, Tag as TagIcon, UserPlus } from "lucide-react";
 import { WaitlistConflictDialog } from "./WaitlistConflictDialog";
 import { WaitlistTagsDialog } from "./WaitlistTagsDialog";
+import { DncBadge, useDnc } from "./DncGuard";
+import { DncActionDialog } from "./DncControls";
+import { MOVE_TO_DNC_LABEL, REMOVE_FROM_DNC_LABEL } from "@/lib/dnc";
 import {
   listWaitlist,
   setCarsAvailable,
@@ -76,6 +79,8 @@ export function WaitlistPanel({
   const [tagFilter, setTagFilter] = useState("");
   const [tagEditorId, setTagEditorId] = useState<string | null>(null);
   const [savingTags, setSavingTags] = useState(false);
+  const { lookup: dncLookup } = useDnc();
+  const [dncTarget, setDncTarget] = useState<{ mode: "add" | "remove"; entry: WaitlistEntry; dncId: string | null } | null>(null);
 
   const refresh = useCallback(async () => {
     setFleet(null); // Never leave a previous successful count visible after a failed refresh.
@@ -400,7 +405,10 @@ export function WaitlistPanel({
                       {e.position ?? "—"}
                     </td>
                     <td className="px-5 py-3">
-                      <div className="text-[13px] font-medium text-[#111114]">{e.full_name}</div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[13px] font-medium text-[#111114]">
+                        <span>{e.full_name}</span>
+                        <DncBadge entry={dncLookup({ waitlistId: e.id, applicationId: e.promoted_application_id, phone: e.phone, email: e.email })} />
+                      </div>
                       <div className="text-[11px] text-[#9A9AA3]">
                         {e.email}
                         {e.phone ? ` · ${e.phone}` : ""}
@@ -444,6 +452,20 @@ export function WaitlistPanel({
                       {fmtDate(e.created_at)}
                     </td>
                     <td className="px-5 py-3 text-right">
+                      {(() => {
+                        const dnc = dncLookup({ waitlistId: e.id, applicationId: e.promoted_application_id, phone: e.phone, email: e.email });
+                        if (dnc && (!canManage || dnc.waitlistId !== e.id)) return null;
+                        return (
+                          <button
+                            type="button"
+                            data-testid="waitlist-dnc"
+                            onClick={(ev) => { ev.stopPropagation(); setDncTarget({ mode: dnc ? "remove" : "add", entry: e, dncId: dnc?.id ?? null }); }}
+                            className="mb-1.5 block w-full text-right text-[11px] font-medium text-[#55555E] underline-offset-2 hover:text-[#111114] hover:underline"
+                          >
+                            {dnc ? REMOVE_FROM_DNC_LABEL : MOVE_TO_DNC_LABEL}
+                          </button>
+                        );
+                      })()}
                       {e.status !== "promoted" && (conflictIds.has(e.id) || e.review_reason === "email_match_phone_differs") ? (
                         <button
                           type="button"
@@ -497,6 +519,15 @@ export function WaitlistPanel({
         }}
       />
 
+      {dncTarget ? (
+        <DncActionDialog
+          mode={dncTarget.mode}
+          target={{ waitlistId: dncTarget.entry.id, name: dncTarget.entry.full_name }}
+          entryId={dncTarget.dncId}
+          onClose={() => setDncTarget(null)}
+        />
+      ) : null}
+
       <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -506,7 +537,7 @@ export function WaitlistPanel({
             </DialogTitle>
             <DialogDescription>
               Email the first drivers on the waitlist before the car is offered anywhere else. Each
-              driver is marked as notified once their email goes out.
+              driver is marked as notified once their email goes out. Anyone on the DNC List is skipped.
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-3 py-2">

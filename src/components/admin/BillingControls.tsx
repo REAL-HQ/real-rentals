@@ -18,6 +18,7 @@ import {
   verifyBillingPaymentMethod,
 } from "@/lib/billing-controls.functions";
 import type { BillingExtensionView, BillingPreviewInvoice, PaymentMethodVerifyResult, PreviewLineRead } from "@/lib/billing-controls";
+import { useDnc } from "@/components/admin/DncGuard";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 
@@ -40,6 +41,7 @@ export function BillingControls() {
 function BillingControlsForm() {
   const createLink = useServerFn(createBillingPaymentMethodLink);
   const sendLink = useServerFn(sendBillingPaymentMethodLink);
+  const { confirmContact } = useDnc();
   const verifyMethod = useServerFn(verifyBillingPaymentMethod);
   const setDefault = useServerFn(setBillingSubscriptionDefault);
   const previewDay = useServerFn(previewBillingDay);
@@ -83,12 +85,14 @@ function BillingControlsForm() {
           <p className="mt-1 text-xs text-muted-foreground">Copy Link does not email. Send Link emails the driver.</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" className="rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium" onClick={() => run(async () => {
+              if (!(await confirmContact({ rentalId }, "Copy A Payment Method Link To Send"))) return;
               const created = await createLink({ data: { rentalId } });
               setLink(created.url);
               await navigator.clipboard.writeText(created.url);
               setNotice("Link copied.");
             })}>Copy Link</button>
             <button type="button" className="rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium" onClick={() => run(async () => {
+              if (!(await confirmContact({ rentalId }, "Email A Payment Method Link"))) return;
               await sendLink({ data: { rentalId } });
               setNotice("Link sent.");
             })}>Send Link</button>

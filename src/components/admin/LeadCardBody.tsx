@@ -25,6 +25,7 @@ export function LeadCardBody({
   view,
   quality = "neutral",
   emailBad = false,
+  dnc,
 }: {
   lead: Pick<
     PriorityLead,
@@ -55,6 +56,8 @@ export function LeadCardBody({
   quality?: LeadAvatarQuality;
   /** Email to this lead bounced (or is a typo/test domain). Automated email to it is off. */
   emailBad?: boolean;
+  /** Internal DNC List badge, shown in flow with the other chips. */
+  dnc?: ReactNode;
 }) {
   const urgency = leadUrgency(lead, today);
   const next = leadVisibleNextStep(lead.bucket);
@@ -103,6 +106,7 @@ export function LeadCardBody({
                   Bad Email
                 </span>
               )}
+              {dnc}
             </div>
             {menu && <div className="pointer-events-auto shrink-0">{menu}</div>}
           </div>

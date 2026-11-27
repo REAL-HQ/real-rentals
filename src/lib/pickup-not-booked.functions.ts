@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { PickupLinkResult, PickupLinkSendResult, PickupNotBookedState } from "@/lib/pickup-not-booked.server";
+import { staffContactMiddleware } from "@/lib/dnc-middleware";
 
 const UUID = z.string().uuid();
 
@@ -34,7 +35,7 @@ export const prepareStaffPickupLink = createServerFn({ method: "POST" })
 
 /** Email that link from team@ when staff click Send. No SMS. */
 export const sendStaffPickupLink = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireSupabaseAuth, staffContactMiddleware])
   .inputValidator((d: unknown) => z.object({ applicationId: UUID }).parse(d))
   .handler(async ({ context, data }): Promise<PickupLinkSendResult> => {
     await requireManager(context.userId);

@@ -19,6 +19,7 @@ import { SigningAdoptionSchema, adoptionProblems, type Adoption } from "@/lib/si
 import { publicAppOrigin } from "@/lib/public-app-url";
 import { SEND_DOCUMENT_FOR_SIGNATURE_ENABLED } from "@/lib/send-document-flag";
 import { StandaloneFieldSchema, refuseStandaloneLink, standaloneSignatureProblems, type SourcePdfClient } from "@/lib/standalone-doc";
+import { staffContactMiddleware } from "@/lib/dnc-middleware";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -1473,7 +1474,7 @@ export async function hasOpenOrSignedAgreement(
 }
 
 export const sendAgreement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireSupabaseAuth, staffContactMiddleware])
   .inputValidator((d: unknown) =>
     z
       .object({
@@ -1512,7 +1513,7 @@ export const sendAgreement = createServerFn({ method: "POST" })
  * the send to one person. channels "email" sends no text.
  */
 export const resendAgreement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireSupabaseAuth, staffContactMiddleware])
   .inputValidator((d: unknown) =>
     z.object({
       agreementId: z.string().uuid(),
@@ -1615,7 +1616,7 @@ export const getAgreementPdf = createServerFn({ method: "POST" })
  * constant off stops the upload before any read.
  */
 export const sendStandaloneDocument = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireSupabaseAuth, staffContactMiddleware])
   .inputValidator((d: unknown) =>
     z.object({
       applicationId: z.string().uuid(),

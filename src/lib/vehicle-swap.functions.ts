@@ -12,6 +12,7 @@ import { z } from "zod";
 import { FUEL_LEVELS } from "@/lib/pickup-handover";
 import { OUTGOING_STATUSES, SWAP_INSURANCE_DOC_KINDS, SWAP_REASON_CODES, type SwapGate } from "@/lib/vehicle-swap";
 import type { SwapHistoryEntry } from "@/lib/vehicle-swap.server";
+import { staffContactMiddleware } from "@/lib/dnc-middleware";
 
 export type { SwapHistoryEntry };
 
@@ -80,7 +81,7 @@ export const previewSwapVehicle = createServerFn({ method: "POST" })
 
 /** Stores the swap and sends the swap agreement for e-signature. */
 export const sendSwapVehicleAgreement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireSupabaseAuth, staffContactMiddleware])
   .inputValidator((d: unknown) => SendInput.parse(d))
   .handler(async ({ data, context }) => {
     const actor = await manager(context.userId);

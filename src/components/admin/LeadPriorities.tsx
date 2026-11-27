@@ -21,6 +21,7 @@ import type { ReadinessByApplicant } from "@/lib/admin-overview";
 import { displayPersonName } from "@/lib/display-normalize";
 import { leadAvatarQuality } from "@/lib/lead-card";
 import { LeadCardContactActions } from "./LeadCardActions";
+import { DncPersonBadge } from "./DncGuard";
 import { LeadCardBody } from "./LeadCardBody";
 import { LeadCardMenu } from "./LeadCardMenu";
 import type { StaffTier } from "@/lib/roles";
@@ -245,6 +246,7 @@ export default function LeadPriorities({
                         displayName={displayName}
                         quality={leadAvatarQuality(readinessResult)}
                         emailBad={lead.email_bad === true}
+                        dnc={<DncPersonBadge who={{ applicationId: lead.id, phone: lead.phone }} />}
                         menu={
                           <div className="flex items-start">
                             <Link

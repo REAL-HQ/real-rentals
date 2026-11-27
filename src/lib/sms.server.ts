@@ -192,6 +192,31 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
     }
   }
 
+  // 1c. Internal DNC List: automated texts skip anyone on it. A staff action the
+  //     person was confirmed for ("On DNC List" -> Contact Anyway) runs inside
+  //     staffContact() and is let through; staff_message and staff alerts are exempt.
+  if (!isStaffOrManualMessageKind(args.kind)) {
+    const { inStaffContact, isDncSuppressed } = await import("@/lib/dnc.server");
+    if (!inStaffContact() && (await isDncSuppressed(supabaseAdmin, { applicationId: args.applicationId ?? null, phone: to }))) {
+      const { DNC_SUPPRESSED_ERROR } = await import("@/lib/dnc");
+      await logMessage(supabaseAdmin, {
+        channel: "sms",
+        to_address: to,
+        body: args.body,
+        status: "skipped",
+        error: DNC_SUPPRESSED_ERROR,
+        kind: args.kind ?? null,
+        application_id: args.applicationId ?? null,
+        rental_id: args.rentalId ?? null,
+        vehicle_id: args.vehicleId ?? null,
+        workflow_id: args.workflowId ?? null,
+        enrollment_id: args.enrollmentId ?? null,
+        step_id: args.stepId ?? null,
+      });
+      return { ok: false, skipped: true, reason: "dnc" };
+    }
+  }
+
   // 2. Ordinary messages require a recorded opt-in on a known applicant.
   //    No applicant record means no consent record, so nothing is sent.
   if (requireConsent && !args.applicationId) {
