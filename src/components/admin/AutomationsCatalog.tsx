@@ -84,7 +84,7 @@ export function AutomationsCatalog() {
   if (!data) return <p className="text-sm text-[#55555E]">Loading…</p>;
 
   const byKey = new Map(data.rows.map((r) => [r.key, r]));
-  const groups = ["Applicants", "Renters", "Team"] as const;
+  const groups = ["Applicants", "Renters", "Partners", "Team"] as const;
 
   return (
     <div className="space-y-5" data-testid="automations-catalog">

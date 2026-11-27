@@ -10,6 +10,8 @@ import { linkPartnerLogin } from "@/lib/partner.functions";
 import { EmptyState } from "./ui";
 import { fmtDateTime } from "@/lib/date-format";
 import { OwnerVehiclePhotoGrid, OwnerVehiclePhotoThumb } from "./owner-vehicle-photos";
+import type { StaffSubmission } from "@/lib/partner-admin.functions";
+import { PartnerSubmissions, RecordPayoutButton } from "./PartnerSubmissions";
 
 const PARTNER_TYPES = ["vehicle_owner","capital_partner","private_lender","jv_partner","other"] as const;
 const PARTNER_STATUSES = ["prospect","active","paused","closed"] as const;
@@ -23,11 +25,13 @@ export function PartnersPanel({
   preview?: {
     owners?: FleetOwner[];
     investors?: InvestorLead[];
+    partners?: Partner[];
+    submissions?: { submissions: StaffSubmission[]; schema: "v2" | "legacy" };
     photoUrls?: Record<string, string>;
     expandedOwnerId?: string | null;
   };
 } = {}) {
-  const [partners, setPartners] = useState<Partner[]>([]);
+  const [partners, setPartners] = useState<Partner[]>(preview?.partners ?? []);
   const [legacyOwners, setLegacyOwners] = useState<FleetOwner[]>(preview?.owners ?? []);
   const [legacyInvestors, setLegacyInvestors] = useState<InvestorLead[]>(preview?.investors ?? []);
   const [openOwnerId, setOpenOwnerId] = useState<string | null>(preview?.expandedOwnerId ?? null);
@@ -114,6 +118,7 @@ export function PartnersPanel({
                 <SelectTrigger className="h-8 w-36 bg-white text-foreground"><SelectValue /></SelectTrigger>
                 <SelectContent>{PARTNER_TYPES.map(s => <SelectItem key={s} value={s}>{enumDisplayLabel(s)}</SelectItem>)}</SelectContent>
               </Select>
+              {p.status === "active" && <RecordPayoutButton partnerId={p.id} partnerName={p.name} />}
               <button onClick={() => remove(p.id)} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-real-red hover:text-white hover:border-real-red">Delete</button>
             </div>
             <LinkLoginRow partner={p} onLinked={refresh} />
@@ -129,6 +134,12 @@ export function PartnersPanel({
         ))}
         {filtered.length === 0 && <EmptyState title="No Partners" hint="Add a fleet partner to start assigning vehicles and tracking payouts." />}
       </div>
+
+      {(!preview || preview.submissions) && (
+        <div className="mt-10">
+          <PartnerSubmissions onChanged={refresh} preview={preview?.submissions} />
+        </div>
+      )}
 
       <div className="mt-10">
         <h3 className="text-sm font-semibold tracking-wider text-muted-foreground mb-3">Legacy Submissions</h3>

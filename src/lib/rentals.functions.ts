@@ -632,6 +632,11 @@ export async function activateRentalCore(
     } catch (e) {
       console.error("[activate] reservation fee credit failed", e);
     }
+    // Partner-owned car: tell the owner it went out on rent (no renter details).
+    // Switch partner_rental_notice, OFF by default. Never blocks activation.
+    await import("@/lib/partner-notices.server")
+      .then((m) => m.sendPartnerRentalNotice(supabaseAdmin, rental.id as string))
+      .catch((e) => console.error("[activate] partner rental notice failed", e));
 
     // 9. The one Driver Portal welcome (portal-welcome.server.ts). Runs after
     //    the Stripe link above, which records rent paid before activation.

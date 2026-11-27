@@ -25,7 +25,7 @@
       "props": {
         "variant": "\"inline\"",
         "label": "\"Add Files\"",
-        "context": "{`Other · Application ${applicationId.slice(0, 8)}`}",
+        "context": "{`Other \u00b7 Application ${applicationId.slice(0, 8)}`}",
         "accept": "\"image/*,application/pdf\"",
         "multiple": true,
         "disabled": "{running}",
@@ -63,7 +63,7 @@
       "props": {
         "title": "{`Drop ${title} Here`}",
         "label": "\"Browse Files\"",
-        "hint": "{options?.hint ?? hint ?? \"Images Or PDF · 15 MB Max\"}",
+        "hint": "{options?.hint ?? hint ?? \"Images Or PDF \u00b7 15 MB Max\"}",
         "accept": "{options?.accept ?? \"image/*,application/pdf\"}",
         "maxBytes": "{options?.maxBytes ?? 15 * 1024 * 1024}",
         "multiple": "{options?.multiple}",
@@ -85,7 +85,7 @@
         "title": "\"Drop The Receipt Here\"",
         "label": "{receipt ? \"Replace Receipt\" : \"Attach Receipt\"}",
         "hint": "\"Photo or PDF, up to 10 MB\"",
-        "context": "{`${vehicles.find((v) => v.id === vehicleId)?.label ?? \"Expense\"} · Receipt`}",
+        "context": "{`${vehicles.find((v) => v.id === vehicleId)?.label ?? \"Expense\"} \u00b7 Receipt`}",
         "accept": "\"image/*,application/pdf\"",
         "maxBytes": "{10 * 1024 * 1024}",
         "camera": true,
@@ -126,10 +126,10 @@
         "variant": "\"zone\"",
         "title": "{`Drop ${ANGLES.find((a) => a[0] === angle)?.[1]} Photos Or Video Here`}",
         "label": "{`Add ${ANGLES.find((a) => a[0] === angle)?.[1]} Photo Or Video`}",
-        "context": "{`${phase} · ${ANGLES.find((a) => a[0] === angle)?.[1]}`}",
+        "context": "{`${phase} \u00b7 ${ANGLES.find((a) => a[0] === angle)?.[1]}`}",
         "accept": "{TRIP_MEDIA_ACCEPT}",
         "maxBytes": "{TRIP_MEDIA_MAX_BYTES}",
-        "hint": "\"Drop several at once. JPEG, PNG, WebP, HEIC, MP4 or MOV · up to 50 MB each\"",
+        "hint": "\"Drop several at once. JPEG, PNG, WebP, HEIC, MP4 or MOV \u00b7 up to 50 MB each\"",
         "multiple": true,
         "camera": true,
         "upload": "{(file, { onProgress }) => uploadOne(file, onProgress)}",
@@ -156,7 +156,7 @@
         "title": "\"Drop The Receipt Here\"",
         "label": "{receipt ? \"Replace Receipt\" : \"Attach Receipt\"}",
         "hint": "\"Optional. Photo or PDF, up to 10 MB.\"",
-        "context": "{`${vehicleLabel} · Receipt`}",
+        "context": "{`${vehicleLabel} \u00b7 Receipt`}",
         "accept": "\"image/*,application/pdf\"",
         "maxBytes": "{10 * 1024 * 1024}",
         "camera": true,
@@ -187,7 +187,7 @@
         "title": "\"Drop The Receipt Here\"",
         "label": "{receipt ? \"Replace Receipt\" : \"Attach Receipt\"}",
         "hint": "\"Screenshot Or PDF, Up To 10 MB\"",
-        "context": "{`${chosen?.label ?? \"Renter\"} · Reimbursement Receipt`}",
+        "context": "{`${chosen?.label ?? \"Renter\"} \u00b7 Reimbursement Receipt`}",
         "accept": "\"image/*,application/pdf\"",
         "maxBytes": "{10 * 1024 * 1024}",
         "camera": true,
@@ -231,7 +231,7 @@
         "maxBytes": "{MAX_TEMPLATE_BYTES}",
         "multiple": "{false}",
         "onFiles": "{onFiles}",
-        "label": "{busy ? \"Reading Agreement…\" : \"Drop A PDF Or Word Agreement\"}",
+        "label": "{busy ? \"Reading Agreement\u2026\" : \"Drop A PDF Or Word Agreement\"}",
         "hint": "\"PDF or .docx, up to 10 MB. The original is kept privately and is never sent.\""
       }
     },
@@ -245,7 +245,7 @@
         "camera": true,
         "disabled": "{busy}",
         "busy": "{busy}",
-        "title": "{busy ? \"Reading the Document…\" : \"Photograph the Title or Registration\"}",
+        "title": "{busy ? \"Reading the Document\u2026\" : \"Photograph the Title or Registration\"}",
         "hint": "\"Lay it flat, fill the frame, avoid glare. JPG, PNG or PDF up to 5MB. Nothing is saved until you confirm what was read.\""
       }
     },
@@ -257,8 +257,8 @@
         "variant": "\"zone\"",
         "title": "{`Drop ${section.title} Photos Or Videos`}",
         "label": "\"Choose Files\"",
-        "context": "{`${section.title} · ${ROLE_SUBSECTION.staff} · ${target.label}`}",
-        "hint": "\"JPEG, PNG, WebP, HEIC, MP4 or MOV · up to 50 MB each\"",
+        "context": "{`${section.title} \u00b7 ${ROLE_SUBSECTION.staff} \u00b7 ${target.label}`}",
+        "hint": "\"JPEG, PNG, WebP, HEIC, MP4 or MOV \u00b7 up to 50 MB each\"",
         "accept": "{TRIP_MEDIA_ACCEPT}",
         "maxBytes": "{TRIP_MEDIA_MAX_BYTES}",
         "multiple": true,
@@ -274,7 +274,7 @@
         "multiple": "{read}",
         "accept": "\"image/*,application/pdf\"",
         "maxBytes": "{MAX_BYTES}",
-        "context": "{`${vehicleLabel} · ${type?.label ?? \"Document\"}`}",
+        "context": "{`${vehicleLabel} \u00b7 ${type?.label ?? \"Document\"}`}",
         "upload": "{async (file, { onProgress }) => {\n            if (read) await uploadRead(file, onProgress);\n            else {\n              onProgress(30);\n              await onSaveDirect(kind, file, type?.expires ? expires || null : null);\n              setSavedDirect((n) => n + 1);\n              onProgress(100);\n            }\n          }}",
         "onAllDone": "{() => {\n            if (read) refreshBatch();\n          }}"
       }
@@ -289,7 +289,7 @@
         "multiple": true,
         "camera": true,
         "maxBytes": "{MAX_BYTES}",
-        "context": "{`Vehicle ${vehicleId} · Photos`}",
+        "context": "{`Vehicle ${vehicleId} \u00b7 Photos`}",
         "upload": "{uploadOne}",
         "onAllDone": "{afterUpload}"
       }
@@ -317,7 +317,7 @@
         "multiple": "{false}",
         "camera": "{camera}",
         "title": "{title}",
-        "hint": "{note ? `${hint} · ${note}` : hint}",
+        "hint": "{note ? `${hint} \u00b7 ${note}` : hint}",
         "context": "{context}",
         "label": "\"Browse Files\""
       }
@@ -365,17 +365,60 @@
       "addedByMultiFileDocuments": true
     },
     {
-      "file": "src/routes/partners.tsx",
-      "line": 269,
+      "file": "src/components/partner/PartnerVehicleFields.tsx",
+      "line": 103,
       "props": {
-        "value": "{photos}",
-        "onChange": "{setPhotos}",
+        "value": "{files.photos}",
+        "disabled": "{disabled}",
+        "onChange": "{(photos) => onFiles({ ...files, photos })}",
         "accept": "\"image/*\"",
         "multiple": true,
-        "maxFiles": "{6}",
+        "maxFiles": "{MAX_INTAKE_PHOTOS}",
         "title": "\"Drop Vehicle Photos Here\"",
         "label": "\"Browse Photos\"",
-        "hint": "{`${photos.length}/6 selected`}"
+        "hint": "{`${files.photos.length}/${MAX_INTAKE_PHOTOS} selected`}"
+      }
+    },
+    {
+      "file": "src/components/partner/PartnerVehicleFields.tsx",
+      "line": 111,
+      "props": {
+        "value": "{files.registration}",
+        "disabled": "{disabled}",
+        "onChange": "{(registration) => onFiles({ ...files, registration })}",
+        "accept": "\"image/*,application/pdf\"",
+        "maxFiles": "{1}",
+        "variant": "\"inline\"",
+        "label": "\"Upload Registration\"",
+        "hint": "\"Kept private. Only our team sees it.\""
+      }
+    },
+    {
+      "file": "src/components/partner/PartnerVehicleFields.tsx",
+      "line": 119,
+      "props": {
+        "value": "{files.idDocument}",
+        "disabled": "{disabled}",
+        "onChange": "{(idDocument) => onFiles({ ...files, idDocument })}",
+        "accept": "\"image/*,application/pdf\"",
+        "maxFiles": "{1}",
+        "variant": "\"inline\"",
+        "label": "\"Upload ID\"",
+        "hint": "\"Kept private. Used to confirm the owner on the title.\""
+      }
+    },
+    {
+      "file": "src/components/admin/PartnerSubmissions.tsx",
+      "line": 206,
+      "props": {
+        "value": "{receiptFiles}",
+        "onChange": "{setReceiptFiles}",
+        "accept": "\"application/pdf,image/*\"",
+        "maxFiles": "{1}",
+        "maxBytes": "{25 * 1024 * 1024}",
+        "variant": "\"inline\"",
+        "label": "\"Attach Receipt\"",
+        "disabled": "{busy}"
       }
     }
   ],
@@ -451,14 +494,14 @@
         "onFile": "{setFile}",
         "accept": "\"image/*,application/pdf\"",
         "title": "\"Add Receipt\"",
-        "hint": "\"Drag & drop or browse — stored privately\""
+        "hint": "\"Drag & drop or browse \u2014 stored privately\""
       }
     }
   ],
   "customWizardSurface": "src/components/site/ApplicationWizard.tsx: MultiFileUpload",
   "integrationMerge": {
-    "note": "Merged integration (via PR 325) on 2026-11-14: ApplicantDocuments uploader moved to DriverDocumentUploadDialog; RenterReimbursements and ReturnFlowDialog uploaders are new on integration. Props pinned as they arrived. PR 314 (trip media) added TripMediaPanel and changed InspectionsPanel accept/size to the shared trip-media limits. Multi-file documents (Nov 20 2026): DocumentCapture gained an Add Another File uploader that adds a second file beside the main one through addApplicantDocument.",
-    "uploaderSourceSites": 26,
-    "uploaderFiles": 24
+    "note": "Merged integration (via PR 325) on 2026-11-14: ApplicantDocuments uploader moved to DriverDocumentUploadDialog; RenterReimbursements and ReturnFlowDialog uploaders are new on integration. Props pinned as they arrived. PR 314 (trip media) added TripMediaPanel and changed InspectionsPanel accept/size to the shared trip-media limits. Multi-file documents (Nov 20 2026): DocumentCapture gained an Add Another File uploader that adds a second file beside the main one through addApplicantDocument. Partner Portal v2: the /partners photo uploader moved into the shared PartnerVehicleFields (photos, registration, ID \u2014 used by /partners and the partner portal), and Back Office -> Partners gained a payout receipt uploader.",
+    "uploaderSourceSites": 29,
+    "uploaderFiles": 25
   }
 }
