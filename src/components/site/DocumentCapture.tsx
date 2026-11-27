@@ -158,7 +158,7 @@ export function DocumentCapture({
         {allowMore && done ? (
           <div className="mt-3 border-t border-[#EDEDF0] pt-3">
             <p className="text-[12px] text-[#55555E] mb-2">
-              Have more than one? Add each file here. Nothing you already sent is replaced.
+              Have more than one? Add each file here. Nothing you already sent is replaced. (Replace above swaps out your first file.)
               {addedCount > 0 ? ` ${addedCount} Added.` : ""}
             </p>
             <FileUploader

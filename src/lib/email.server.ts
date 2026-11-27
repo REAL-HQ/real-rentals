@@ -683,8 +683,18 @@ export async function sendApplicationResumeEmail(args: {
   token?: string;
   /** Reservation id. Present only when the atomic path already reserved the attempt. */
   attemptId?: string;
+  /**
+   * Part 1 is already in (status reviewing, or past Part 1). Adds a line that
+   * says there is nothing to re-apply for and what happens next, so the link
+   * is not read as "apply again". Copy only; the link is the same.
+   */
+  alreadySubmitted?: boolean;
 }): Promise<SendResult> {
   const name = resumeGreetingName(args.firstName, args.submittedName);
+  const { RESUME_EMAIL_ALREADY_SUBMITTED } = await import("@/lib/returning-applicant");
+  const submittedNote = args.alreadySubmitted
+    ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px"><strong>${escapeHtml(RESUME_EMAIL_ALREADY_SUBMITTED)}</strong></p>`
+    : "";
   // Short-lived, single-use recovery link (see resume-tokens.server.ts).
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { issueResumeToken, resumeUrl: buildUrl, RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
@@ -693,6 +703,7 @@ export async function sendApplicationResumeEmail(args: {
   );
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Continue Your Application${name ? `, ${escapeHtml(name)}` : ""}</h1>
+      ${submittedNote}
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Here's your secure link to pick up exactly where you left off. Your answers and documents are saved. For your security the link works once and expires in ${RECOVERY_TOKEN_MINUTES} minutes — you can always request a new one.</p>
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open My Application</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>

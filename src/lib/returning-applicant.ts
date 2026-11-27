@@ -44,3 +44,44 @@ export function returningAction(status: unknown, autoClosedPending = false): Ret
 
 /** Identity-review kind filed on the new application after a decline. */
 export const REAPPLIED_AFTER_DECLINE = "reapplied_after_decline";
+
+/**
+ * Part 1 is already in: the application is with our team (Yolanda Pino,
+ * Nov 27). Statuses "reviewing", or an open status whose wizard step is past
+ * Part 1. Used for copy only (the resume email, the profile page): it never
+ * changes who gets a link or what the link can do.
+ */
+const SUBMITTED_STEPS = ["submitted", "documents", "profile_complete", "review", "complete", "confirmation", "done"] as const;
+
+export function isAlreadySubmittedApplication(app: { status?: unknown; current_step?: unknown } | null | undefined): boolean {
+  if (!app) return false;
+  const status = typeof app.status === "string" ? app.status.trim().toLowerCase() : "";
+  if (status === "reviewing") return true;
+  if (!isApplicantEditableStatus(status)) return false;
+  const step = typeof app.current_step === "string" ? app.current_step.trim().toLowerCase() : "";
+  return (SUBMITTED_STEPS as readonly string[]).includes(step);
+}
+
+/**
+ * Shown under "Welcome Back" when a lead form matched an in-progress
+ * application. Same words for every match, so it says nothing about the
+ * application's status to whoever typed the form.
+ */
+export const RETURNING_NO_NEED_TO_REAPPLY =
+  "Already applied? You don't need to fill out this form again. Open the link in that email to check your application or add another document. Once your application is in, our team calls or texts you to choose your car and pickup time.";
+
+/** Email copy for a resume link to an application that is already submitted. */
+export const RESUME_EMAIL_ALREADY_SUBMITTED =
+  "Your application is already with our team, so you don't need to apply again or book online. We'll call or text you to choose your car and pickup time. Use this link to check your application or add another document. Every file you add is kept.";
+
+/**
+ * Yolanda Pino (Nov 27): a finished profile only offered "Browse Vehicles",
+ * whose "Book This Car" opens the lead form, which emails another link back
+ * here. Say plainly that there is nothing left to book or re-apply for, and
+ * how to ask about a car.
+ */
+export const PROFILE_ALL_SET_HEADING = "You're All Set. Your Application Is With Our Team.";
+export const PROFILE_ALL_SET_BODY =
+  "You don't need to apply again or book online. We'll call or text you to choose your car and pickup time. Need to send another document? Open its section below and tap Add Another File. Nothing you already sent is replaced.";
+export const PROFILE_CAR_HINT =
+  "Like a car you saw? Call or text (888) 833-8280 and tell us which one. There's no need to fill out the application form again.";

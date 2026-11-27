@@ -13,6 +13,7 @@ import {
   secureLinkHeading,
   secureLinkKind,
 } from "@/lib/secure-link-copy";
+import { RETURNING_NO_NEED_TO_REAPPLY } from "@/lib/returning-applicant";
 
 /**
  * Persistent "check your email" / recovery panel shared by every public entry
@@ -104,6 +105,11 @@ export function WelcomeBack({
         >
           {returningStatusLine(shown, masked)}
         </p>
+        {!fresh && (
+          <p className={`mt-3 text-sm leading-relaxed ${muted}`} data-returning-next-step>
+            {RETURNING_NO_NEED_TO_REAPPLY}
+          </p>
+        )}
         <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
           <button
             type="button"
