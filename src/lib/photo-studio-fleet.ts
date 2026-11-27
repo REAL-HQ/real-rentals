@@ -1,6 +1,6 @@
 // Fleet Photo Studio progress and who may be generated or published.
 // Pure: the server loads rows, these rules decide.
-import { EXTERIOR_SLOTS, planShots, type PhotoClass } from "@/lib/photo-studio";
+import { EXTERIOR_SLOTS, planShots, type PhotoClass, type ShotSlot } from "@/lib/photo-studio";
 import { isUnlabeledClass } from "@/lib/photo-class-label";
 import { isPublicHiddenVehicleStatus } from "@/lib/fleet-summary";
 
@@ -11,6 +11,12 @@ export type FleetShot = {
   check: unknown;
 };
 
+/** Shown on a shot Run All Cars will not retry, and as the car state when every remaining gap is one of these. */
+export const FAILED_CHECK_ATTENTION = "Failed Check, Regenerate To Retry";
+
+/** A rejected_check spend row. failedAt is the spend created_at. */
+export type StudioFailure = { slot: string | null; failedAt: string };
+
 export type FleetCarInput = {
   id: string;
   unitNumber: string | null;
@@ -19,8 +25,10 @@ export type FleetCarInput = {
   model: string | null;
   status: string | null;
   archivedAt: string | null;
-  originals: { photoClass: string | null }[];
+  originals: { id?: string; photoClass: string | null; createdAt?: string | null }[];
   shots: FleetShot[];
+  /** Identity-check failures. Absent means none have been recorded. */
+  failedChecks?: StudioFailure[];
 };
 
 export type FleetRow = {
@@ -33,7 +41,7 @@ export type FleetRow = {
   published: number;
   ready: boolean;
   needsWork: boolean;
-  state: "Published" | "Ready" | "Continues Tomorrow" | "Needs Shots" | "No Photos";
+  state: "Published" | "Ready" | "Continues Tomorrow" | "Needs Shots" | "No Photos" | typeof FAILED_CHECK_ATTENTION;
 };
 
 /** For Sale, Archived, Retired, and Sold stay out of the run. */
@@ -50,6 +58,87 @@ export function shotPassedIdentity(check: unknown): boolean {
 }
 
 const liveShots = (shots: FleetShot[]) => shots.filter((s) => s.status !== "rejected");
+
+function timeMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const n = Date.parse(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Newest original file. A later upload is what allows a failed shot to be tried again. */
+export function originalsChangedAt(originals: { createdAt?: string | null }[]): string | null {
+  let best: string | null = null;
+  let bestMs = Number.NEGATIVE_INFINITY;
+  for (const o of originals) {
+    const ms = timeMs(o.createdAt);
+    if (ms != null && ms >= bestMs) {
+      bestMs = ms;
+      best = o.createdAt ?? null;
+    }
+  }
+  return best;
+}
+
+/**
+ * The slot already failed the identity check, and no original has been added
+ * since. Run All Cars must not spend on it again. Staff Regenerate may.
+ */
+export function shotHeldAfterFailedCheck(
+  slot: string,
+  failures: StudioFailure[],
+  changedAt: string | null,
+): boolean {
+  let latest = Number.NEGATIVE_INFINITY;
+  let found = false;
+  for (const f of failures) {
+    if (f.slot !== slot) continue;
+    const ms = timeMs(f.failedAt);
+    if (ms == null) continue;
+    found = true;
+    if (ms > latest) latest = ms;
+  }
+  if (!found) return false;
+  const changed = timeMs(changedAt);
+  if (changed == null) return true;
+  return latest >= changed;
+}
+
+export type StudioGaps = { retry: ShotSlot[]; held: ShotSlot[] };
+
+/**
+ * Slots Run All Cars may still pay for, and slots that failed the check.
+ * An inferred Dashboard (no dashboard original; the source is a front-seat
+ * or other interior photo) is not a required gap, so its absence does not
+ * keep the car in the run. Ready is still the four exterior shots. A failure
+ * on that slot is still shown, and a newer original allows one more try.
+ */
+export function classifyStudioGaps(
+  originals: { id?: string; photoClass: string | null; createdAt?: string | null }[],
+  shots: FleetShot[],
+  failures: StudioFailure[] = [],
+): StudioGaps {
+  const plans = planShots(originals.map((o, i) => ({
+    id: o.id ?? String(i),
+    photoClass: (o.photoClass ?? "unknown") as PhotoClass,
+    createdAt: o.createdAt ?? undefined,
+  })));
+  const live = new Set(liveShots(shots).map((s) => s.slot).filter((s): s is string => !!s));
+  const changed = originalsChangedAt(originals);
+  const retry: ShotSlot[] = [];
+  const held: ShotSlot[] = [];
+  for (const p of plans) {
+    if (live.has(p.slot)) continue;
+    if (shotHeldAfterFailedCheck(p.slot, failures, changed)) {
+      held.push(p.slot);
+      continue;
+    }
+    const optionalDash = p.slot === "interior_1" && p.inferred;
+    const failedBefore = failures.some((f) => f.slot === p.slot && timeMs(f.failedAt) != null);
+    if (optionalDash && !failedBefore) continue;
+    retry.push(p.slot);
+  }
+  return { retry, held };
+}
 
 /** Complete exterior set, and every live shot (interiors included) passed identity. */
 export function carReadyToPublish(shots: FleetShot[]): boolean {
@@ -72,15 +161,14 @@ export function fleetRow(car: FleetCarInput, dailyBlocked: boolean): FleetRow | 
   const approved = live.filter((s) => s.status === "approved").length;
   const published = live.filter((s) => s.published).length;
   const ready = carReadyToPublish(car.shots);
-  const planned = planShots(car.originals.map((o, i) => ({ id: String(i), photoClass: (o.photoClass ?? "unknown") as PhotoClass })));
-  const liveSlots = new Set(live.map((s) => s.slot));
-  const missingPlan = planned.some((p) => !liveSlots.has(p.slot));
-  const needsShots = car.originals.length > 0 && (unknown > 0 || missingPlan);
+  const gaps = classifyStudioGaps(car.originals, car.shots, car.failedChecks ?? []);
+  const needsShots = car.originals.length > 0 && (unknown > 0 || gaps.retry.length > 0);
   const allLivePublished = live.length > 0 && live.every((s) => s.published);
   let state: FleetRow["state"];
   if (car.originals.length === 0) state = "No Photos";
   else if (ready && allLivePublished) state = "Published";
   else if (ready) state = "Ready";
+  else if (unknown === 0 && gaps.retry.length === 0 && gaps.held.length > 0) state = FAILED_CHECK_ATTENTION;
   else if (dailyBlocked && needsShots) state = "Continues Tomorrow";
   else state = "Needs Shots";
   return {

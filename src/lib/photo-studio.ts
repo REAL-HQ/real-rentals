@@ -14,8 +14,8 @@ export const SHOT_SLOTS = [...EXTERIOR_SLOTS, ...INTERIOR_SLOTS] as const;
 export type ShotSlot = (typeof SHOT_SLOTS)[number];
 
 export const SLOT_LABELS: Record<ShotSlot, string> = {
-  front: "Front 3/4", driver_side: "Driver side", passenger_side: "Passenger side", rear: "Rear 3/4",
-  interior_1: "Dashboard", interior_2: "Front seats", interior_3: "Rear seats",
+  front: "Front 3/4", driver_side: "Driver Side", passenger_side: "Passenger Side", rear: "Rear 3/4",
+  interior_1: "Dashboard", interior_2: "Front Seats", interior_3: "Rear Seats",
 };
 
 /** The fixed template. Every car is framed the same way. */
@@ -172,7 +172,8 @@ export function pickScene(vehicleId: string): PhotoStudioScene {
   return PHOTO_STUDIO_SCENES[(h >>> 0) % PHOTO_STUDIO_SCENES.length];
 }
 
-/** Isolate on grey, then place that cutout in the scene. Two paid image calls. */
+/** Isolate on grey, then place that cutout in the scene. A finished shot is two
+ * paid images. A cutout that fails the identity check stops before the scene. */
 export const PHOTO_STUDIO_GENERATIONS_PER_SHOT = 2;
 
 type PromptCar = { id?: string | null; year?: number | null; make?: string | null; model?: string | null; color?: string | null };
@@ -182,10 +183,15 @@ function vehicleName(car: PromptCar): string {
   return name ? ` (${name})` : "";
 }
 
+/** The model cannot copy plate characters reliably. A readable wrong plate is
+ * still rejected by identityCheck; a blank plate has nothing to misread. */
+const PLATE_RENDERING = "Render the license plate blank, plain, and unreadable. Do not copy, invent, or draw any characters on the plate.";
+
 const VEHICLE_FIDELITY = [
-  "Keep identical: true paint color and brightness, the same wheels and hubcaps, trim, existing badges, body shape, interior materials and colors, real details such as a roof antenna when one is present, and the license plate text exactly as shown.",
+  "Keep identical: true paint color and brightness, the same wheels and hubcaps, trim, existing badges, body shape, interior materials and colors, and real details such as a roof antenna when one is present.",
   "Do NOT add badges or parts. Do NOT add, remove or repair anything: no new wheels, no body kits, no removed scratches or dents beyond light cleaning, no extra accessories.",
   "If a detail is not visible in the references, keep it plain and factory-standard rather than inventing it.",
+  PLATE_RENDERING,
 ].join("\n");
 
 /** First pass: lift the car off its real surroundings onto plain grey. */

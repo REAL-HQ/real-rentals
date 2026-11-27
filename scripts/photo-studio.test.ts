@@ -64,7 +64,11 @@ describe("identity re-read", () => {
   const car = { plate: "CZ07DA", vin: "1FA6P0H74F5118769" };
   test("matching plate passes", () => expect(identityCheck(car, { plates: ["CZ0 7DA"], vins: [] }).ok).toBe(true));
   test("nothing legible passes", () => expect(identityCheck(car, { plates: [], vins: [] }).ok).toBe(true));
-  test("invented plate rejected", () => expect(identityCheck(car, { plates: ["XLK331"], vins: [] }).ok).toBe(false));
+  test("invented plate rejected", () => {
+    const result = identityCheck(car, { plates: ["XLK331"], vins: [] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/does not match/);
+  });
   test("wrong VIN rejected", () => expect(identityCheck(car, { plates: [], vins: ["3FA6P0HRXDR153036"] }).ok).toBe(false));
   test("partial VIN must be the tail", () => expect(identityCheck(car, { plates: [], vins: ["F5118769"] }).ok).toBe(true));
 });
@@ -104,11 +108,13 @@ describe("photo class labels", () => {
   });
 });
 
-test("prompt forbids invention and keeps plate", () => {
+test("prompt forbids invention and blanks the plate", () => {
   const scene = pickScene("car-1");
   const p = buildPrompt("front", { id: "car-1", year: 2015, make: "Ford", model: "Fusion", color: "silver" });
   expect(p).toMatch(/Do NOT add/);
-  expect(p).toMatch(/license plate/);
+  expect(p).toMatch(/license plate blank, plain, and unreadable/);
+  expect(p).not.toMatch(/exactly as shown/);
+  expect(p).not.toMatch(/license plate text exactly/);
   expect(p).toMatch(/realistic outdoor listing photo/);
   expect(p).not.toMatch(/dealership/);
   expect(p).not.toMatch(/light-grey studio/);
@@ -124,6 +130,9 @@ test("prompt forbids invention and keeps plate", () => {
   expect(p).toMatch(/Do NOT add badges or parts/);
   const isolated = buildIsolationPrompt("front", { year: 2015, make: "Ford", model: "Fusion", color: "silver" });
   expect(isolated).toMatch(/neutral grey/);
+  expect(isolated).toMatch(/license plate blank, plain, and unreadable/);
+  expect(isolated).not.toMatch(/exactly as shown/);
+  expect(isolated).not.toMatch(/license plate text exactly/);
   for (const s of PHOTO_STUDIO_SCENES) expect(isolated).not.toContain(s.background);
   expect(PHOTO_STUDIO_GENERATIONS_PER_SHOT).toBe(2);
 });

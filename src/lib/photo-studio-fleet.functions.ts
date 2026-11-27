@@ -8,11 +8,14 @@ import { z } from "zod";
 import { requireManager, requireOwner, requireStaff } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
 import {
-  PHOTO_STUDIO_GENERATIONS_PER_SHOT, PHOTO_STUDIO_KEY, effectiveModel, planShots, readStudioSettings, spendRefusal,
-  type Original, type PhotoClass, type ShotSlot,
+  PHOTO_STUDIO_GENERATIONS_PER_SHOT, PHOTO_STUDIO_KEY, effectiveModel, readStudioSettings, spendRefusal,
+  type Original, type PhotoClass,
 } from "@/lib/photo-studio";
 import { isUnlabeledClass } from "@/lib/photo-class-label";
-import { carReadyToPublish, fleetProgress, type FleetCarInput, type FleetShot, type StudioLabelCounts } from "@/lib/photo-studio-fleet";
+import {
+  carReadyToPublish, classifyStudioGaps, fleetProgress,
+  type FleetCarInput, type FleetShot, type StudioFailure, type StudioLabelCounts,
+} from "@/lib/photo-studio-fleet";
 
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -41,13 +44,24 @@ async function loadCars(sb: any): Promise<FleetCarInput[]> {
   const ids = ((vehicles ?? []) as any[]).map((v) => v.id as string);
   if (!ids.length) return [];
   const { data: media } = await (sb.from("vehicle_media") as any)
-    .select("vehicle_id,kind,photo_class,shot_slot,studio_review_status,studio_check,published")
+    .select("vehicle_id,kind,photo_class,shot_slot,studio_review_status,studio_check,published,created_at")
     .in("vehicle_id", ids).in("kind", ["original", "marketing"]);
+  const { data: fails } = await sb.from("photo_studio_spend")
+    .select("vehicle_id,shot_slot,created_at")
+    .in("vehicle_id", ids)
+    .eq("outcome", "rejected_check");
   const byCar = new Map<string, any[]>();
   for (const row of (media ?? []) as any[]) {
     const list = byCar.get(row.vehicle_id) ?? [];
     list.push(row);
     byCar.set(row.vehicle_id, list);
+  }
+  const failByCar = new Map<string, StudioFailure[]>();
+  for (const row of (fails ?? []) as any[]) {
+    if (!row.vehicle_id) continue;
+    const list = failByCar.get(row.vehicle_id) ?? [];
+    list.push({ slot: row.shot_slot ?? null, failedAt: row.created_at as string });
+    failByCar.set(row.vehicle_id, list);
   }
   return ((vehicles ?? []) as any[]).map((v) => {
     const rows = byCar.get(v.id) ?? [];
@@ -65,8 +79,13 @@ async function loadCars(sb: any): Promise<FleetCarInput[]> {
       model: v.model ?? null,
       status: v.status ?? null,
       archivedAt: v.archived_at ?? null,
-      originals: rows.filter((r: any) => r.kind === "original").map((r: any) => ({ photoClass: r.photo_class ?? null })),
+      originals: rows.filter((r: any) => r.kind === "original").map((r: any) => ({
+        id: r.id as string | undefined,
+        photoClass: r.photo_class ?? null,
+        createdAt: r.created_at ?? null,
+      })),
       shots,
+      failedChecks: failByCar.get(v.id) ?? [],
     };
   });
 }
@@ -125,8 +144,8 @@ export const runStudioNextCar = createServerFn({ method: "POST" })
     const originals: Original[] = ((again.data ?? []) as any[]).map((o) => ({
       id: o.id as string, photoClass: (o.photo_class ?? "unknown") as PhotoClass, createdAt: o.created_at as string,
     }));
-    const live = new Set(car.shots.filter((s) => s.status !== "rejected" && s.slot).map((s) => s.slot as ShotSlot));
-    const missing = planShots(originals).map((p) => p.slot).filter((slot) => !live.has(slot));
+    const gaps = classifyStudioGaps(originals, car.shots, car.failedChecks ?? []);
+    const missing = gaps.retry;
     const held = missing.length ? (refusal ? stopOutcome(refusal) : null) : null;
     if (held) return { ok: true as const, outcome: held, vehicleId: car.id, label: next.label, reason: refusal, labels };
     if (missing.length) {
@@ -150,7 +169,7 @@ export const runStudioNextCar = createServerFn({ method: "POST" })
         : `Photo Studio ran for ${next.label}`,
       entityType: "vehicle",
       entityId: car.id,
-      metadata: { missing, labels },
+      metadata: { missing, held: gaps.held, labels },
     });
     return { ok: true as const, outcome: "worked" as const, vehicleId: car.id, label: next.label, labels };
   });

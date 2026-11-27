@@ -9,7 +9,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireManager, requireStaff } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
-import { ORIGINALS_BUCKET, isMissingPhotoClassColumn, type PhotoClass } from "@/lib/photo-studio";
+import { ORIGINALS_BUCKET, isMissingPhotoClassColumn, type PhotoClass, type ShotSlot } from "@/lib/photo-studio";
+import { classifyStudioGaps, type StudioFailure } from "@/lib/photo-studio-fleet";
 import { isMissingDbColumn } from "@/lib/photo-class-label";
 
 const SIGNED_URL_SECONDS = 300;
@@ -119,11 +120,34 @@ export const listStudioMedia = createServerFn({ method: "POST" })
       rows = again.data;
       error = again.error;
     }
-    if (error) return { items: [] as any[], photoClassAvailable: false };
+    if (error) return { items: [] as any[], photoClassAvailable: false, attentionSlots: [] as ShotSlot[] };
     const out = [];
     for (const r of (rows ?? []) as any[]) {
       const { data: s } = await sb.storage.from(r.storage_bucket).createSignedUrl(r.storage_path, SIGNED_URL_SECONDS);
       out.push({ ...r, url: s?.signedUrl ?? null });
     }
-    return { items: out, photoClassAvailable };
+    const { data: fails } = await sb.from("photo_studio_spend")
+      .select("shot_slot,created_at")
+      .eq("vehicle_id", data.vehicleId)
+      .eq("outcome", "rejected_check");
+    const failures: StudioFailure[] = ((fails ?? []) as any[]).map((r) => ({
+      slot: r.shot_slot ?? null,
+      failedAt: r.created_at as string,
+    }));
+    const mediaRows = (rows ?? []) as any[];
+    const gaps = classifyStudioGaps(
+      mediaRows.filter((r) => r.kind === "original").map((r) => ({
+        id: r.id as string,
+        photoClass: (r.photo_class ?? null) as string | null,
+        createdAt: (r.created_at ?? null) as string | null,
+      })),
+      mediaRows.filter((r) => r.kind === "marketing").map((r) => ({
+        slot: r.shot_slot ?? null,
+        status: r.studio_review_status ?? null,
+        published: !!r.published,
+        check: r.studio_check ?? null,
+      })),
+      failures,
+    );
+    return { items: out, photoClassAvailable, attentionSlots: gaps.held };
   });
