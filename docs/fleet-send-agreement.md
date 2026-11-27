@@ -112,3 +112,35 @@ sends FLEET the `applicant_ready_for_agreement` webhook. FLEET then sends:
 - No `idempotency_key` needed: the event id is the key (`staff:<event_id>`).
 - The contact belongs to the staff member, so FLEET does not stamp
   contacted_at; the agreement step is still recorded as sent by FLEET.
+
+## Approved applicants: no terms confirmation (Nov 27 2026)
+
+Dolmar (Nov 27 2026): "I don't want this block. I need to move fast." and, at
+1:28 PM ET, "Count FLEET's approvals too". When the applicant is Approved and
+has an approval on record, FLEET may send the agreement without
+`terms_confirmation`:
+
+```json
+{ "lead_id": "…", "idempotency_key": "…" }
+```
+
+- "Approval on record" = the latest `application.approved` audit entry is
+  either a staff/owner approval (signed-in `actor_user_id`, no `decided_by`) or
+  FLEET's automated approval (no actor, `decided_by: "FLEET (automated)"`).
+  An applicant with no such entry, or not Approved, still needs
+  `terms_confirmation` (400 `terms_confirmation is required.`).
+- Every other check still runs: FLEET auth, Approved status, the internal DNC
+  List (409, nothing sent), no agreement already out or signed, the agreement
+  blockers (vehicle, weekly rate, start date, template…), and the same
+  `issueAgreement` send.
+- Each waiver writes `agreement.terms_confirmation_waived_approved` to the audit
+  log (actor FLEET, application id, `approved_by_kind` staff|fleet, approver
+  label/user/email/role, approved_at, the approval audit id, the terms sent),
+  then the usual `agreement.fleet_sent` with `channel: "waived_approved"`. No
+  `agreement_terms_confirmations` row is stored and `contacted_at` is not stamped.
+- Response: `201 { ok, lead_id, agreement_id, confirmation_id: null,
+  terms_confirmation_waived: true, approved_by, approved_at, delivery, terms }`.
+  A repeat call refuses with 409 "already out" once the agreement exists.
+- Sending `terms_confirmation` anyway keeps the confirmed-terms flow exactly as above.
+
+The DNC List check applies to every FLEET agreement send, confirmed or waived.

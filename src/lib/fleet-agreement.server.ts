@@ -27,6 +27,18 @@
  * equal them), and they must match the agreement exactly like any other
  * channel. The contact belongs to the staff member, so FLEET does not stamp
  * contacted_at. Without idempotency_key the event id is the key.
+ *
+ * Approved applicants (Dolmar, Nov 27 2026: "I don't want this block. I need
+ * to move fast."; 1:28 PM ET: "Count FLEET's approvals too"): when FLEET sends
+ * NO terms_confirmation and the applicant is Approved with an approval on
+ * record (the latest application.approved audit entry is a staff/owner
+ * approval with a signed-in actor, or FLEET's automated approval), the terms
+ * confirmation is waived. Every other check still runs (auth, Approved status,
+ * DNC List, no agreement out, agreement blockers, the same issueAgreement).
+ * Each waiver writes agreement.terms_confirmation_waived_approved to the audit
+ * log with who approved (staff/owner or FLEET) and when. No
+ * agreement_terms_confirmations row is stored (there was no confirmation). An
+ * applicant with no approval entry still needs terms_confirmation.
  */
 import { withAutoSendDefaults, type AgreementPrep } from "@/lib/agreement-prep";
 import {
@@ -50,7 +62,39 @@ export type AgreementDeps = FleetDeps & {
   verifySms?: typeof verifySmsConfirmation;
   issue?: (admin: Admin, applicationId: string, opts: { createdBy: null; prep?: AgreementPrep }) => Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }>;
   reservationFee?: { enabled: boolean; amount: number };
+  staffApproval?: (admin: Admin, applicationId: string) => Promise<StaffApproval | null>;
+  dncSuppressed?: (admin: Admin, who: { applicationId: string; phone: string | null; email: string | null }) => Promise<boolean>;
 };
+
+export type StaffApproval = { approved_by_kind: "staff" | "fleet"; approved_at: string; approver_user_id: string | null; approver_email: string | null; approver_role: string | null; audit_id: string | null };
+
+/**
+ * Who made the applicant's current approval. Approval is recorded as the
+ * application.approved audit entry (approveApplicationCore): staff/owner
+ * approvals carry the signed-in actor (actor_user_id) and no decided_by;
+ * FLEET's automated approval has no actor and decided_by "FLEET (automated)".
+ * Only the latest entry counts. Both count for the waiver (Dolmar, Nov 27
+ * 2026 1:28 PM ET: "Count FLEET's approvals too"). Anything else (no entry,
+ * or an entry with neither a signed-in actor nor FLEET's label) returns null.
+ */
+export async function loadStaffApproval(admin: Admin, applicationId: string): Promise<StaffApproval | null> {
+  const r = await admin.from("audit_log").select("id,actor_user_id,actor_email,actor_role,metadata,created_at")
+    .eq("action", "application.approved").eq("entity_id", applicationId)
+    .order("created_at", { ascending: false }).limit(1);
+  if (r.error) return null;
+  const row = Array.isArray(r.data) ? r.data[0] : r.data;
+  if (!row) return null;
+  const decidedBy = row.metadata && typeof row.metadata === "object" ? (row.metadata as any).decided_by : null;
+  const base = { approved_at: String(row.created_at ?? ""), audit_id: row.id ?? null };
+  if (row.actor_user_id && !decidedBy) return { ...base, approved_by_kind: "staff", approver_user_id: String(row.actor_user_id), approver_email: row.actor_email ?? null, approver_role: row.actor_role ?? null };
+  if (!row.actor_user_id && decidedBy === FLEET_ACTOR_LABEL) return { ...base, approved_by_kind: "fleet", approver_user_id: null, approver_email: null, approver_role: null };
+  return null;
+}
+
+async function defaultDncSuppressed(admin: Admin, who: { applicationId: string; phone: string | null; email: string | null }): Promise<boolean> {
+  const { isDncSuppressed } = await import("@/lib/dnc.server");
+  return isDncSuppressed(admin, who);
+}
 
 /**
  * With the Reservation Fee switch on (t299s1618), FLEET's agreement records a
@@ -251,8 +295,12 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   if (idem === "invalid") return fleetJson(400, { ok: false, error: "idempotency_key must be 1-120 characters." });
   const rawConf = body.terms_confirmation;
   const isStaff = !!rawConf && typeof rawConf === "object" && String(rawConf.channel ?? "").toLowerCase() === "staff";
-  let conf: { ok: true; value: TermsConfirmation };
-  if (isStaff) {
+  // No confirmation at all: allowed only for an Approved applicant with an approval on record (checked below).
+  const waiverCandidate = rawConf == null;
+  let conf: { ok: true; value: TermsConfirmation } | null = null;
+  if (waiverCandidate) {
+    // decided after the applicant is read
+  } else if (isStaff) {
     const staff = await resolveStaffConfirmation(admin, rawConf, leadId, now);
     if (!staff.ok) return fleetJson(staff.status, { ok: false, error: staff.error, ...(staff.mismatches ? { mismatches: staff.mismatches } : {}) });
     conf = staff;
@@ -265,7 +313,7 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   }
 
   let retryConfirmationId: string | null = null;
-  if (idem) {
+  if (idem && !waiverCandidate) {
     const prior = await admin.from("agreement_terms_confirmations").select("id,application_id,agreement_id").eq("idempotency_key", idem).maybeSingle();
     if (prior.error && !tableMissing(prior.error, "agreement_terms_confirmations")) return fleetJson(503, { ok: false, error: "Could not read confirmations." });
     if (prior.data) {
@@ -279,6 +327,11 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   const app = await admin.from("applications").select("id,status,full_name,email,phone,deleted_at").eq("id", leadId).maybeSingle();
   if (app.error) return fleetJson(503, { ok: false, error: "Could not read the applicant." });
   if (!app.data || app.data.deleted_at) return fleetJson(404, { ok: false, error: "Applicant not found." });
+  let staffApproval: StaffApproval | null = null;
+  if (waiverCandidate) {
+    if (String(app.data.status) === "approved") staffApproval = await (deps.staffApproval ?? loadStaffApproval)(admin, leadId);
+    if (!staffApproval) return fleetJson(400, { ok: false, error: "terms_confirmation is required.", hint: "Waived only for an Approved applicant with an approval on record (staff, owner or FLEET)." });
+  }
   if (String(app.data.status) !== "approved") {
     const active = String(app.data.status) === "active";
     return fleetJson(409, {
@@ -286,6 +339,11 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
       error: `Only an Approved applicant can be sent an agreement (this one is ${app.data.status}).${active ? " For an active rental use POST /api/public/fleet/amend-agreement." : ""}`,
       ...(active ? { use: "/api/public/fleet/amend-agreement" } : {}),
     });
+  }
+
+  // Internal DNC List: FLEET is automated, so it never sends an agreement to someone on it.
+  if (await (deps.dncSuppressed ?? defaultDncSuppressed)(admin, { applicationId: leadId, phone: app.data.phone ?? null, email: app.data.email ?? null })) {
+    return fleetJson(409, { ok: false, error: "This applicant is on the DNC List. Nothing was sent; staff can send it from the back office if they choose." });
   }
 
   const hasOpenOrSigned = deps.hasOpenOrSigned ?? (await import("@/lib/agreements.functions")).hasOpenOrSignedAgreement;
@@ -303,6 +361,8 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   // The fee this send prints (fleetAgreementPrep) and signing charges.
   const fee = deps.reservationFee ?? (await (await import("@/lib/reservation-fee.server")).loadReservationFeeSettings(admin));
   const feeCharged = fee.enabled ? fee.amount : 0;
+  if (staffApproval) return sendWaived({ admin, audit, deps, now, leadId, check, fee, feeCharged, staffApproval, idem });
+  if (!conf) return fleetJson(400, { ok: false, error: "terms_confirmation is required." });
   const mismatches = termsMismatches(conf.value, check, feeCharged);
   if (mismatches.length) {
     return fleetJson(409, {
@@ -385,6 +445,66 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
     lead_id: leadId,
     agreement_id: sent.id,
     confirmation_id: confirmationId,
+    delivery: sent.delivery,
+    terms: { weekly_rate: check.weeklyRate, deposit: check.deposit, start_date: check.startDate, vehicle: check.vehicleLabel },
+  });
+}
+
+/** The approved send: no terms confirmation, audited as a waiver. */
+async function sendWaived(x: {
+  admin: Admin; audit: ReturnType<typeof fleetAudit>; deps: AgreementDeps; now: Date; leadId: string; check: SendCheck;
+  fee: { enabled: boolean; amount: number }; feeCharged: number; staffApproval: StaffApproval; idem: string | null;
+}): Promise<Response> {
+  const { admin, audit, deps, now, leadId, check, fee, staffApproval: sa } = x;
+  const approver = sa.approved_by_kind === "fleet" ? FLEET_ACTOR_LABEL : sa.approver_email || sa.approver_role || "Staff";
+  const terms = { weekly_rate: check.weeklyRate, reservation_fee: x.feeCharged, deposit: check.deposit, start_date: check.startDate, vehicle_id: check.vehicleId };
+  await audit({
+    action: "agreement.terms_confirmation_waived_approved",
+    summary: `Terms confirmation waived for ${FLEET_ACTOR_LABEL}: applicant approved by ${approver}`.slice(0, 300),
+    entityType: "application",
+    entityId: leadId,
+    metadata: {
+      decided_by: FLEET_ACTOR_LABEL,
+      application_id: leadId,
+      approved_by_kind: sa.approved_by_kind,
+      approved_by_label: approver,
+      approved_by_user_id: sa.approver_user_id,
+      approved_by_email: sa.approver_email,
+      approved_by_role: sa.approver_role,
+      approved_at: sa.approved_at,
+      approval_audit_id: sa.audit_id,
+      idempotency_key: x.idem,
+      terms,
+    },
+  });
+  let sent: Awaited<ReturnType<NonNullable<AgreementDeps["issue"]>>>;
+  try {
+    const issue = deps.issue ?? (await import("@/lib/agreements.functions")).issueAgreement;
+    sent = await issue(admin, leadId, { createdBy: null, prep: fleetAgreementPrep(fee, check.deposit) });
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e).slice(0, 300);
+    await audit({ action: "agreement.fleet_send_failed", summary: `Agreement not sent by ${FLEET_ACTOR_LABEL}: ${msg}`, entityType: "application", entityId: leadId, metadata: { terms_confirmation_waived: true } });
+    return fleetJson(409, { ok: false, error: `The agreement was not sent: ${msg}` });
+  }
+  await audit({
+    action: "agreement.fleet_sent",
+    summary: `Rental agreement sent by ${FLEET_ACTOR_LABEL}; applicant approved by ${approver} (terms confirmation waived)`.slice(0, 300),
+    entityType: "application",
+    entityId: leadId,
+    metadata: { decided_by: FLEET_ACTOR_LABEL, agreement_id: sent.id, confirmation_id: null, channel: "waived_approved", terms_confirmation_waived: true, approved_by_kind: sa.approved_by_kind, approved_by_email: sa.approver_email, approved_at: sa.approved_at, terms },
+  });
+  {
+    const { recordFleetLifecycleStep } = await import("@/lib/fleet-lifecycle.server");
+    await recordFleetLifecycleStep(audit, { applicationId: leadId, step: "agreement", evidence: `Agreement sent for signature; applicant approved by ${approver}, terms confirmation waived.`, source: "send-agreement", at: now, extra: { agreement_id: sent.id, terms_confirmation_waived: true } });
+  }
+  return fleetJson(201, {
+    ok: true,
+    lead_id: leadId,
+    agreement_id: sent.id,
+    confirmation_id: null,
+    terms_confirmation_waived: true,
+    approved_by: approver,
+    approved_at: sa.approved_at,
     delivery: sent.delivery,
     terms: { weekly_rate: check.weeklyRate, deposit: check.deposit, start_date: check.startDate, vehicle: check.vehicleLabel },
   });

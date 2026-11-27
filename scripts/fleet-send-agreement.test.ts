@@ -15,11 +15,12 @@ function fakeDb(seed: Record<string, Row[]>, opts: { missing?: string[] } = {}) 
   let n = 1;
   function from(table: string) {
     state[table] ??= [];
-    let op = "select"; let payload: any = null; let single = false;
+    let op = "select"; let payload: any = null; let single = false; let sort: { c: string; asc: boolean } | null = null; let lim: number | null = null;
     const f: ((r: Row) => boolean)[] = [];
     const q: any = {
       select: () => q, insert: (r: Row) => { op = "insert"; payload = r; return q; }, update: (r: Row) => { op = "update"; payload = r; return q; },
       eq: (c: string, v: any) => { f.push((r) => r[c] === v); return q; },
+      order: (c: string, o: any = {}) => { sort = { c, asc: o.ascending !== false }; return q; }, limit: (k: number) => { lim = k; return q; },
       maybeSingle: () => { single = true; return q; }, single: () => { single = true; return q; },
       then: (res: any, rej: any) => Promise.resolve(run()).then(res, rej),
     };
@@ -30,7 +31,9 @@ function fakeDb(seed: Record<string, Row[]>, opts: { missing?: string[] } = {}) 
         if (payload.idempotency_key && rows.some((r) => r.idempotency_key === payload.idempotency_key)) return { data: null, error: { code: "23505", message: "dup" } };
         const r = { id: `${table}-${n++}`, ...payload }; rows.push(r); return { data: { id: r.id }, error: null };
       }
-      const hit = rows.filter((r) => f.every((x) => x(r)));
+      let hit = rows.filter((r) => f.every((x) => x(r)));
+      if (sort) { const { c, asc } = sort; hit = [...hit].sort((x, y) => (String(x[c]) < String(y[c]) ? -1 : String(x[c]) > String(y[c]) ? 1 : 0) * (asc ? 1 : -1)); }
+      if (lim != null && op === "select") hit = hit.slice(0, lim);
       if (op === "update") { hit.forEach((r) => Object.assign(r, payload)); return { data: null, error: null }; }
       return { data: single ? hit[0] ?? null : hit, error: null };
     }
@@ -55,6 +58,8 @@ async function call(db: any, body: Row, d: Row = {}) {
     admin: db, env: { FLEET_API_KEY: KEY }, now: () => NOW, audit: async (e) => { audits.push(e); },
     check: async () => d.check ?? okCheck,
     hasOpenOrSigned: async () => d.open ?? false,
+    ...(d.staffApproval !== undefined ? { staffApproval: async () => d.staffApproval } : {}),
+    dncSuppressed: async (_a: any, who: any) => { if (d.dncCalls) d.dncCalls.push(who); return d.dnc ?? false; },
     issue: async (_a: any, id: string, o: any) => { if (d.fail) throw new Error("Resend down"); issued.push({ id, o }); return { id: "agr-1", url: "https://drivereal.com/sign/SECRET", delivery: { email: "sent", sms: "sent", delivered: true } }; },
   });
   return { status: res.status, body: await res.json(), issued, audits };
@@ -161,5 +166,104 @@ describe("proposed migration (PGlite)", () => {
     await expect(ins("call", "AC1", null, 325, "ok")).rejects.toThrow();
     await pg.exec(SQL);
     expect(SQL).toMatch(/PROPOSED, NOT APPLIED/);
+  });
+});
+
+describe("terms confirmation waived for approved applicants, staff or FLEET (Dolmar, Nov 27 2026)", () => {
+  const STAFF_UID = "99999999-9999-4999-8999-999999999999";
+  const approvedRow = (x: Row = {}) => ({ id: "aud-1", action: "application.approved", entity_id: A, actor_user_id: STAFF_UID, actor_email: "rosa@drivereal.com", actor_role: "team", metadata: { previous_status: "reviewing" }, created_at: "2026-11-25T16:59:03Z", ...x });
+  const withAudit = (status: string, rows: Row[]) => ({ ...seed(status), audit_log: rows });
+  const fleetRow = (x: Row = {}) => approvedRow({ id: "aud-f", actor_user_id: null, actor_email: null, actor_role: null, metadata: { decided_by: "FLEET (automated)", reason: "clean file" }, created_at: "2026-11-27T17:40:48Z", ...x });
+
+  test("loadStaffApproval: staff and FLEET entries both count; no entry or an unlabelled system entry does not; latest entry wins", async () => {
+    expect(await m.loadStaffApproval(fakeDb(withAudit("approved", [approvedRow()])), A)).toMatchObject({ approved_by_kind: "staff", approver_user_id: STAFF_UID, approver_email: "rosa@drivereal.com", approved_at: "2026-11-25T16:59:03Z", audit_id: "aud-1" });
+    expect(await m.loadStaffApproval(fakeDb(withAudit("approved", [fleetRow()])), A)).toMatchObject({ approved_by_kind: "fleet", approver_user_id: null, audit_id: "aud-f" });
+    expect(await m.loadStaffApproval(fakeDb(withAudit("approved", [])), A)).toBeNull();
+    expect(await m.loadStaffApproval(fakeDb(withAudit("approved", [approvedRow({ entity_id: "someone-else" })])), A)).toBeNull();
+    expect(await m.loadStaffApproval(fakeDb(withAudit("approved", [approvedRow({ actor_user_id: null, metadata: {} })])), A)).toBeNull();
+    expect(await m.loadStaffApproval(fakeDb(withAudit("approved", [approvedRow(), fleetRow({ created_at: "2026-11-26T10:00:00Z" })])), A)).toMatchObject({ approved_by_kind: "fleet" });
+    expect(await m.loadStaffApproval(fakeDb(withAudit("approved", [fleetRow({ created_at: "2026-11-20T10:00:00Z" }), approvedRow()])), A)).toMatchObject({ approved_by_kind: "staff", audit_id: "aud-1" });
+  });
+
+  test("approved by FLEET: sends without terms_confirmation and writes the waiver audit row naming FLEET", async () => {
+    const db = fakeDb(withAudit("approved", [fleetRow()]));
+    const r = await call(db, { lead_id: A });
+    expect(r.status).toBe(201);
+    expect(r.body).toMatchObject({ ok: true, agreement_id: "agr-1", confirmation_id: null, terms_confirmation_waived: true, approved_by: "FLEET (automated)", approved_at: "2026-11-27T17:40:48Z" });
+    expect(r.issued).toHaveLength(1);
+    expect(r.audits.find((e) => e.action === "agreement.terms_confirmation_waived_approved")).toMatchObject({ entityId: A, metadata: { decided_by: "FLEET (automated)", application_id: A, approved_by_kind: "fleet", approved_by_label: "FLEET (automated)", approved_by_user_id: null, approval_audit_id: "aud-f" } });
+    expect(r.audits.find((e) => e.action === "agreement.fleet_sent")).toMatchObject({ metadata: { channel: "waived_approved", approved_by_kind: "fleet" } });
+    expect(db.state.agreement_terms_confirmations).toHaveLength(0);
+  });
+
+  test("approved by staff: sends without terms_confirmation, writes the waiver audit row, stores no confirmation", async () => {
+    const db = fakeDb(withAudit("approved", [approvedRow()]));
+    const r = await call(db, { lead_id: A, idempotency_key: "fast-1" });
+    expect(r.status).toBe(201);
+    expect(r.body).toMatchObject({ ok: true, agreement_id: "agr-1", confirmation_id: null, terms_confirmation_waived: true, approved_by: "rosa@drivereal.com", approved_at: "2026-11-25T16:59:03Z" });
+    expect(JSON.stringify(r.body)).not.toContain("/sign/");
+    expect(r.issued).toHaveLength(1);
+    expect(r.issued[0]).toMatchObject({ id: A, o: { createdBy: null, prep: { reservation: { mode: "not_required" } } } });
+    const waiver = r.audits.find((e) => e.action === "agreement.terms_confirmation_waived_approved");
+    expect(waiver).toMatchObject({ entityType: "application", entityId: A, metadata: { decided_by: "FLEET (automated)", application_id: A, approved_by_kind: "staff", approved_by_user_id: STAFF_UID, approved_by_email: "rosa@drivereal.com", approved_at: "2026-11-25T16:59:03Z", approval_audit_id: "aud-1" } });
+    // The waiver is logged before the send.
+    expect(r.audits.findIndex((e) => e.action === "agreement.terms_confirmation_waived_approved")).toBeLessThan(r.audits.findIndex((e) => e.action === "agreement.fleet_sent"));
+    expect(r.audits.find((e) => e.action === "agreement.fleet_sent")).toMatchObject({ metadata: { channel: "waived_approved", terms_confirmation_waived: true, agreement_id: "agr-1" } });
+    expect(db.state.agreement_terms_confirmations).toHaveLength(0);
+  });
+
+  test("no approval on record or not Approved: the existing requirement stands and nothing is sent or logged as waived", async () => {
+    const cases: [string, Row[]][] = [
+      ["approved", []],
+      ["approved", [approvedRow({ actor_user_id: null, metadata: {} })]],
+      ["reviewing", [approvedRow()]],
+      ["reviewing", [fleetRow()]],
+      ["new", []],
+      ["active", [fleetRow()]],
+    ];
+    for (const [status, rows] of cases) {
+      const db = fakeDb(withAudit(status, rows));
+      const r = await call(db, { lead_id: A });
+      expect(r.status).toBe(400);
+      expect(r.body.error).toBe("terms_confirmation is required.");
+      expect(r.issued).toHaveLength(0);
+      expect(r.audits.some((e) => e.action === "agreement.terms_confirmation_waived_approved")).toBe(false);
+    }
+  });
+
+  test("DNC List still blocks: staff-approved waiver and confirmed sends both refuse", async () => {
+    const calls: any[] = [];
+    const db = fakeDb(withAudit("approved", [approvedRow()]));
+    const r = await call(db, { lead_id: A }, { dnc: true, dncCalls: calls });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toContain("DNC List");
+    expect(r.issued).toHaveLength(0);
+    expect(r.audits.some((e) => e.action === "agreement.terms_confirmation_waived_approved")).toBe(false);
+    expect(calls[0]).toMatchObject({ applicationId: A, email: "t@example.com" });
+    const f = await call(fakeDb(withAudit("approved", [fleetRow()])), { lead_id: A }, { dnc: true });
+    expect(f.status).toBe(409);
+    expect(f.issued).toHaveLength(0);
+    const c = await call(fakeDb(seed()), { lead_id: A, terms_confirmation: conf() }, { dnc: true });
+    expect(c.status).toBe(409);
+    expect(c.issued).toHaveLength(0);
+  });
+
+  test("other guards still apply on the waiver path: agreement already out, blockers, no vehicle", async () => {
+    for (const [d, want] of [
+      [{ open: true }, "already out"],
+      [{ check: { ...okCheck, blockers: [{ field: "vehicle_vin", label: "VIN", why: "x" }] } }, "missing details"],
+      [{ check: { ...okCheck, vehicleId: null } }, "No vehicle"],
+    ] as const) {
+      const r = await call(fakeDb(withAudit("approved", [approvedRow()])), { lead_id: A }, d as any);
+      expect(r.status).toBe(409);
+      expect(r.body.error).toContain(want);
+      expect(r.issued).toHaveLength(0);
+      expect(r.audits.some((e) => e.action === "agreement.terms_confirmation_waived_approved")).toBe(false);
+    }
+  });
+
+  test("auth still required", async () => {
+    const res = await m.handleFleetSendAgreement(new Request("https://drivereal.com/api/public/fleet/send-agreement", { method: "POST", headers: { Authorization: "Bearer wrong", "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: A }) }), { admin: fakeDb(withAudit("approved", [approvedRow()])), env: { FLEET_API_KEY: KEY }, now: () => NOW, audit: async () => {}, staffApproval: async () => ({ approved_by_kind: "staff" as const, approved_at: "x", approver_user_id: STAFF_UID, approver_email: null, approver_role: null, audit_id: null }), issue: async () => { throw new Error("must not send"); } });
+    expect(res.status).toBe(401);
   });
 });
