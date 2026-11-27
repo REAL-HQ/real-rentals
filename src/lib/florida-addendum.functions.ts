@@ -21,6 +21,14 @@ import {
   renderFloridaAddendum,
   type AddendumFields,
 } from "@/lib/agreement-fl-addendum";
+import {
+  agreementFactFromRow,
+  floridaAddendumNeed,
+  needs812155Addendum,
+  type AgreementFact,
+  type FloridaAddendumNeed,
+} from "@/lib/florida-addendum-need";
+import { PAPER_TYPES, type PaperType } from "@/lib/paper-agreements";
 
 const LIVE_RENTAL_STATUSES = ["active", "reserved", "on_hold"];
 const cell = (v: unknown) =>
@@ -102,6 +110,88 @@ export async function floridaAddendumFields(
     company_phone: cell(company.company_phone),
   };
 }
+
+const PAPER_TYPE = new Set<string>(PAPER_TYPES);
+
+function paperTypeOf(metadata: unknown): PaperType | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const type = (metadata as { type?: unknown }).type;
+  return typeof type === "string" && PAPER_TYPE.has(type) ? (type as PaperType) : null;
+}
+
+/** Current paper filings for this renter. A failure here does not invent a version. */
+async function paperAddendumFacts(admin: any, applicationId: string): Promise<AgreementFact[]> {
+  const docs = await admin
+    .from("documents")
+    .select("id,file_name,notes,label,is_current")
+    .eq("driver_id", applicationId)
+    .eq("category", "agreement")
+    .eq("source", "paper");
+  if (docs.error || !docs.data?.length) return [];
+  const ids = docs.data.map((doc: { id: string }) => doc.id);
+  const audits = await admin
+    .from("audit_log")
+    .select("entity_id,metadata")
+    .eq("action", "paper_agreement.uploaded")
+    .eq("entity_type", "document")
+    .in("entity_id", ids);
+  if (audits.error) return [];
+  const typeById = new Map<string, PaperType>();
+  for (const audit of audits.data ?? []) {
+    const type = paperTypeOf(audit.metadata);
+    if (type && !typeById.has(audit.entity_id as string)) typeById.set(audit.entity_id as string, type);
+  }
+  return docs.data.map((doc: { id: string; file_name?: string | null; notes?: string | null; label?: string | null; is_current?: boolean | null }) => ({
+    status: "signed" as const,
+    source: "paper",
+    title: doc.label ?? null,
+    paperType: typeById.get(doc.id) ?? null,
+    paperName: [doc.file_name, doc.label, doc.notes].filter((part) => typeof part === "string" && part.trim()).join(" "),
+    isCurrent: doc.is_current !== false,
+  }));
+}
+
+/**
+ * The addendum card for one driver. Read-only. Returns the shared rule's
+ * answer and nothing else (no agreement text, no phone number).
+ * Staff of every tier that can open a driver profile may read it. The preview
+ * PDF stays Manager-only.
+ */
+export type FloridaAddendumCard = FloridaAddendumNeed & {
+  /** needs812155Addendum: true only while the addendum is still outstanding. */
+  outstanding: boolean;
+};
+
+export async function floridaAddendumStatusFor(
+  admin: any,
+  applicationId: string,
+): Promise<FloridaAddendumCard> {
+  const { data, error } = await admin
+    .from("agreements")
+    .select("status,signed_at,voided_at,created_at,source,title,metadata,body")
+    .eq("application_id", applicationId);
+  if (error) throw new Error(error.message);
+  const agreements = ((data ?? []) as Parameters<typeof agreementFactFromRow>[0][]).map(agreementFactFromRow);
+  let paper: AgreementFact[] = [];
+  try {
+    paper = await paperAddendumFacts(admin, applicationId);
+  } catch {
+    paper = [];
+  }
+  const facts = [...agreements, ...paper];
+  const need = floridaAddendumNeed(facts);
+  return { ...need, outstanding: needs812155Addendum(facts) };
+}
+
+export const getFloridaAddendumStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const roles = await import("@/lib/roles.server");
+    await roles.requireStaff(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    return floridaAddendumStatusFor(supabaseAdmin, data.applicationId);
+  });
 
 export const previewFloridaAddendum = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
