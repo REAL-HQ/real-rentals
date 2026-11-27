@@ -228,7 +228,7 @@ async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: strin
   try {
     const { data: onFile } = await supabaseAdmin
       .from("applications")
-      .select("id, email, full_name, status, user_id")
+      .select("id, email, full_name, status, user_id, current_step")
       .eq("id", applicationId)
       .maybeSingle();
     if (!onFile?.email) return false;
@@ -251,7 +251,14 @@ async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: strin
       return r.ok;
     }
     const { sendApplicationResumeEmail } = await import("@/lib/email.server");
-    const r = await sendApplicationResumeEmail({ to: onFile.email, firstName: onFile.full_name ?? null, submittedName, applicationId });
+    const { isAlreadySubmittedApplication } = await import("@/lib/returning-applicant");
+    const r = await sendApplicationResumeEmail({
+      to: onFile.email,
+      firstName: onFile.full_name ?? null,
+      submittedName,
+      applicationId,
+      alreadySubmitted: isAlreadySubmittedApplication(onFile),
+    });
     if (!r.ok) console.error("[resume-link] provider refused", applicationId, r.error);
     return r.ok;
   } catch (e) {

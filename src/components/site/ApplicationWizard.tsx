@@ -43,6 +43,7 @@ import { UPLOAD_PRECHECK_ENABLED } from "@/lib/upload-precheck";
 import { APPLY_VEHICLE_PREFILL_ENABLED } from "@/lib/apply-vehicle-prefill";
 import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 import { APPLICATION_LOCKED_MESSAGE, APPLICATION_LOCKED_NEXT_STEP } from "@/lib/application-edit-status";
+import { PROFILE_ALL_SET_BODY, PROFILE_ALL_SET_HEADING, PROFILE_CAR_HINT } from "@/lib/returning-applicant";
 import {
   createSaveSequencer,
   isApplicationLockedError,
@@ -1691,6 +1692,17 @@ function DriverProfile({
         sub="Photos upload and save straight away. For the typed details, press Save in each section — then you can close the page and come back with the same link."
       />
 
+      {(phase === "profile_complete" || doneCount === required.length) && (
+        <div
+          role="status"
+          data-profile-all-set
+          className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-[13px] leading-relaxed text-emerald-900"
+        >
+          <div className="text-[15px] font-semibold">{PROFILE_ALL_SET_HEADING}</div>
+          <p className="mt-1">{PROFILE_ALL_SET_BODY}</p>
+        </div>
+      )}
+
       {/* Deliberately no qualification score, coverage percentage, readiness
           state or Hot Prospect anything. Those are internal triage tools; an
           applicant seeing a percentage against their name would read it as a
@@ -1968,6 +1980,9 @@ function DriverProfile({
 
       <p className="mt-5 text-center text-[11px] text-muted-foreground">
         Your application is already with our team. Nothing above is required for us to call you.
+      </p>
+      <p className="mt-2 text-center text-[11px] text-muted-foreground" data-profile-car-hint>
+        {PROFILE_CAR_HINT}
       </p>
     </div>
   );
