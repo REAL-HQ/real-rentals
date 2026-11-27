@@ -107,6 +107,8 @@ const ROW = {
   contact_status: "follow_up", contact_status_note: "Wants the Camry",
   contact_follow_up_on: "2026-10-14", contact_status_at: "2026-10-11T12:00:00Z",
   contact_status_by: COORD,
+  reference_name: "Ann Lee", reference_phone: "(555) 010-2222", reference_relationship: "Sister",
+  emergency_contact_name: "Sam Lee", emergency_contact_phone: "(555) 010-3333", emergency_contact_relationship: "Brother",
   // Everything below must never reach a Coordinator.
   license_number: "R123-456-78-901-0", license_state: "FL", license_expiration: "2030-04-30",
   license_photo_url: "licences/dana.jpg", license_valid: true, dob: "1991-07-02",
@@ -172,6 +174,12 @@ for (const f of ["contact_status", "contact_status_note", "contact_follow_up_on"
 }
 ok(row.contact_status === "follow_up" && row.contact_follow_up_on === "2026-10-14" && row.contact_status_note === "Wants the Camry",
   "  with the stored status, its date and its note intact");
+console.log("\n  and the optional reference and emergency contact come through read-only");
+for (const f of ["reference_name", "reference_phone", "reference_relationship", "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship"]) {
+  ok(Object.prototype.hasOwnProperty.call(row, f), `  ${f} is present`);
+}
+ok(row.reference_name === "Ann Lee" && row.reference_phone === "(555) 010-2222" && row.emergency_contact_name === "Sam Lee",
+  "  with the names and phones the applicant typed");
 
 console.log("\nand the sensitive fields are ABSENT, not blank");
 for (const f of R.SENSITIVE_LIST_FIELDS) {

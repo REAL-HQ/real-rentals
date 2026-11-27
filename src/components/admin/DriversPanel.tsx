@@ -284,6 +284,8 @@ import { AdditionalDriversSection } from "@/components/admin/AdditionalDriversSe
 import { CollectionsCard } from "@/components/admin/CollectionsCard";
 import { BackgroundReportsCard } from "@/components/admin/BackgroundReportsCard";
 import { BlacklistMatchAlert } from "@/components/admin/BlacklistMatchAlert";
+import { CONTACT_PEOPLE_FIELDS, CONTACT_PEOPLE_LABELS } from "@/lib/application-contacts";
+import { formatUsPhoneInput } from "@/lib/us-phone";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
 
@@ -3240,6 +3242,11 @@ function DriverDetail({
                     onPrimaryChange={(parts) => onUpdate({ address: parts.line1, city: parts.city, state: parts.state, zip: parts.zip })}
                   />
                 </Card>
+                <ReferenceContactCard
+                  values={driver as any}
+                  canEdit={isManager}
+                  onSave={(k, v) => onUpdate({ [k]: v } as any)}
+                />
                 <Card title="Driver Info" icon={<UserIcon className="w-4 h-4" />}>
                   {isManager ? (
                     <>
@@ -3675,6 +3682,40 @@ function ReqRow({ ok, label }: { ok: boolean; label: string }) {
       </span>
       {label}
     </li>
+  );
+}
+
+/** Application tab card. Manager+ edits; everyone else sees the same fields read-only. */
+export function ReferenceContactCard({
+  values,
+  canEdit,
+  onSave,
+}: {
+  values: Partial<Record<(typeof CONTACT_PEOPLE_FIELDS)[number], string | null>>;
+  canEdit: boolean;
+  onSave: (key: (typeof CONTACT_PEOPLE_FIELDS)[number], value: string | null) => EditableSaveResult;
+}) {
+  return (
+    <Card title="Reference And Emergency Contact" icon={<UserIcon className="w-4 h-4" />}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {CONTACT_PEOPLE_FIELDS.map((k) =>
+          canEdit ? (
+            <TxtField
+              key={k}
+              label={CONTACT_PEOPLE_LABELS[k]}
+              value={values[k] ?? null}
+              onSave={(v) => {
+                const next = v && (k === "reference_phone" || k === "emergency_contact_phone") ? formatUsPhoneInput(v) : v;
+                return onSave(k, next);
+              }}
+            />
+          ) : (
+            <Field key={k} label={CONTACT_PEOPLE_LABELS[k]} value={values[k] ?? null} />
+          ),
+        )}
+      </div>
+      <p className="mt-3 text-[11px] text-muted-foreground">Optional. Checked against the Blacklist: a blacklisted person listed here (by name or phone) is flagged for an Owner / Admin to review.</p>
+    </Card>
   );
 }
 
