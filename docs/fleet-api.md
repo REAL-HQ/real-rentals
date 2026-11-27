@@ -24,7 +24,7 @@ Base: `https://drivereal.com/api/public/fleet/`
 | `assign-vehicle` | list available cars; put one on an approved applicant at its listed rate | fleet-assign-vehicle.md (PR 377) |
 | `send-agreement` | send the agreement after the renter confirmed terms (call or YES text) | [fleet-send-agreement.md](fleet-send-agreement.md) |
 | `amend-agreement` | send an updated agreement to an ACTIVE rental (e.g. a new weekly rate the renter agreed to); generated from v1.14 with no Reservation Fee or new deposit; the rate changes only after they sign (switch, Off) | [fleet-amend-agreement.md](fleet-amend-agreement.md) |
-| `driver-document` | file a document onto a driver's profile, team only, never verified (switch, Off) | [below](#driver-document) |
+| `driver-document` | file a document onto a driver's profile, never verified; insurance cards are shared with the driver, everything else team only unless `driver_visible` (switch, Off) | [below](#driver-document) |
 | `insurance-card` | hand over an insurance ID card found in team@ Gmail (Inbox or Spam) for Fleet Inbox to read; filed to a renter only on an exact VIN + name match, never verified (switch "Insurance ID Cards To Portal", On) | [renter-insurance-cards.md](renter-insurance-cards.md) |
 | `insurance-applied` | check off Insurance Quote as Applied (yellow) on an approved applicant once insurance is applied for; one audit row, never a checkmark or insurance verification; the uploaded quote (`driver-document`, category insurance_quote) turns it green | [fleet-insurance-applied.md](fleet-insurance-applied.md) |
 | `pickup-slots` | open pickup slots; book one | [fleet-pickup-schedule.md](fleet-pickup-schedule.md) |
@@ -71,7 +71,8 @@ while Off: `409 {"reason":"switched_off"}`, nothing saved.
   "content_base64": "<the file, base64; a data: prefix is accepted>",
   "label": "Original v1.13 agreement (superseded)",
   "expires_at": "2029-01-21",
-  "idempotency_key": "doc-<lead_id>-1"
+  "idempotency_key": "doc-<lead_id>-1",
+  "driver_visible": false
 }
 ```
 
@@ -86,9 +87,22 @@ while Off: `409 {"reason":"switched_off"}`, nothing saved.
 - The type is read from the file's bytes: PDF, JPEG, PNG, WebP or HEIC, up to
   20 MB decoded (`415` / `413` otherwise). The name and any claimed type are
   not trusted.
+- `driver_visible` optional, `true` or `false` (anything else is `400`).
+  Who sees the file:
+  - `insurance` (the renter's insurance ID card): staff **and the driver**
+    (Back Office → driver profile → Documents, and Driver Portal →
+    Documents), visibility `["driver","admin"]`. Send `"driver_visible": false`
+    to keep one team only.
+  - every other category: team only, visibility `["admin"]`, unless
+    `"driver_visible": true`. Default `false`, so nothing else becomes
+    renter-visible by accident.
+  - `insurance_quote` and `screening` are always team only;
+    `"driver_visible": true` is refused with `400` (broker or insurer quotes
+    and screening reports are never shown to renters).
 - Saved exactly like a staff upload: bucket `driver-docs`, path
-  `<lead_id>/internal/<category>-<uuid>.<ext>`, documents row with
-  visibility team only (`["admin"]`), `review_status` "uploaded". Nothing is
+  `<lead_id>/internal/<category>-<uuid>.<ext>` when team only, or
+  `<lead_id>/<category>-<uuid>.<ext>` when shared with the driver; documents
+  row with the visibility above, `review_status` "uploaded". Nothing is
   verified or approved, nothing on the application changes and the driver is
   not told. Every category FLEET may file keeps every file. A new upload
   adds a file. It does not replace the one already there. `agreement` and
@@ -97,7 +111,8 @@ while Off: `409 {"reason":"switched_off"}`, nothing saved.
 - Idempotent: the same `idempotency_key`, or the same bytes for the same driver
   and category, returns `200 {"duplicate":true,"document_id":…}` without saving
   again. A key reused for a different file is `409`.
-- Audited as `document.fleet_upload` (category, label, sha256, size, key).
+- Audited as `document.fleet_upload` (category, label, sha256, size, key,
+  `driver_visible`).
 
 Reply `201`:
 
@@ -105,8 +120,13 @@ Reply `201`:
 { "ok": true, "lead_id": "…", "document_id": "…", "category": "other",
   "label": "…", "file_name": "…", "mime_type": "application/pdf",
   "size_bytes": 123456, "sha256": "…", "visibility": ["admin"],
-  "review_status": "uploaded", "verified": false, "next": "…" }
+  "driver_visible": false, "review_status": "uploaded", "verified": false,
+  "next": "…" }
 ```
+
+An `insurance` upload replies `"visibility": ["driver","admin"]` and
+`"driver_visible": true`. The driver gets no message when a file is shared;
+it simply appears in Driver Portal → Documents.
 
 ## vehicle-maintenance
 

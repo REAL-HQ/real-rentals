@@ -141,6 +141,59 @@ describe("FLEET driver-document upload", () => {
     expect(db.state.applications[0]).toEqual({ id: A, deleted_at: null, status: "active" });
   });
 
+  test("insurance cards are shared with the driver by default; driver_visible false keeps one team only", async () => {
+    const db = fakeDb(seed());
+    const r = await call(db, base({ category: "insurance", file_name: "card.pdf", expires_at: "2027-05-27", label: "Insurance ID card" }));
+    expect(r.status).toBe(201);
+    expect(r.json.visibility).toEqual(["driver", "admin"]);
+    expect(r.json.driver_visible).toBe(true);
+    const doc = db.state.documents[0];
+    expect(doc.visibility).toEqual(["driver", "admin"]);
+    expect(doc.storage_path).toMatch(new RegExp(`^${A}/insurance-[0-9a-f-]{36}\\.pdf$`));
+    expect(doc.review_status).toBe("uploaded");
+    expect(r.audits[0].metadata).toMatchObject({ driver_visible: true, team_only: false, verified: false });
+    const db2 = fakeDb(seed());
+    const r2 = await call(db2, base({ category: "insurance", driver_visible: false }));
+    expect(r2.status).toBe(201);
+    expect(db2.state.documents[0].visibility).toEqual(["admin"]);
+    expect(db2.state.documents[0].storage_path).toMatch(new RegExp(`^${A}/internal/insurance-`));
+  });
+
+  test("other categories stay team only unless driver_visible is true", async () => {
+    for (const c of ["license_front", "license_back", "gig_profile", "income", "trip_history", "other"]) {
+      const db = fakeDb(seed());
+      const r = await call(db, base({ category: c, file_name: "x.pdf" }));
+      expect(r.status).toBe(201);
+      expect(db.state.documents[0].visibility).toEqual(["admin"]);
+      expect(r.json.driver_visible).toBe(false);
+      const db2 = fakeDb(seed());
+      const r2 = await call(db2, base({ category: c, file_name: "x.pdf", driver_visible: true }));
+      expect(r2.status).toBe(201);
+      expect(db2.state.documents[0].visibility).toEqual(["driver", "admin"]);
+      expect(db2.state.documents[0].storage_path.startsWith(`${A}/internal/`)).toBe(false);
+    }
+  });
+
+  test("insurance_quote and screening can never be driver-visible; driver_visible must be a boolean", async () => {
+    for (const c of ["insurance_quote", "screening"]) {
+      const db = fakeDb(seed());
+      const r = await call(db, base({ category: c, driver_visible: true }));
+      expect(r.status).toBe(400);
+      expect(db.state.documents.length).toBe(0);
+      expect(db.objects.size).toBe(0);
+      const ok = await call(fakeDb(seed()), base({ category: c }));
+      expect(ok.status).toBe(201);
+      expect(ok.json.visibility).toEqual(["admin"]);
+    }
+    for (const bad of ["yes", 1, "true", {}]) {
+      const db = fakeDb(seed());
+      expect((await call(db, base({ driver_visible: bad }))).status).toBe(400);
+      expect(db.state.documents.length).toBe(0);
+    }
+    expect(D.fleetDocumentVisibility("insurance", undefined)).toEqual({ visibility: ["driver", "admin"], driverVisible: true });
+    expect(D.fleetDocumentVisibility("other", null)).toEqual({ visibility: ["admin"], driverVisible: false });
+  });
+
   test("agreement, rental_application and verification_recording are refused", async () => {
     for (const c of ["agreement", "rental_application", "verification_recording", "rental_agreement", "nope"]) {
       const db = fakeDb(seed());
@@ -239,6 +292,7 @@ describe("FLEET driver-document upload", () => {
     const docs = readFileSync("docs/fleet-api.md", "utf8");
     expect(docs).toContain("/api/public/fleet/driver-document");
     expect(docs).toContain("fleet_document_uploads");
+    expect(docs).toContain("driver_visible");
     const tree = readFileSync("src/routeTree.gen.ts", "utf8");
     expect(tree).toContain("/api/public/fleet/driver-document");
   });

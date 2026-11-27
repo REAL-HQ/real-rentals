@@ -1,17 +1,29 @@
 /**
- * FLEET files a document onto a driver's profile, team only (Dolmar, t326u).
+ * FLEET files a document onto a driver's profile (Dolmar, t326u).
  *
  *   POST /api/public/fleet/driver-document
  *   { "lead_id": "…", "category": "other", "file_name": "agreement.pdf",
  *     "content_base64": "<the file, base64>", "label": "Original agreement (superseded)",
- *     "expires_at": "2029-01-21", "idempotency_key": "doc-<lead_id>-1" }
+ *     "expires_at": "2029-01-21", "idempotency_key": "doc-<lead_id>-1",
+ *     "driver_visible": false }
+ *
+ * Who sees it (Dolmar, 11/27 3:07 PM ET: insurance cards on file in the back
+ * office AND the driver portal):
+ *   - category "insurance" (the renter's insurance ID card): staff and the
+ *     driver, visibility ["driver","admin"], unless driver_visible is false.
+ *   - every other category: team only, visibility ["admin"], unless
+ *     driver_visible is true. Default false, so nothing else becomes
+ *     renter-visible by accident.
+ *   - insurance_quote and screening are always team only; driver_visible
+ *     true is refused for them (broker/insurer and screening material).
  *
  * Bearer FLEET_API_KEY (src/lib/fleet-api.server.ts). Off until the
  * Automations switch "FLEET Document Uploads" (fleet_document_uploads) is On.
  *
  * Same storage and save step as the staff Documents upload: bucket
- * driver-docs, path `<app>/internal/<category>-<uuid>.<ext>` (team only),
- * documents row via persistConfirmedDocument, visibility ["admin"].
+ * driver-docs, path `<app>/internal/<category>-<uuid>.<ext>` when team only or
+ * `<app>/<category>-<uuid>.<ext>` when driver-visible (uploadPath's rule),
+ * documents row via persistConfirmedDocument.
  *
  * Never a verification or approval: the row is saved review_status
  * "uploaded" (the column default), nothing on the application changes, and no
@@ -56,6 +68,22 @@ export const FLEET_DOCUMENT_CATEGORIES = [
   "other",
 ] as const;
 const EXPIRING = new Set(["license_front", "license_back", "insurance"]);
+/** Shared with the driver unless the call says driver_visible: false. */
+export const FLEET_DRIVER_VISIBLE_BY_DEFAULT: readonly string[] = ["insurance"];
+/** Never shared with the driver through FLEET, whatever driver_visible says. */
+export const FLEET_TEAM_ONLY_ALWAYS: readonly string[] = ["insurance_quote", "screening"];
+
+/**
+ * Visibility for a FLEET upload. driver_visible must be a boolean when given;
+ * anything else is refused by the caller (null here).
+ */
+export function fleetDocumentVisibility(category: string, driverVisible: unknown): { visibility: string[]; driverVisible: boolean } | { error: string } {
+  if (driverVisible != null && typeof driverVisible !== "boolean") return { error: "driver_visible must be true or false." };
+  if (driverVisible === true && FLEET_TEAM_ONLY_ALWAYS.includes(category))
+    return { error: `${category} is always team only; driver_visible cannot be true. Nothing was saved.` };
+  const shared = typeof driverVisible === "boolean" ? driverVisible : FLEET_DRIVER_VISIBLE_BY_DEFAULT.includes(category);
+  return shared ? { visibility: ["driver", "admin"], driverVisible: true } : { visibility: ["admin"], driverVisible: false };
+}
 
 export type SniffedType = { mime: string; ext: string };
 
@@ -161,6 +189,8 @@ export async function fileFleetDriverDocument(body: Record<string, any>, deps: D
     return fleetJson(400, { ok: false, error: `category must be one of: ${FLEET_DOCUMENT_CATEGORIES.join(", ")}.` });
   const idem = idempotencyKey(body.idempotency_key);
   if (idem === "invalid") return fleetJson(400, { ok: false, error: "idempotency_key must be 1-120 characters." });
+  const vis = fleetDocumentVisibility(category, body.driver_visible);
+  if ("error" in vis) return fleetJson(400, { ok: false, error: vis.error });
   const label = body.label == null || body.label === "" ? null : cleanText(body.label, 140);
   let expiresAt: string | null = null;
   if (body.expires_at != null && body.expires_at !== "") {
@@ -207,7 +237,8 @@ export async function fileFleetDriverDocument(body: Record<string, any>, deps: D
       return fleetJson(409, { ok: false, error: "Staff already verified the current file in this category. FLEET does not replace it; send it to staff, or file it as \"other\". Nothing was saved.", reason: "verified_on_file" });
   }
 
-  const path = `${leadId}/internal/${category}-${crypto.randomUUID()}.${type.ext}`;
+  const folder = vis.driverVisible ? leadId : `${leadId}/internal`;
+  const path = `${folder}/${category}-${crypto.randomUUID()}.${type.ext}`;
   const up = await admin.storage.from(DOC_BUCKET).upload(path, bytes, { contentType: type.mime, upsert: false });
   if (up?.error) return fleetJson(503, { ok: false, error: "Could not store the file. Nothing was saved." });
 
@@ -220,7 +251,7 @@ export async function fileFleetDriverDocument(body: Record<string, any>, deps: D
       label,
       storage_bucket: DOC_BUCKET,
       storage_path: path,
-      visibility: ["admin"],
+      visibility: vis.visibility,
       file_name: fileName,
       mime_type: type.mime,
       size_bytes: bytes.length,
@@ -235,10 +266,10 @@ export async function fileFleetDriverDocument(body: Record<string, any>, deps: D
 
   await audit({
     action: FLEET_DOCUMENT_AUDIT_ACTION,
-    summary: `${FLEET_ACTOR_LABEL} filed a team-only document (${category}${label ? `: ${label}` : ""}). Not reviewed.`.slice(0, 300),
+    summary: `${FLEET_ACTOR_LABEL} filed a ${vis.driverVisible ? "driver-visible" : "team-only"} document (${category}${label ? `: ${label}` : ""}). Not reviewed.`.slice(0, 300),
     entityType: "document",
     entityId: saved.id,
-    metadata: { uploaded_by: FLEET_ACTOR_LABEL, lead_id: leadId, document_id: saved.id, category, label, sha256: sha, size_bytes: bytes.length, mime_type: type.mime, idempotency_key: idem, team_only: true, verified: false },
+    metadata: { uploaded_by: FLEET_ACTOR_LABEL, lead_id: leadId, document_id: saved.id, category, label, sha256: sha, size_bytes: bytes.length, mime_type: type.mime, idempotency_key: idem, team_only: !vis.driverVisible, driver_visible: vis.driverVisible, verified: false },
   });
 
   return fleetJson(201, {
@@ -251,9 +282,12 @@ export async function fileFleetDriverDocument(body: Record<string, any>, deps: D
     mime_type: type.mime,
     size_bytes: bytes.length,
     sha256: sha,
-    visibility: ["admin"],
+    visibility: vis.visibility,
+    driver_visible: vis.driverVisible,
     review_status: "uploaded",
     verified: false,
-    next: "Saved team only and not reviewed. Staff review it under Documents on the driver's profile.",
+    next: vis.driverVisible
+      ? "Saved for staff and the driver (driver portal → Documents) and not reviewed. Staff review it under Documents on the driver's profile."
+      : "Saved team only and not reviewed. Staff review it under Documents on the driver's profile.",
   });
 }
