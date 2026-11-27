@@ -7138,6 +7138,12 @@ export type Database = {
       }
       applications: {
         Row: {
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
+          emergency_contact_relationship: string | null
+          reference_name: string | null
+          reference_phone: string | null
+          reference_relationship: string | null
           address: string | null
           ai_flags: Json | null
           ai_score: number | null
@@ -7267,6 +7273,12 @@ export type Database = {
           zip: string | null
         }
         Insert: {
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_relationship?: string | null
+          reference_name?: string | null
+          reference_phone?: string | null
+          reference_relationship?: string | null
           address?: string | null
           ai_flags?: Json | null
           ai_score?: number | null
@@ -7396,6 +7408,12 @@ export type Database = {
           zip?: string | null
         }
         Update: {
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_relationship?: string | null
+          reference_name?: string | null
+          reference_phone?: string | null
+          reference_relationship?: string | null
           address?: string | null
           ai_flags?: Json | null
           ai_score?: number | null

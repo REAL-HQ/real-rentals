@@ -53,6 +53,14 @@ export const COORDINATOR_LIST_FIELDS = [
   "contact_follow_up_on",
   "contact_status_at",
   "contact_status_by",
+  // Optional reference and emergency contact. The Application tab shows these
+  // read-only below Manager. They are who to call, not a licence, address or card.
+  "reference_name",
+  "reference_phone",
+  "reference_relationship",
+  "emergency_contact_name",
+  "emergency_contact_phone",
+  "emergency_contact_relationship",
 ] as const;
 
 export type CoordinatorListField = (typeof COORDINATOR_LIST_FIELDS)[number];
