@@ -915,7 +915,9 @@ function unownedIntent(pi: any): boolean {
   const m = pi?.metadata ?? {};
   // rental_id (snake_case, FLEET's Payment Links) is not read by the intent
   // path, so the one-off recorder must still see it.
-  return !m.paymentIds && !m.rentalId && !m.applicationId && !m.agreementId && m.reason !== 'reservation_fee';
+  // applicationId / agreementId alone are not ownership: the intent path writes
+  // nothing without paymentIds or rentalId (FLEET pickup links, Nov 27 2026).
+  return !m.paymentIds && !m.rentalId && m.reason !== 'reservation_fee';
 }
 
 async function handleVerifiedPaymentEvent(event: { type: string; data: { object: any } }, env: StripeEnv) {

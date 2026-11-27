@@ -84,8 +84,16 @@ function meta(o: Obj): Record<string, unknown> {
   return o && typeof o.metadata === "object" && o.metadata ? o.metadata : {};
 }
 
-/** Metadata keys only the app's own payment flows write. */
-const APP_KEYS = ["paymentIds", "applicationId", "agreementId"] as const;
+/**
+ * Metadata keys only the app's own payment flows write. Every app Checkout or
+ * intent that charges money carries paymentIds (collection runs, initial
+ * payment) or reason reservation_fee; card setup is mode "setup". applicationId
+ * and agreementId alone do not make a payment the app's: FLEET's pickup-balance
+ * Payment Links copy them onto the session (Arielle and Lisette, Nov 27 2026),
+ * and treating them as app-owned dropped those $300 payments without a row or
+ * an Unmatched notice.
+ */
+const APP_KEYS = ["paymentIds"] as const;
 
 /**
  * True when one of the app's own flows made this payment (collection runs,
@@ -255,10 +263,11 @@ const ROW_TYPES = new Set(["rent", "deposit", "late_fee", "toll", "damage", "fee
 /**
  * Rent Payment Link tags that are not the literal reason "rent". FLEET tags
  * Regina's $50/day links `daily_50`. `daily_rent` and `weekly_rent` are the
- * same kind of tag. No other rent-style reason is written where this app
+ * same kind of tag. `pickup_balance` is week 1 rent less the Reservation Fee,
+ * paid at pickup (Nov 27 2026). No other rent-style reason is written where this app
  * creates a link (`reason: "rent"` only).
  */
-export const RENT_LINK_REASONS = ["daily_50", "daily_rent", "weekly_rent"] as const;
+export const RENT_LINK_REASONS = ["daily_50", "daily_rent", "weekly_rent", "pickup_balance"] as const;
 
 export function isRentLinkReason(reason: string | null | undefined): boolean {
   const key = String(reason ?? "").trim().toLowerCase();
@@ -327,6 +336,20 @@ export function dailyDueFor(paidOn: string, forDate: string | null): string {
 }
 
 export type RentalCandidate = { id: string; application_id: string | null; vehicle_id: string | null; status: string | null; stripe_customer_id?: string | null };
+
+/**
+ * A link made before pickup names the reserved rental. Activation creates a
+ * new active rental and cancels the reservation (clearReservationAfterActivate),
+ * so the metadata rental_id goes stale. When the named rental is cancelled and
+ * the same renter has exactly one active rental, that active rental is the one
+ * the payment belongs to. Ended rentals keep the explicit id (a late payment
+ * for a closed rental stays on it).
+ */
+export function supersedingRental(named: RentalCandidate | null, sameRenter: RentalCandidate[]): RentalCandidate | null {
+  if (!named || named.status !== "cancelled" || !named.application_id) return null;
+  const active = sameRenter.filter((c) => c.status === "active" && c.application_id === named.application_id && c.id !== named.id);
+  return active.length === 1 ? active[0] : null;
+}
 
 /**
  * Exactly one rental, or nothing. An explicit metadata.rentalId may point at
@@ -413,6 +436,11 @@ export function allocateRentPayment(args: {
   nextPaymentDue?: string | null;
   /** Most weeks one payment may pay ahead. */
   maxWeeks?: number;
+  /**
+   * Credits already paid toward a week with no open row, by due date: the
+   * Reservation Fee credited to week 1 (credited_week1) on a manual payer.
+   */
+  credits?: Record<string, number>;
 }): RentAllocation[] {
   const weekly = Math.max(0, num(args.weeklyRate));
   const maxWeeks = args.maxWeeks ?? 12;
@@ -440,7 +468,7 @@ export function allocateRentPayment(args: {
   for (const due of weeks) {
     if (left <= 0.004 || out.length >= maxWeeks) break;
     const row = byDue.get(due) ?? null;
-    const owed = row ? rentLeftOn(row) : weekly;
+    const owed = row ? rentLeftOn(row) : r2(Math.max(0, weekly - Math.max(0, num(args.credits?.[due]))));
     if (owed <= 0) continue;
     const applied = r2(Math.min(left, owed));
     left = r2(left - applied);
