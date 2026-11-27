@@ -411,13 +411,22 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
 
     if (!rows?.length) return { ok: true as const, notified: 0 };
 
+    // Internal DNC List: skip anyone on it (they keep their place, never marked Notified).
+    // sendEmail would suppress the email anyway; filtering here keeps the status honest.
+    const { isDncSuppressed } = await import("@/lib/dnc.server");
+    const contactable: typeof rows = [];
+    for (const r of rows) {
+      if (!(await isDncSuppressed(supabaseAdmin, { email: (r as any).email ?? null }))) contactable.push(r);
+    }
+    if (!contactable.length) return { ok: true as const, notified: 0 };
+
     const { sendEmail } = await import("@/lib/email.server");
     const companyPhone = (await (await import("@/lib/company.server")).getBusinessPhone(supabaseAdmin)).display;
     // Flag off: the email is still the bare /apply link, and a failed send
     // still marks Notified. claimUrl is not called on that path.
     const { sent } = await deliverOpeningEmails({
       enabled: WAITLIST_CLAIM_ENABLED,
-      rows: rows as { id: string; full_name: string | null; email: string; city: string | null }[],
+      rows: contactable as { id: string; full_name: string | null; email: string; city: string | null }[],
       origin: siteOrigin(),
       companyPhone,
       claimUrl: async (row) => {

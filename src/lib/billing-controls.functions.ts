@@ -13,6 +13,7 @@ import {
   BILLING_PM_UPDATE_LINK_ENABLED,
   BILLING_PM_UPDATE_LINK_OFF,
 } from "./billing-controls-flag";
+import { staffContactMiddleware } from "@/lib/dnc-middleware";
 
 const rentalInput = z.object({ rentalId: z.string().uuid() }).strict();
 const weekdayInput = rentalInput.extend({ weekday: z.number().int().min(0).max(6) }).strict();
@@ -60,7 +61,7 @@ export const createBillingPaymentMethodLink = createServerFn({ method: "POST" })
 
 /** Staff-initiated send. Creating a link does not email. */
 export const sendBillingPaymentMethodLink = createServerFn({ method: "POST" })
-  .middleware([gatePaymentMethodLink, requireSupabaseAuth])
+  .middleware([gatePaymentMethodLink, requireSupabaseAuth, staffContactMiddleware])
   .inputValidator((input: unknown) => rentalInput.parse(input))
   .handler(async ({ context, data }) => {
     if (!BILLING_PM_UPDATE_LINK_ENABLED) throw new Error(BILLING_PM_UPDATE_LINK_OFF);

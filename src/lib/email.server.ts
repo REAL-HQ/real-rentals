@@ -72,7 +72,7 @@ export type SendResult = {
    * "off": the Owner switched it off. "held": the switches could not be read,
    * so it was held (recorded as failed "Held: ...") and may be retried.
    */
-  blocked?: "off" | "held" | "blacklisted" | "bounced";
+  blocked?: "off" | "held" | "blacklisted" | "bounced" | "dnc";
   retriable?: boolean;
 };
 
@@ -242,6 +242,26 @@ export async function sendEmail({ to, cc, subject, html: rawHtml, from, replyTo,
         if (await isBlacklistSuppressed(supabaseAdmin, { email: r })) {
           console.info("[email] recipient is blacklisted; automated email suppressed", { workflow: wf || null });
           return { ok: false, blocked: "blacklisted", error: BLACKLIST_SUPPRESSED_ERROR };
+        }
+      }
+    }
+  }
+  // Internal DNC List: no automated email to anyone on it. A staff action confirmed
+  // through the "On DNC List" popup runs inside staffContact() and goes out; staff
+  // writing by hand, sign-in emails the person asked for and team notifications are exempt.
+  {
+    const wf = track?.workflow ?? "";
+    const { BAD_EMAIL_EXEMPT_WORKFLOWS } = await import("@/lib/email-suppression");
+    if (!STAFF_WORKFLOWS.has(wf) && !BAD_EMAIL_EXEMPT_WORKFLOWS.has(wf)) {
+      const { inStaffContact, isDncSuppressed } = await import("@/lib/dnc.server");
+      if (!inStaffContact()) {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        for (const r of emailRecipients(to, cc)) {
+          if (await isDncSuppressed(supabaseAdmin, { email: r })) {
+            const { DNC_SUPPRESSED_ERROR } = await import("@/lib/dnc");
+            console.info("[email] recipient is on the DNC List; automated email suppressed", { workflow: wf || null });
+            return { ok: false, blocked: "dnc", error: DNC_SUPPRESSED_ERROR };
+          }
         }
       }
     }

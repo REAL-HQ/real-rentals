@@ -12,6 +12,7 @@ import {
   type ConversationSummary, type ThreadMessage, type PersonInfo, type RentalInfo,
 } from "@/lib/messages.functions";
 import { fmtDate } from "@/lib/date-format";
+import { DncBadge, useDnc } from "@/components/admin/DncGuard";
 
 function initials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((s) => s[0]?.toUpperCase() ?? "").join("") || "?";
@@ -71,6 +72,7 @@ export function MessagesOverlay({
   const markRead = useServerFn(markConversationRead);
   const search = useServerFn(searchMessagePeople);
   const send = useServerFn(sendStaffMessage);
+  const { confirmContact, lookup: dncLookup } = useDnc();
 
   const [convs, setConvs] = useState<ConversationSummary[] | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
@@ -164,9 +166,11 @@ export function MessagesOverlay({
 
   async function submit() {
     if (!thread || !body.trim() || sending) return;
+    const dncEntry = dncLookup({ applicationId: thread.person.applicationId, phone: thread.person.phone, email: thread.person.email });
+    if (dncEntry && !(await confirmContact({ applicationId: thread.person.applicationId, phone: thread.person.phone, email: thread.person.email }, channel === "email" ? "Send An Email" : "Send A Text"))) return;
     setSending(true);
     try {
-      const r = await send({ data: { applicationId: thread.person.applicationId, channel, body: body.trim(), subject: channel === "email" ? subject.trim() || undefined : undefined, fromId: channel === "sms" && fromId ? fromId : undefined } });
+      const r = await send({ data: { dncAcknowledged: dncEntry ? true : undefined, applicationId: thread.person.applicationId, channel, body: body.trim(), subject: channel === "email" ? subject.trim() || undefined : undefined, fromId: channel === "sms" && fromId ? fromId : undefined } });
       if (r.ok) { setBody(""); setSubject(""); toast.success(channel === "email" ? "Email Sent" : "Text Sent"); }
       else if (r.state === "test_mode") { setBody(""); toast(r.error ?? "Test Mode: text logged, not sent."); }
       else toast.error(r.error ?? "Message was not sent");
@@ -245,6 +249,7 @@ export function MessagesOverlay({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-[15px] font-semibold truncate text-[#111114]">{c.name}</span>
+                        <DncBadge entry={dncLookup({ applicationId: c.applicationId })} />
                         <span className="ml-auto text-[12px] text-[#9A9AA3] tabular-nums shrink-0">{fmtAgo(c.lastAt)}</span>
                         {c.unread > 0 && <span aria-label={`${c.unread} unread`} className="w-2 h-2 rounded-full bg-[#F59E0B] shrink-0" />}
                       </div>
@@ -306,8 +311,11 @@ export function MessagesOverlay({
             <button aria-label="Back To Conversations" onClick={() => { onSelect(null); setMobile("list"); }} className="md:hidden w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
             <Avatar name={person?.name ?? "?"} id={applicationId} size={34} />
             <div className="min-w-0 flex-1">
-              <div className="text-[17px] font-semibold truncate text-[#111114]">
-                {person?.name ?? (loadingThread ? "Loading…" : "Conversation")}
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="text-[17px] font-semibold truncate text-[#111114]">
+                  {person?.name ?? (loadingThread ? "Loading…" : "Conversation")}
+                </span>
+                <DncBadge entry={applicationId ? dncLookup({ applicationId, phone: person?.phone, email: person?.email }) : null} />
               </div>
               <div className="text-[12px] text-[#77777F] truncate ">{formatStatusLabel(person?.status ?? "")}</div>
             </div>
@@ -464,7 +472,7 @@ export function MessagesOverlay({
       ) : (<>
       <div className="p-5 text-center border-b border-[#EDEDF0]">
         <div className="mx-auto w-fit"><Avatar name={person.name} id={person.applicationId} size={56} /></div>
-        <div className="mt-2 text-[15px] font-semibold">{person.name}</div>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[15px] font-semibold">{person.name}<DncBadge entry={dncLookup({ applicationId: person.applicationId, phone: person.phone, email: person.email })} /></div>
         <div className="text-[12px] text-[#9A9AA3] ">{formatStatusLabel(person.status ?? "—")}</div>
         <Link to="/admin" search={{ tab: "drivers", id: person.applicationId }} onClick={onClose}
           className="mt-3 inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-[#EDEDF0] text-[12px] font-medium hover:bg-[#FAFAFB]">

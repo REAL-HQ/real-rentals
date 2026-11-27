@@ -41,6 +41,8 @@ import {
 } from "@/components/admin/nav-config";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
+import { DncProvider } from "@/components/admin/DncGuard";
+import { DncPanel } from "@/components/admin/DncPanel";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
 import { listConversations } from "@/lib/messages.functions";
 import { getReservationDepositSettings } from "@/lib/reservations.functions";
@@ -872,7 +874,7 @@ function Admin() {
     });
 
   return (
-    <>
+    <DncProvider>
       <div className="min-h-screen flex bg-[#FAFAFB] text-[#111114]">
         {/* Single business navigation rail */}
         <aside aria-label="Main Navigation" className="hidden md:flex w-[220px] shrink-0 flex-col bg-[#141416] sticky top-0 h-screen">
@@ -1116,6 +1118,7 @@ function Admin() {
             {tab === "drivers" && (
               <DriversPanel initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} canViewOnboarding={tierAllows(tier, "manager")} canIssueCardLink={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
+            {tab === "dnc" && <DncPanel canRemove={tierAllows(tier, "manager")} />}
             {tab === "vehicles" && <VehiclesPanel autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
             {tab === "bookings" && (
               <BookingsWorkspace
@@ -1186,7 +1189,7 @@ function Admin() {
         onClose={() => setMsg(null)}
         onUnreadChange={setUnreadMsgs}
       />
-    </>
+    </DncProvider>
   );
 }
 

@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { staffContactMiddleware } from "@/lib/dnc-middleware";
 
 const DOC_LABELS: Record<string, string> = {
   license: "Driver's License Photo",
@@ -16,7 +17,7 @@ const Input = z.object({
 });
 
 export const requestApplicationDocuments = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireSupabaseAuth, staffContactMiddleware])
   .inputValidator((d: unknown) => Input.parse(d))
   .handler(async ({ data, context }) => {
     const { data: adminRow } = await context.supabase

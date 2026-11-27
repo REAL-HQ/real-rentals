@@ -10,6 +10,7 @@ import {
   type StandaloneField,
   type StandaloneFieldType,
 } from "@/lib/standalone-doc";
+import { useDnc } from "@/components/admin/DncGuard";
 
 export function SendDocumentDialog({
   applicationId, renterName, renterEmail, onClose, onSent,
@@ -21,6 +22,7 @@ export function SendDocumentDialog({
   onSent: (res: { id: string; url: string; fallback: boolean; fallbackReason: string | null; delivery: { email: string; sms: string; delivered: boolean } }) => void;
 }) {
   const send = useServerFn(sendStandaloneDocument);
+  const { confirmContact } = useDnc();
   const [file, setFile] = useState<File | null>(null);
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [fields, setFields] = useState<StandaloneField[]>([]);
@@ -61,6 +63,7 @@ export function SendDocumentDialog({
 
   async function onSend() {
     if (!bytes) return;
+    if (copyRenter && !(await confirmContact({ applicationId, email: renterEmail }, "Email The Renter A Copy Of This Document"))) return;
     setBusy(true);
     setError(null);
     try {

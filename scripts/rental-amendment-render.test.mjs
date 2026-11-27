@@ -14,6 +14,7 @@ rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 writeFileSync(`${OUT}/stub-start.js`, `
 export const createServerFn = () => { const api = { middleware: () => api, inputValidator: (v) => (api._v = v, api), handler: (fn) => fn }; return api; };
+export const createMiddleware = () => { const m = { middleware: () => m, server: () => m }; return m; };
 export const createServerOnlyFn = (fn) => fn;
 `);
 writeFileSync(`${OUT}/stub-start-server.js`, `export const getRequest = () => ({ headers: new Map() }); export const getRequestHeader = () => null;`);

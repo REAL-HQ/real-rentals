@@ -149,7 +149,7 @@ export const requireOwner = need("owner");
 
 const stubs = {
   "@tanstack/react-start/server": "export const getRequest=()=>({headers:new Map()});",
-  "@tanstack/react-start": `export const createServerFn=()=>{let validate=x=>x,auth=false;const api={middleware:()=>{auth=true;return api},inputValidator:v=>{validate=v;return api},handler:fn=>{const call=async args=>{if(auth&&!args.context?.userId)throw Error('Unauthorized');return fn({...args,data:validate(args.data)})};return call}};return api};
+  "@tanstack/react-start": `export const createServerFn=()=>{let validate=x=>x,auth=false;const api={middleware:()=>{auth=true;return api},inputValidator:v=>{validate=v;return api},handler:fn=>{const call=async args=>{if(auth&&!args.context?.userId)throw Error('Unauthorized');return fn({...args,data:validate(args.data)})};return call}};return api}; export const createMiddleware=()=>{const m={middleware:()=>m,server:()=>m};return m};
 export const useServerFn=(fn)=>fn;`,
   "@/integrations/supabase/auth-middleware": "export const requireSupabaseAuth={};",
   "@/integrations/supabase/client.server":

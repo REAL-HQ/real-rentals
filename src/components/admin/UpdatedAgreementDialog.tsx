@@ -7,6 +7,7 @@ import { Modal } from "@/components/admin/BookingModal";
 import { PAYMENT_METHODS } from "@/lib/agreement-prep";
 import { sendUpdatedAgreement } from "@/lib/rental-amendment.functions";
 import { AMENDMENT_RATE_MAX, AMENDMENT_RATE_MIN } from "@/lib/rental-amendment";
+import { useDnc } from "@/components/admin/DncGuard";
 
 const CONSENT_CHANNELS = [
   { value: "sms", label: "Text Message" },
@@ -36,6 +37,7 @@ export function UpdatedAgreementDialog({
   onSent: () => void;
 }) {
   const send = useServerFn(sendUpdatedAgreement);
+  const { confirmContact } = useDnc();
   const [rate, setRate] = useState("");
   const [effective, setEffective] = useState("");
   const [reason, setReason] = useState("");
@@ -59,6 +61,7 @@ export function UpdatedAgreementDialog({
   const canSend = valid && newRate !== currentRate && reason.trim().length >= 5 && (!increase || consentGiven) && (!outOfBounds || ack) && !busy;
 
   async function go() {
+    if (!(await confirmContact({ rentalId }, "Send The Updated Agreement"))) return;
     setBusy(true);
     setError(null);
     try {
