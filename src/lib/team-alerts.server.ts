@@ -119,8 +119,8 @@ export async function sendTeamAlert(admin: Admin, alert: TeamAlert, deps: TeamAl
   let smsTargets: { to: string; fromId?: string | null }[] = fieldRepNumbers.map((to) => ({ to, fromId: null }));
   let staffEmail: string | undefined;
   let routedTo: TeamAlertOutcome["routed_to"];
-  if (alert.kind === "bot_handoff" || alert.kind === "applicant_approved") {
-    const approved = alert.kind === "applicant_approved";
+  if (alert.kind === "bot_handoff" || alert.kind === "applicant_approved" || alert.kind === "vehicle_available") {
+    const approved = alert.kind === "applicant_approved" || alert.kind === "vehicle_available";
     const plan = await planStaffHandoffSms({
       admin,
       now: (deps.now ?? (() => new Date()))(),
@@ -165,8 +165,8 @@ export async function sendTeamAlert(admin: Admin, alert: TeamAlert, deps: TeamAl
     }
   }
   // An applicant_approved alert outside texting hours is email-only by design.
-  const smsOk = sms === "sent" || (alert.kind === "applicant_approved" && sms === "quiet_hours");
+  const smsOk = sms === "sent" || ((alert.kind === "applicant_approved" || alert.kind === "vehicle_available") && sms === "quiet_hours");
   const status = email === "sent" && smsOk ? "sent" : email === "sent" || sms === "sent" ? "partial" : "failed";
   await admin.from("team_alert_sends").update({ status, detail: `email:${email} sms:${sms}${staffEmail ? ` staff_email:${staffEmail}` : ""}` }).eq("key", key);
-  return { key, status, email, sms, ...(staffEmail ? { staff_email: staffEmail } : {}), ...(alert.kind === "applicant_approved" && routedTo !== undefined ? { routed_to: routedTo } : {}) };
+  return { key, status, email, sms, ...(staffEmail ? { staff_email: staffEmail } : {}), ...((alert.kind === "applicant_approved" || alert.kind === "vehicle_available") && routedTo !== undefined ? { routed_to: routedTo } : {}) };
 }

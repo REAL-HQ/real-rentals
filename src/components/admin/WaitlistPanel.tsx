@@ -33,13 +33,18 @@ import { getWaitlistAging } from "@/lib/waitlist-aging.functions";
 import { WaitlistAging } from "./WaitlistAging";
 import { filterWaitlistByTag, waitlistLocation } from "@/lib/waitlist-tags";
 
+function stageLabel(status: string | null): string {
+  const raw = String(status ?? "").trim();
+  if (!raw) return "—";
+  return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 // Waitlist back office.
 //
-// One number drives everything: how many cars are available right now. Above
-// zero the public site shows a scarcity line and takes applications; at zero
-// it collects waitlist spots instead. This panel is where that number is set,
-// where the queue lives, and where a 0→available opening offers to email the
-// top of the queue before the news goes anywhere else.
+// Public waitlist mode follows the real Available count unless staff set the
+// optional override (0 on, a number above 0 off). Approved applicants go on
+// an ordered queue when the count is 0. "Email the top N" is still the
+// one-click follow-on for the marketing waitlist.
 
 export function WaitlistPanel({
   canManage = false,
@@ -62,6 +67,8 @@ export function WaitlistPanel({
   const [aging, setAging] = useState<WaitlistAgingResult | null>(null);
 
   const [entries, setEntries] = useState<WaitlistEntry[] | null>(null);
+  const [approvedQueue, setApprovedQueue] = useState<{ applicationId: string; fullName: string; status: string | null; addedAt: string; approvedAt: string | null; position: number }[]>([]);
+  const [waitlistMode, setWaitlistMode] = useState(false);
   const [carsAvailable, setCarsAvailableState] = useState<number | null>(null);
   const [fleet, setFleet] = useState<FleetAvailability | null>(null);
   const [countInput, setCountInput] = useState("");
@@ -82,6 +89,8 @@ export function WaitlistPanel({
     setEntries(null); // Unknown readiness is not the last successful screening result.
     const r = await list();
     setEntries(r.entries);
+    setApprovedQueue(r.approvedQueue ?? []);
+    setWaitlistMode(r.waitlistMode === true);
     setCarsAvailableState(r.carsAvailable);
     setFleet(r.fleet);
     setTagsAvailable(r.tagsAvailable);
@@ -271,14 +280,14 @@ export function WaitlistPanel({
         subtitle="Fleet counts come from your vehicles. The public override is optional and only changes what the website shows."
         icon={<Car className="w-4 h-4" strokeWidth={1.75} />}
         right={
-          carsAvailable === null ? (
-            <StatusPill tone="neutral">Override Not Set</StatusPill>
-          ) : carsAvailable === 0 ? (
+          waitlistMode ? (
             <StatusPill tone="amber">Waitlist Mode</StatusPill>
-          ) : (
+          ) : carsAvailable != null && carsAvailable > 0 ? (
             <StatusPill tone="green">
               {carsAvailable} {carsAvailable === 1 ? "Car" : "Cars"} Available
             </StatusPill>
+          ) : (
+            <StatusPill tone="neutral">Taking Applications</StatusPill>
           )
         }
       >
@@ -305,7 +314,7 @@ export function WaitlistPanel({
             type="number"
             min={0}
             inputMode="numeric"
-            placeholder={carsAvailable === null ? "Not set" : String(carsAvailable)}
+            placeholder={carsAvailable === null ? "Not Set" : String(carsAvailable)}
             value={countInput}
             onChange={(e) => setCountInput(e.target.value)}
             className="w-28 rounded-lg border border-[#EDEDF0] bg-white px-3 py-2 text-sm text-[#111114] outline-none focus:border-[#C7C7CC]"
@@ -333,17 +342,64 @@ export function WaitlistPanel({
           </div>
         </div>
         <p className="mt-3 text-[11px] leading-snug text-[#9A9AA3]">
-          While this is empty the site works exactly as before. When you save a number above zero
-          the site shows a scarcity line; at zero the hero form collects waitlist signups instead of
-          applications, and drivers are never told their position.
+          {waitlistMode
+            ? "Waitlist mode is on: city pages collect waitlist signups instead of applications, because no cars are Available" + (carsAvailable === 0 ? " (or the override is 0)." : ".")
+            : "City pages are taking applications. Leave the override empty to follow the real Available count, set 0 to force the waitlist on, or set a number above 0 to force it off."}
+          {" "}Approved applicants are told their waitlist position when that Automations switch is on.
         </p>
       </SectionCard>
 
       {WAITLIST_AGING_ENABLED === true ? <WaitlistAging result={aging} /> : null}
 
       <SectionCard
-        title="Waitlist"
-        subtitle="First joined is first served. Promote someone as soon as a car frees up."
+        title="Approved Waitlist"
+        subtitle="First approved is first served. When no cars are Available, approved applicants are added here automatically and given a spot number."
+        icon={<Hourglass className="w-4 h-4" strokeWidth={1.75} />}
+        padded={false}
+      >
+        {approvedQueue.length === 0 ? (
+          <div className="p-5">
+            <EmptyState
+              icon={<Hourglass className="w-6 h-6" strokeWidth={1.75} />}
+              title="No Approved Applicants On The Waitlist"
+              hint="When the last Available car is taken, approved applicants who are not already renting appear here in order."
+            />
+          </div>
+        ) : (
+          <AdminTableScroll>
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-border text-[11px] font-medium text-[#9A9AA3]">
+                <tr>
+                  <th className="px-5 py-3 w-16">#</th>
+                  <th className="px-5 py-3">Applicant</th>
+                  <th className="px-5 py-3">Stage</th>
+                  <th className="px-5 py-3">Approved / Added</th>
+                </tr>
+              </thead>
+              <tbody>
+                {approvedQueue.map((e) => (
+                  <tr key={e.applicationId} className="border-b border-border last:border-0">
+                    <td className="px-5 py-3 tabular-nums font-semibold text-[#111114]">#{e.position}</td>
+                    <td className="px-5 py-3">
+                      <div className="text-[13px] font-medium text-[#111114]">{e.fullName}</div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <StatusPill status={e.status ?? undefined}>{stageLabel(e.status)}</StatusPill>
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap text-[13px] text-[#55555E]">
+                      {fmtDate(e.approvedAt || e.addedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </AdminTableScroll>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Interest Waitlist"
+        subtitle="First joined is first served. Promote someone as soon as a car frees up. Email the top N is the one-click follow-on when a car opens."
         icon={<Hourglass className="w-4 h-4" strokeWidth={1.75} />}
         padded={false}
       >
@@ -354,7 +410,7 @@ export function WaitlistPanel({
             <EmptyState
               icon={<Hourglass className="w-6 h-6" strokeWidth={1.75} />}
               title="No Drivers On The Waitlist"
-              hint="When Cars Available is set to zero, the site collects waitlist signups here instead of applications."
+              hint="City pages add someone here when no cars are Available, or when the override is 0."
             />
           </div>
         ) : (

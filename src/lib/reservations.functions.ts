@@ -446,8 +446,12 @@ export const cancelReservation = createServerFn({ method: "POST" })
         .eq("vehicle_id", row.vehicle_id)
         .in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation", "active"])
         .limit(1);
-      if (!still?.length) {
-        await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).in("status", ["reserved", "pending_reservation"]);
+      if (!still?.length && row.vehicle_id) {
+        const vehicleId = row.vehicle_id;
+        const { aroundCapacityChange } = await import("@/lib/fleet-capacity.server");
+        await aroundCapacityChange(supabaseAdmin, vehicleId, async () => {
+          await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", vehicleId).in("status", ["reserved", "pending_reservation"]);
+        });
       }
     }
     return { ok: true };
@@ -511,8 +515,12 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
           .eq("vehicle_id", row.vehicle_id)
           .in("status", [RESERVATION_STATUS, "on_hold", "pending_reservation", "active"])
           .limit(1);
-        if (!still.data?.length) {
-          await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).in("status", ["reserved", "pending_reservation"]);
+        if (!still.data?.length && row.vehicle_id) {
+          const vehicleId = row.vehicle_id as string;
+          const { aroundCapacityChange } = await import("@/lib/fleet-capacity.server");
+          await aroundCapacityChange(supabaseAdmin, vehicleId, async () => {
+            await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", vehicleId).in("status", ["reserved", "pending_reservation"]);
+          });
         }
       }
     }

@@ -576,6 +576,7 @@ export function DriversPanel({
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
   const [held, setHeld] = useState<Set<string>>(new Set());
+  const [holdPositions, setHoldPositions] = useState<Map<string, number>>(new Map());
   // FLEET's Needs Staff queue (fleet_review_decisions). Empty until installed.
   const loadNeedsStaff = useServerFn(listFleetNeedsStaff);
   const [needsStaffFlags, setNeedsStaffFlags] = useState<FleetNeedsStaffFlag[] | null>(null);
@@ -696,7 +697,10 @@ export function DriversPanel({
   const refreshHolds = useCallback(
     () =>
       loadHolds()
-        .then((r) => setHeld(new Set(r.holds.map((h) => h.application_id))))
+        .then((r) => {
+          setHeld(new Set(r.holds.map((h) => h.application_id)));
+          setHoldPositions(new Map(r.holds.filter((h) => h.position != null).map((h) => [h.application_id, h.position as number])));
+        })
         .catch(() => undefined),
     [loadHolds],
   );
@@ -1652,10 +1656,10 @@ setDocCounts(requiredDocCounts(rows));
                             </span>
                           ) : held.has(a.id) ? (
                             <span
-                              title={`Underlying stage: ${a.status ?? "—"}`}
+                              title={`Underlying stage: ${a.status ?? "—"}${holdPositions.get(a.id) ? ` · Waitlist #${holdPositions.get(a.id)}` : ""}`}
                               className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800"
                             >
-                              Waitlist
+                              {holdPositions.get(a.id) ? `Waitlist #${holdPositions.get(a.id)}` : "Waitlist"}
                               <ChevronDown className="h-3 w-3 shrink-0" />
                             </span>
                           ) : a.status ? (

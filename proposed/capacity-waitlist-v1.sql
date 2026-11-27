@@ -1,0 +1,8 @@
+-- Moved. Do not apply this file.
+-- The schema change is supabase/migrations/20261126214500_capacity_waitlist.sql
+-- and it is not applied by the pull request.
+-- Rollback: proposed/rollback/capacity-waitlist-v1.sql
+--
+-- The two switch files in this folder are also not part of the migration.
+-- Waitlist Joined Notice and Car Available Alerts stay off until someone
+-- turns them on in Back Office.

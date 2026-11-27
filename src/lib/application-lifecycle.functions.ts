@@ -158,6 +158,12 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
       } catch (err) {
         console.error("[lifecycle] pending reservation release failed", err);
       }
+      try {
+        const { releaseApplicationHold } = await import("@/lib/fleet-capacity.server");
+        await releaseApplicationHold(supabaseAdmin, data.id, actor.userId);
+      } catch (err) {
+        console.error("[capacity-waitlist] hold release failed", err);
+      }
     }
     await logAudit(actor, {
       action: closing

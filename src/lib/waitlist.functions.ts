@@ -14,9 +14,9 @@ import { parseCarsAvailable } from "@/lib/cars-available";
 // The owner sets a single number: how many cars are open right now. Above
 // zero the public hero shows a scarcity line and takes normal applications;
 // at zero it switches to waitlist mode and signed-out visitors join a queue.
-// Positions exist only here and in the back office — the applicant-facing
-// surface never shows a number, so nobody reads anything into their place
-// in line.
+// The marketing waitlist on city pages still hides the queue number.
+// Approved applicants who join the capacity waitlist are told their
+// position in the joined notice (Automations switch, default off).
 //
 // Availability lives in app_settings under key `fleet_availability`. A SQL
 // function (cars_available()) exposes just that one number to anon callers;
@@ -30,6 +30,7 @@ const emailLower = z
 // ---------------------------------------------------------------- public
 
 export const getAvailability = createServerFn({ method: "GET" }).handler(async () => {
+  const { publicWaitlistMode } = await import("@/lib/fleet-capacity");
   const { createClient } = await import("@supabase/supabase-js");
   const supabasePublic = createClient(
     process.env.SUPABASE_URL!,
@@ -41,11 +42,25 @@ export const getAvailability = createServerFn({ method: "GET" }).handler(async (
   // did, and the back office shows "not set" rather than 0. SQL null must
   // stay null — Number(null) is 0, which would switch city pages to the
   // waitlist even when the override is not set.
+  let carsAvailable: number | null = null;
   if (error) {
     console.error("[waitlist] cars_available rpc failed", error.message);
-    return { carsAvailable: null as number | null };
+  } else {
+    carsAvailable = parseCarsAvailable(data);
   }
-  return { carsAvailable: parseCarsAvailable(data) };
+  let fleetAvailable: number | null = null;
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { readFleetCapacity } = await import("@/lib/fleet-capacity.server");
+    fleetAvailable = await readFleetCapacity(supabaseAdmin);
+  } catch (e) {
+    console.error("[waitlist] fleet capacity failed", (e as Error)?.message ?? e);
+  }
+  return {
+    carsAvailable,
+    fleetAvailable,
+    waitlistMode: publicWaitlistMode(carsAvailable, fleetAvailable),
+  };
 });
 
 export const joinWaitlist = createServerFn({ method: "POST" })
@@ -184,6 +199,8 @@ export const listWaitlist = createServerFn({ method: "POST" })
     carsAvailable: number | null;
     waitingCount: number;
     fleet: FleetAvailability;
+    waitlistMode: boolean;
+    approvedQueue: import("@/lib/fleet-capacity.server").ApprovedWaitlistEntry[];
     /** False only during the additive schema rollout, before waitlist.tags exists. */
     tagsAvailable: boolean;
   }> => {
@@ -198,11 +215,7 @@ export const listWaitlist = createServerFn({ method: "POST" })
       .eq("key", "fleet_availability")
       .maybeSingle();
     if (settingError) throw new Error("Waitlist data unavailable. Please retry.");
-    const rawSetting = (settingRow?.value as any)?.cars_available;
-    const carsAvailable =
-      typeof rawSetting === "number" && Number.isInteger(rawSetting) && rawSetting >= 0
-        ? rawSetting
-        : null;
+    const carsAvailable = parseCarsAvailable((settingRow?.value as any)?.cars_available);
 
     // Oldest first: that is the queue. Position is computed on read —
     // renumbering rows on every promotion is state we would only get wrong.
@@ -256,12 +269,13 @@ export const listWaitlist = createServerFn({ method: "POST" })
       .filter((v) => !v.archived_at && String(v.status ?? "").toLowerCase() === "available")
       .map((v) => v.id as string);
     let rentalReady = 0;
+    let busy = new Set<string>();
     if (candidates.length) {
       const [busyRows, inspectionRows] = await Promise.all([
         readInBatches(candidates, (ids, from, to) => supabaseAdmin.from("rentals").select("id,vehicle_id", { count: "exact" }).in("vehicle_id", ids).eq("status", "active").order("id").range(from, to)),
         readInBatches(candidates, (ids, from, to) => supabaseAdmin.from("inspections").select("id,vehicle_id", { count: "exact" }).in("vehicle_id", ids).eq("inspection_type", "pre_delivery").eq("status", "passed").order("id").range(from, to)),
       ]);
-      const busy = new Set(busyRows.map((r) => r.vehicle_id));
+      busy = new Set(busyRows.map((r) => r.vehicle_id));
       const inspected = new Set(inspectionRows.map((r) => r.vehicle_id));
       // Bound RPC concurrency; errors are unavailable, never a zero count.
       const eligible = candidates.filter((id) => !busy.has(id) && inspected.has(id));
@@ -309,11 +323,20 @@ export const listWaitlist = createServerFn({ method: "POST" })
       };
     });
 
+    const { listApprovedWaitlist } = await import("@/lib/fleet-capacity.server");
+    const { countFleetCapacity, publicWaitlistMode } = await import("@/lib/fleet-capacity");
+    const approvedQueue = await listApprovedWaitlist(supabaseAdmin);
+    const openCapacity = countFleetCapacity(
+      vlist.map((v) => ({ id: String(v.id), status: v.status ?? null, archived_at: v.archived_at ?? null })),
+      busy,
+    );
     return {
       entries,
       carsAvailable,
       waitingCount: entries.filter((e) => e.status === "waiting").length,
       fleet,
+      waitlistMode: publicWaitlistMode(carsAvailable, openCapacity),
+      approvedQueue,
       tagsAvailable,
     };
   });
@@ -561,11 +584,25 @@ export const listWaitlistHolds = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("application_waitlist_holds")
       .select("application_id,added_at")
       .is("removed_at", null);
-    return { holds: (data ?? []) as { application_id: string; added_at: string }[] };
+    if (error) throw new Error("Waitlist data unavailable. Please retry.");
+    const positions = new Map<string, number>();
+    try {
+      const { listApprovedWaitlist } = await import("@/lib/fleet-capacity.server");
+      for (const entry of await listApprovedWaitlist(supabaseAdmin)) positions.set(entry.applicationId, entry.position);
+    } catch (e) {
+      console.error("[capacity-waitlist] positions unavailable", (e as Error)?.message ?? e);
+    }
+    return {
+      holds: ((data ?? []) as { application_id: string; added_at: string }[]).map((h) => ({
+        application_id: h.application_id,
+        added_at: h.added_at,
+        position: positions.get(h.application_id) ?? null,
+      })),
+    };
   });
 
 /** Add/Remove Waitlist. Owner + Manager only; idempotent; records who and when; sends nothing. */
@@ -585,9 +622,16 @@ export const setWaitlistHold = createServerFn({ method: "POST" })
     if (!app || app.status === "duplicate") return { ok: false as const, error: "That driver record was not found." };
 
     if (data.on) {
-      const { error } = await supabaseAdmin
+      let { error } = await supabaseAdmin
         .from("application_waitlist_holds")
-        .insert({ application_id: data.applicationId, added_by: actor.userId });
+        .insert({ application_id: data.applicationId, added_by: actor.userId, source: "manual" } as any);
+      // The source column arrives with the capacity migration. Until then, the
+      // same insert without it is the live add.
+      if (error && ((error as any).code === "42703" || (error as any).code === "PGRST204" || /does not exist|schema cache/i.test(String((error as any).message ?? "")))) {
+        ({ error } = await supabaseAdmin
+          .from("application_waitlist_holds")
+          .insert({ application_id: data.applicationId, added_by: actor.userId }));
+      }
       // Unique partial index: a retry or double click is already on the waitlist.
       if (error && (error as any).code === "23505") return { ok: true as const, changed: false };
       if (error) return { ok: false as const, error: "Could not add to the waitlist. Please try again." };
