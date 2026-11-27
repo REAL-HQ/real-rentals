@@ -19,7 +19,7 @@ async function deps() {
 
 export const listDnc = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ installed: boolean; entries: DncEntry[]; nameSources: DncNameSource[] }> => {
+  .handler(async ({ context }): Promise<{ installed: boolean; entries: DncIndexEntry[]; nameSources: DncNameSource[] }> => {
     const { requireStaff } = await import("@/lib/roles.server");
     await requireStaff(context.userId);
     const { admin, core } = await deps();

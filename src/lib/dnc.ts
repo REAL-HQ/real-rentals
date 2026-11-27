@@ -188,16 +188,43 @@ export function personFromContactHref(href: string | null | undefined): DncPerso
   return { phone: target };
 }
 
-/** Free-text search across what the list shows. */
-export function dncMatchesSearch(e: DncEntry, q: string): boolean {
+/**
+ * DNC tab search: name, reason, type and staff, plus the person's phones and emails.
+ * A phone is matched on its digits, so a number typed with brackets, dots, dashes, spaces or a
+ * +1 prefix finds the same entry, and so does part of it (3+ digits; a leading country-code 1
+ * on a full 11-digit number is dropped, like the normalizer). Emails match case-insensitively.
+ */
+export function dncMatchesSearch(
+  e: DncEntry & { phones?: readonly string[] | null; emails?: readonly string[] | null },
+  q: string,
+): boolean {
   const s = q.trim().toLowerCase();
   if (!s) return true;
-  return [e.fullName, e.reason, e.personTypeLabel, e.addedBy, e.removedBy, e.removalReason].some(
-    (v) =>
+  const text = [e.fullName, e.reason, e.personTypeLabel, e.addedBy, e.removedBy, e.removalReason];
+  if (
+    text.some((v) =>
       String(v ?? "")
         .toLowerCase()
         .includes(s),
-  );
+    )
+  )
+    return true;
+  if (
+    (e.emails ?? []).some((m) =>
+      String(m ?? "")
+        .toLowerCase()
+        .includes(s),
+    )
+  )
+    return true;
+  // Only treat the query as a phone when it looks like one (digits and phone punctuation).
+  if (/^[+\d\s().\-]+$/.test(s)) {
+    let digits = s.replace(/\D/g, "");
+    if (digits.length === 11 && digits.startsWith("1")) digits = digits.slice(1);
+    if (digits.length >= 3 && (e.phones ?? []).some((p) => String(p ?? "").includes(digits)))
+      return true;
+  }
+  return false;
 }
 
 /** Staff tiers: any staff member may move someone to DNC; Manager / Owner may remove. */

@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreVertical, PhoneOff } from "lucide-react";
 import { getDncTriggerMessages, listDnc, resolveDncProfile } from "@/lib/dnc.functions";
-import { DNC_LIST_TITLE, REMOVE_FROM_DNC_LABEL, dncMatchesSearch, type DncEntry } from "@/lib/dnc";
+import { DNC_LIST_TITLE, REMOVE_FROM_DNC_LABEL, dncMatchesSearch, type DncEntry, type DncIndexEntry } from "@/lib/dnc";
 import { dncAddedByDisplay, type DncNameSource } from "@/lib/dnc-added-by";
 import {
   DNC_NO_MESSAGE_LABEL,
@@ -36,7 +36,7 @@ type WaitlistDetail = {
 };
 
 export type DncPreview = {
-  entries: DncEntry[];
+  entries: DncIndexEntry[];
   messages: Record<string, DncTriggerMessage | null>;
   openMessageId?: string | null;
   openDetail?: boolean;
@@ -51,12 +51,39 @@ export type DncPreview = {
  * Manager / Owner can remove an entry (reason + confirmation); removed entries
  * stay visible under Removed.
  */
+
+/** Phones (formatted) and emails on a DNC entry, one per line. Plain text, never a tel:/mailto: link. */
+export function DncContact({ entry }: { entry: Pick<DncIndexEntry, "phones" | "emails"> }) {
+  const phones = entry.phones ?? [];
+  const emails = entry.emails ?? [];
+  if (phones.length === 0 && emails.length === 0)
+    return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-col gap-0.5">
+      {phones.map((p) => (
+        <span key={`p-${p}`} className="whitespace-nowrap tabular-nums" data-testid="dnc-phone">
+          {formatPhoneForDisplay(p)}
+        </span>
+      ))}
+      {emails.map((m) => (
+        <span
+          key={`e-${m}`}
+          className="[overflow-wrap:anywhere] text-muted-foreground"
+          data-testid="dnc-email"
+        >
+          {m}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?: DncPreview }) {
   const navigate = useNavigate();
   const load = useServerFn(listDnc);
   const loadMessages = useServerFn(getDncTriggerMessages);
   const resolveOpen = useServerFn(resolveDncProfile);
-  const [entries, setEntries] = useState<DncEntry[] | null>(preview?.entries ?? null);
+  const [entries, setEntries] = useState<DncIndexEntry[] | null>(preview?.entries ?? null);
   const [messages, setMessages] = useState<Record<string, DncTriggerMessage | null> | null>(
     preview ? preview.messages : null,
   );
@@ -121,7 +148,7 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
     () => (view === "active" ? active : removed).filter((e) => dncMatchesSearch(e, q)),
     [view, active, removed, q],
   );
-  const columns = view === "removed" ? 7 : 6;
+  const columns = view === "removed" ? 8 : 7;
 
   function openProfile(applicationId: string) {
     void navigate({ to: "/admin", search: { tab: "drivers", id: applicationId } });
@@ -166,7 +193,7 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search Name, Reason Or Staff"
+            placeholder="Search Name, Phone, Email Or Reason"
             aria-label="Search DNC List"
             className={TOOLBAR.search}
             data-testid="dnc-search"
@@ -203,6 +230,9 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
             <thead className="bg-soft text-[11px] tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">
+                  Contact
+                </th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Reason</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Message</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Added By</th>
@@ -260,6 +290,12 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
                         >
                           {name}
                         </button>
+                      </td>
+                      <td
+                        className="px-4 py-2.5 min-w-[13rem] text-[13px]"
+                        data-testid="dnc-row-contact"
+                      >
+                        <DncContact entry={e} />
                       </td>
                       <td className="px-4 py-2.5 min-w-[12rem] max-w-md whitespace-pre-wrap break-words">
                         {e.reason}
