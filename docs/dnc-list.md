@@ -7,7 +7,7 @@ The DNC list is our own "do not contact" list. It is separate from:
 - `renter_blacklist`: who we will not rent to. The blacklist never blocks communication; DNC does.
 
 ## Where it shows
-- Admin → Drivers → **DNC** tab (`?tab=dnc`; the Drivers rail entry stays highlighted): everyone on the list, with Name, Type, Reason, Added By, Added, search, and an On List / Removed view.
+- Admin → Drivers → **DNC** tab (`?tab=dnc`; the Drivers rail entry stays highlighted): everyone on the list, with Name, Type, Reason, Message, Added By, Added, search, and an On List / Removed view. Every name opens that person's driver profile (applicants included). A waitlist signup opens its promoted application, or a read-only record when there is no profile. Message is the latest inbound text or email on or before Added — the row does not store a message id — or "No Message Found".
 - A red **DNC** pill in normal layout flow (never absolutely positioned): driver list rows, the driver profile header, Lead Priorities cards, Waitlist rows, and the Messages conversation list, thread header and info pane.
 - A **Do Not Contact** card on the driver profile (reason, added by, added date).
 

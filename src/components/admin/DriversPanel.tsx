@@ -202,7 +202,7 @@ import { LateFeesCard } from "./LateFeesCard";
 import { ApprovedNotRentingList } from "./ApprovedNotRenting";
 import { listApprovedNotRenting } from "@/lib/booking-funnel.functions";
 import type { ApprovedNotRentingResult } from "@/lib/booking-funnel";
-import { listDriverRows, type DriverListResult } from "@/lib/drivers-list.functions";
+import { getDriverListRow, listDriverRows, type DriverListResult } from "@/lib/drivers-list.functions";
 import {
   CONTACT_STATUSES,
   readContactStatus,
@@ -761,30 +761,64 @@ export function DriversPanel({
   );
 
   /*
-   * The open applicant, resolved from the URL against the loaded list.
+   * The open applicant, resolved from the URL.
    *
-   * A dashboard link names somebody: ?tab=drivers&id=<uuid>. An id that
-   * matches nobody — a deleted record, a vehicle id pasted by hand, a link
-   * from a filter that no longer includes them — resolves to null and the
-   * listing renders. No blank screen, and no need for a one-shot ref: there
-   * is nothing to seed, because there is no second copy of this fact.
+   * The list read is capped by PostgREST (1000 rows, newest first), so an
+   * older applicant named by ?tab=drivers&id= is not in `drivers`. One
+   * follow-up read, the same projection as the list, opens that profile.
+   * A deleted id, or a vehicle id pasted by hand, stays closed.
    */
-  const open = useMemo(
-    () => (openId ? (drivers.find((d) => d.id === openId) ?? null) : null),
-    [openId, drivers],
-  );
+  const loadDriverRow = useServerFn(getDriverListRow);
+  const [linkedDriver, setLinkedDriver] = useState<Application | null>(null);
+  const [linkedFor, setLinkedFor] = useState<string | null>(null);
+  const [linkMiss, setLinkMiss] = useState<string | null>(null);
+  const open = useMemo(() => {
+    if (!openId) return null;
+    const listed = drivers.find((d) => d.id === openId);
+    if (listed) return listed;
+    if (linkedDriver && (linkedDriver.id === openId || linkedFor === openId)) return linkedDriver;
+    return null;
+  }, [openId, drivers, linkedDriver, linkedFor]);
+  useEffect(() => {
+    if (previewDrivers || !openId) return;
+    if (drivers.some((d) => d.id === openId) || linkedDriver?.id === openId) {
+      setLinkMiss((miss) => (miss === openId ? null : miss));
+      return;
+    }
+    // A merged duplicate resolves to the surviving profile, whose id differs.
+    // Show that profile and move the address there. Do not ask again.
+    if (linkedFor === openId && linkedDriver) {
+      if (linkedDriver.id !== openId) setOpenId(linkedDriver.id);
+      return;
+    }
+    let cancel = false;
+    void loadDriverRow({ data: { id: openId } })
+      .then((row) => {
+        if (cancel) return;
+        if (row) {
+          setLinkedDriver(row as unknown as Application);
+          setLinkedFor(openId);
+          setLinkMiss(null);
+        } else setLinkMiss(openId);
+      })
+      .catch(() => {
+        if (!cancel) setLinkMiss(openId);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [previewDrivers, openId, drivers, linkedDriver, linkedFor, loadDriverRow, setOpenId]);
 
   /*
    * A URL naming an applicant we have not loaded yet is not "no applicant".
    *
    * The list arrives asynchronously, so for the few hundred milliseconds
    * before it does, a deep link resolves to nothing and the LIST renders —
-   * then the drawer replaces it. Measured on this branch and on main: the
-   * flash shows up in roughly half of cold loads either way, so it predates
-   * this change, but the derived selection makes it trivial to state
-   * properly. Pending, not absent.
+   * then the drawer replaces it. The same holds while the one-row read for
+   * someone past the list cap is in flight.
    */
-  const resolvingDeepLink = Boolean(openId) && !driversLoaded;
+  const resolvingDeepLink =
+    Boolean(openId) && !open && linkMiss !== openId && (!driversLoaded || previewDrivers == null);
 
   // Opening an applicant from a dashboard link should still clear their
   // unacknowledged flag, exactly as clicking the row does.
@@ -1190,6 +1224,24 @@ setDocCounts(requiredDocCounts(rows));
       else next.add(id);
       return next;
     });
+  }
+
+  if (openId && linkMiss === openId && !open) {
+    return (
+      <div data-testid="driver-profile-missing" className="max-w-lg">
+        <button
+          type="button"
+          onClick={() => setOpenId(null)}
+          className="mb-4 inline-flex h-9 items-center rounded-md border border-[#EDEDF0] bg-white px-3 text-sm font-medium text-[#111114] hover:bg-[#FAFAFB]"
+        >
+          Back To Drivers
+        </button>
+        <EmptyState
+          title="Profile Not Available"
+          hint="This person is not on the Drivers list. The DNC tab still has their entry."
+        />
+      </div>
+    );
   }
 
   // Resolving a deep link: say so, rather than showing the list we are about
@@ -2902,7 +2954,7 @@ function DriverDetail({
   ] as const;
 
   return (
-    <div className="-mx-4 -mt-5 -mb-4 md:-mx-8 md:-mt-2 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip max-lg:min-w-0">
+    <div data-testid="driver-profile" className="-mx-4 -mt-5 -mb-4 md:-mx-8 md:-mt-2 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip max-lg:min-w-0">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         {/* Header + record navigation scroll with the profile */}
         <div className="bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">

@@ -137,3 +137,18 @@ export function projectDriverRow(row: DriverListRow, canSeeSensitive: boolean): 
 export function isOperationalOnly(row: DriverListRow): boolean {
   return !SENSITIVE_LIST_FIELDS.some((f) => Object.prototype.hasOwnProperty.call(row, f as string));
 }
+
+/**
+ * Which application a deep link should open.
+ * A merged duplicate points at the surviving profile. A deleted row opens nothing.
+ */
+export function driverProfileId(row: {
+  id: string;
+  status?: string | null;
+  deleted_at?: string | null;
+  primary_application_id?: string | null;
+} | null): string | null {
+  if (!row || row.deleted_at) return null;
+  if (String(row.status ?? "") === "duplicate") return row.primary_application_id ?? null;
+  return row.id;
+}
