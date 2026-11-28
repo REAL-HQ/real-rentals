@@ -93,6 +93,7 @@ function MarketingShotCard({
   label,
   shot,
   failedCheck,
+  reason,
   canEdit,
   regenerateDisabled,
   onApprove,
@@ -102,6 +103,7 @@ function MarketingShotCard({
   label: string;
   shot: { url: string; note: string; status: string | null } | null;
   failedCheck: boolean;
+  reason: string | null;
   canEdit: boolean;
   regenerateDisabled: boolean;
   onApprove: () => void;
@@ -135,9 +137,9 @@ function MarketingShotCard({
               )}
             </ShotActionRow>
           </>
-        ) : failedCheck ? (
+        ) : failedCheck || reason ? (
           <>
-            <div className="aspect-[4/3] grid place-items-center rounded bg-[#F4F4F6] px-2 text-center text-[11px] font-medium leading-snug text-[#111114]">{FAILED_CHECK_ATTENTION}</div>
+            <div className="aspect-[4/3] grid place-items-center rounded bg-[#F4F4F6] px-3 text-center text-[11px] font-medium leading-snug text-[#111114]">{reason || FAILED_CHECK_ATTENTION}</div>
             {canEdit && (
               <ShotActionRow>
                 <ShotIconButton label="Regenerate" disabled={regenerateDisabled} onClick={onRegenerate}>
@@ -166,6 +168,7 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
   const approvePublish = useServerFn(approveAndPublishStudio);
   const [items, setItems] = useState<Media[]>([]);
   const [attentionSlots, setAttentionSlots] = useState<string[]>([]);
+  const [slotReasons, setSlotReasons] = useState<Record<string, string>>({});
   const [classAvailable, setClassAvailable] = useState(true);
   const [st, setSt] = useState<Awaited<ReturnType<typeof getPhotoStudioStatus>> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -175,11 +178,13 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
       const [l, s] = await Promise.all([list({ data: { vehicleId } }), status()]);
       setItems(l.items as Media[]);
       setAttentionSlots(l.attentionSlots ?? []);
+      setSlotReasons(l.slotReasons ?? {});
       setClassAvailable(l.photoClassAvailable !== false);
       setSt(s);
     } catch {
       setItems([]);
       setAttentionSlots([]);
+      setSlotReasons({});
     }
   }, [vehicleId, list, status]);
   useEffect(() => { void load(); }, [load]);
@@ -268,6 +273,7 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
               label={SLOT_LABELS[slot]}
               shot={s ? { url: s.url ?? "", note: marketingShotNote(!!s.studio_check?.inferred), status: s.studio_review_status ?? null } : null}
               failedCheck={!s && attentionSlots.includes(slot)}
+              reason={s ? null : slotReasons[slot] ?? null}
               canEdit={canEdit}
               regenerateDisabled={s ? busy : busy || !st?.enabled}
               onApprove={() => decide(s.id, "approved")}

@@ -80,8 +80,9 @@ export function originalsChangedAt(originals: { createdAt?: string | null }[]): 
 }
 
 /**
- * The slot already failed the identity check, and no original has been added
- * since. Run All Cars must not spend on it again. Staff Regenerate may.
+ * A failed optional Dashboard stays out of the run until a newer original
+ * arrives. Required slots are not held: the next run tries them again, and
+ * that run allows one automatic retry inside the existing caps.
  */
 export function shotHeldAfterFailedCheck(
   slot: string,
@@ -110,7 +111,8 @@ export type StudioGaps = { retry: ShotSlot[]; held: ShotSlot[] };
  * An inferred Dashboard (no dashboard original; the source is a front-seat
  * or other interior photo) is not a required gap, so its absence does not
  * keep the car in the run. Ready is still the four exterior shots. A failure
- * on that slot is still shown, and a newer original allows one more try.
+ * on that optional slot is still shown, and a newer original allows one more
+ * try. A failed required slot is tried again on the next run.
  */
 export function classifyStudioGaps(
   originals: { id?: string; photoClass: string | null; createdAt?: string | null }[],
@@ -128,13 +130,15 @@ export function classifyStudioGaps(
   const held: ShotSlot[] = [];
   for (const p of plans) {
     if (live.has(p.slot)) continue;
-    if (shotHeldAfterFailedCheck(p.slot, failures, changed)) {
-      held.push(p.slot);
-      continue;
-    }
     const optionalDash = p.slot === "interior_1" && p.inferred;
     const failedBefore = failures.some((f) => f.slot === p.slot && timeMs(f.failedAt) != null);
-    if (optionalDash && !failedBefore) continue;
+    if (optionalDash) {
+      if (failedBefore && shotHeldAfterFailedCheck(p.slot, failures, changed)) {
+        held.push(p.slot);
+        continue;
+      }
+      if (!failedBefore) continue;
+    }
     retry.push(p.slot);
   }
   return { retry, held };

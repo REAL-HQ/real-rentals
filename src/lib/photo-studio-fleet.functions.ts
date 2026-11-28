@@ -8,7 +8,7 @@ import { z } from "zod";
 import { requireManager, requireOwner, requireStaff } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
 import {
-  PHOTO_STUDIO_GENERATIONS_PER_SHOT, PHOTO_STUDIO_KEY, effectiveModel, readStudioSettings, spendRefusal,
+  PHOTO_STUDIO_GENERATIONS_PER_SHOT, PHOTO_STUDIO_KEY, countsTowardDailyImage, effectiveModel, readStudioSettings, spendRefusal,
   type Original, type PhotoClass,
 } from "@/lib/photo-studio";
 import { isUnlabeledClass } from "@/lib/photo-class-label";
@@ -30,7 +30,7 @@ async function budget(sb: any) {
   let monthCents = 0, todayImages = 0;
   for (const r of (spend ?? []) as any[]) {
     monthCents += Number(r.cost_cents) || 0;
-    if (r.created_at >= dayStart && r.outcome !== "provider_error") todayImages++;
+    if (r.created_at >= dayStart && countsTowardDailyImage(String(r.outcome), Number(r.cost_cents) || 0)) todayImages++;
   }
   const model = effectiveModel(settings, today());
   const refusal = spendRefusal(settings, { todayImages, monthCents }, PHOTO_STUDIO_GENERATIONS_PER_SHOT, model);

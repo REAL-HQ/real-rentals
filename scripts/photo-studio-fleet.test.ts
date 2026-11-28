@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   FAILED_CHECK_ATTENTION, carReadyToPublish, classifyStudioGaps, describeStudioRun, fleetProgress, fleetRow,
-  isStudioFleetCar, shotHeldAfterFailedCheck, shotPassedIdentity, studioRunToast,
+  isStudioFleetCar, shotPassedIdentity, studioRunToast,
   type FleetCarInput, type FleetShot,
 } from "../src/lib/photo-studio-fleet";
 
@@ -129,7 +129,7 @@ describe("fleet progress", () => {
     expect(gaps.retry).toContain("interior_1");
   });
 
-  test("a failed check is not retried until the originals change", () => {
+  test("a failed required shot is tried again on the next run", () => {
     const originals = [
       { photoClass: "exterior_front", createdAt: "2026-11-01T00:00:00.000Z" },
       { photoClass: "exterior_driver", createdAt: "2026-11-01T00:00:00.000Z" },
@@ -138,20 +138,14 @@ describe("fleet progress", () => {
     ];
     const shots = exterior().filter((s) => s.slot !== "rear");
     const failed = [{ slot: "rear", failedAt: "2026-11-02T00:00:00.000Z" }];
-    expect(shotHeldAfterFailedCheck("rear", failed, "2026-11-01T00:00:00.000Z")).toBe(true);
-    expect(shotHeldAfterFailedCheck("rear", failed, "2026-11-03T00:00:00.000Z")).toBe(false);
-    const held = classifyStudioGaps(originals, shots, failed);
-    expect(held.retry).not.toContain("rear");
-    expect(held.held).toEqual(["rear"]);
+    const gaps = classifyStudioGaps(originals, shots, failed);
+    expect(gaps.retry).toContain("rear");
+    expect(gaps.held).not.toContain("rear");
     const row = fleetRow(car({ originals, shots, failedChecks: failed }), false)!;
     expect(row.ready).toBe(false);
-    expect(row.needsWork).toBe(false);
-    expect(row.state).toBe(FAILED_CHECK_ATTENTION);
-    const newer = originals.map((o, i) => i === 3 ? { ...o, createdAt: "2026-11-03T00:00:00.000Z" } : o);
-    const again = classifyStudioGaps(newer, shots, failed);
-    expect(again.retry).toContain("rear");
-    expect(again.held).not.toContain("rear");
-    expect(fleetRow(car({ originals: newer, shots, failedChecks: failed }), false)!.needsWork).toBe(true);
+    expect(row.needsWork).toBe(true);
+    expect(row.state).toBe("Needs Shots");
+    expect(row.state).not.toBe(FAILED_CHECK_ATTENTION);
   });
 
   test("a published identity-checked set is Published", () => {
