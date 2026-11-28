@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
-import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
-import { CalendarCheck, ChevronLeft, ChevronRight, ArrowRight, MoreHorizontal } from "lucide-react";
+import { rowOpenProps, rowHref, ROW_OPEN_CLASS } from "@/lib/row-click";
+import { formatRevenue } from "@/lib/driver-revenue";
+import { CalendarCheck, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import { listBookings } from "@/lib/bookings.functions";
 import {
   BOOKING_LIST_PAGE_SIZE,
@@ -16,7 +17,6 @@ import {
   type BookingPhase,
   type BookingRow,
 } from "@/lib/bookings-list";
-import { OPEN_COLUMN } from "./open-column";
 import { BookingDetails } from "./BookingDetails";
 import { BookingConversion } from "./BookingConversion";
 import { AdminTableScroll } from "./AdminTableScroll";
@@ -356,11 +356,14 @@ export function BookingsPanel({
   const showCreditColumn = scope === "cancelled";
   // Cancelled adds Credit after Status. Percentages leave room for Rent, the
   // fixed Open button, and the row menu inside a 1280px window with the sidebar.
+  // Revenue sits after Rent and is left out of the Cancelled view, which already
+  // carries a Credit column.
   const widths = showCreditColumn
-    ? { driver: "w-[18%]", vehicle: "w-[20%]", dates: "w-[12%]", status: "w-[10%]", credit: "w-[17%]", rent: "w-[11%]" }
-    : { driver: "w-[22%]", vehicle: "w-[20%]", dates: "w-[20%]", status: "w-[16%]", credit: "", rent: "w-[14%]" };
+    ? { driver: "w-[20%]", vehicle: "w-[22%]", dates: "w-[14%]", status: "w-[12%]", credit: "w-[18%]", rent: "w-[12%]", revenue: "" }
+    : { driver: "w-[21%]", vehicle: "w-[21%]", dates: "w-[19%]", status: "w-[14%]", credit: "", rent: "w-[13%]", revenue: "w-[12%]" };
   const total = result?.total ?? 0;
   const money = !!result?.canSeeMoney;
+  const showRevenueColumn = money && !showCreditColumn;
   const pages = Math.max(1, Math.ceil(total / BOOKING_LIST_PAGE_SIZE));
   const firstShown = total === 0 ? 0 : (page - 1) * BOOKING_LIST_PAGE_SIZE + 1;
   const lastShown = Math.min(total, page * BOOKING_LIST_PAGE_SIZE);
@@ -435,7 +438,7 @@ export function BookingsPanel({
                 <th className={`${widths.status} px-2 py-2 font-medium`}>Status</th>
                 {showCreditColumn ? <th className={`${widths.credit} px-2 py-2 font-medium`}>Credit</th> : null}
                 {money ? <th className={`${widths.rent} px-2 py-2 font-medium`}>Rent</th> : null}
-                <th className={`${OPEN_COLUMN} py-2 font-medium`}>Open</th>
+                {showRevenueColumn ? <th className={`${widths.revenue} px-2 py-2 font-medium`} data-revenue-header>Revenue</th> : null}
                 {showFeeMenu ? <th className={`${ROW_MENU_COLUMN} py-2 font-medium`} /> : null}
               </tr>
             </thead>
@@ -445,7 +448,7 @@ export function BookingsPanel({
                   key={b.id}
                   data-booking={b.id}
                   className={`border-t border-border ${ROW_OPEN_CLASS}`}
-                  {...rowOpenProps(() => setViewing(b.id))}
+                  {...rowOpenProps(() => setViewing(b.id), rowHref({ ...listSearch(), id: b.id }))}
                 >
                   <td className="px-2 py-2 align-top">
                     <DriverCell b={b} />
@@ -484,17 +487,11 @@ export function BookingsPanel({
                       )}
                     </td>
                   ) : null}
-                  <td className={`${OPEN_COLUMN} py-2`}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setViewing(b.id);
-                      }}
-                      className="inline-flex items-center gap-1 rounded-md bg-black text-white px-2.5 py-1 text-xs"
-                    >
-                      Open <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </td>
+                  {showRevenueColumn ? (
+                    <td className="px-2 py-2 align-top tabular-nums" data-testid="driver-revenue-cell">
+                      {formatRevenue(b.driverRevenue)}
+                    </td>
+                  ) : null}
                   {showFeeMenu ? (
                     <td className={`${ROW_MENU_COLUMN} relative py-2`} onClick={(e) => e.stopPropagation()}>
                       {offerFor(b.id) ? (
@@ -548,7 +545,7 @@ export function BookingsPanel({
           {rows.map((b) => (
             <div
               key={b.id}
-              {...rowOpenProps(() => setViewing(b.id))}
+              {...rowOpenProps(() => setViewing(b.id), rowHref({ ...listSearch(), id: b.id }))}
               data-booking-card={b.id}
               className="rounded-2xl bg-soft p-4 cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/40"
             >
@@ -573,6 +570,9 @@ export function BookingsPanel({
                   {(b.balanceDue ?? 0) > 0 && (
                     <span className="ml-2 font-medium text-[#D03020]">{usd(b.balanceDue)} due</span>
                   )}
+                  {b.driverRevenue !== undefined && !showCreditColumn ? (
+                    <span className="ml-2 text-muted-foreground" data-testid="driver-revenue-card">{formatRevenue(b.driverRevenue)} Revenue</span>
+                  ) : null}
                 </div>
               )}
               {showCreditColumn && (creditFor(b) || (creditMode === "case_by_case" && offerFor(b.id))) ? (

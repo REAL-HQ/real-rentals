@@ -116,11 +116,11 @@ describe("cancelled credit column", () => {
     );
     assert.deepEqual(
       labels.filter((label) => label.length > 0),
-      ["Driver", "Vehicle", "Dates", "Status", "Credit", "Rent", "Open"],
+      ["Driver", "Vehicle", "Dates", "Status", "Credit", "Rent"],
     );
-    assert.match(head, /class="w-\[10%\] px-2 py-2 font-medium">Status/);
-    assert.match(head, /class="w-\[17%\] px-2 py-2 font-medium">Credit/);
-    assert.match(head, /class="w-\[11%\] px-2 py-2 font-medium">Rent/);
+    assert.match(head, /class="w-\[12%\] px-2 py-2 font-medium">Status/);
+    assert.match(head, /class="w-\[18%\] px-2 py-2 font-medium">Credit/);
+    assert.match(head, /class="w-\[12%\] px-2 py-2 font-medium">Rent/);
 
     const fabio = cells(rowMarkup(html, FABIO));
     assert.match(fabio[3], />Cancelled</);
@@ -148,12 +148,12 @@ describe("cancelled credit column", () => {
     assert.match(alex[4], /—/);
     assert.equal(alex[3].includes("—"), false);
 
-    assert.match(html, />Open<\/th>/);
-    assert.match(html, /Open <svg/);
+    assert.doesNotMatch(html, />Open<\/th>/);
+    assert.doesNotMatch(html, /Open <svg/);
 
     const completed = panel("completed");
     assert.equal(completed.includes(">Credit<"), false);
-    assert.match(completed, /class="w-\[16%\] px-2 py-2 font-medium">Status/);
+    assert.match(completed, /class="w-\[14%\] px-2 py-2 font-medium">Status/);
     assert.equal(completed.includes("cancelled-credit"), false);
   });
 });
