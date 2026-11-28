@@ -18,6 +18,12 @@ const scope = async (context: any, data: any, section: string) =>
 const refuseWrite = async (userId: string) =>
   (await import("@/lib/driver-preview.server")).refuseStaffPortalWrite(userId);
 
+/** Last 6 characters of a VIN for the renter's own car; never the full VIN. */
+export function vinLast6ForDriver(vin: unknown): string | null {
+  const v = String(vin ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  return v ? v.slice(-6) : null;
+}
+
 export type DriverDashboard = {
   /** The newest linked application's status, or null if there is none. */
   applicationStatus: string | null;
@@ -40,6 +46,8 @@ export type DriverDashboard = {
     color: string | null;
     photo: string | null;
     plate: string | null;
+    /** Last 6 of the VIN only. */
+    vin_last6: string | null;
     status: string | null;
   } | null;
   payments: Array<{
@@ -220,7 +228,7 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: v } = await supabaseAdmin
         .from("vehicles")
-        .select("id,year,make,model,trim,color,status,license_plate")
+        .select("id,year,make,model,trim,color,status,license_plate,vin")
         .eq("id", rental.vehicle_id)
         .maybeSingle();
       if (v) {
@@ -255,6 +263,8 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
           color: v.color ?? null,
           photo,
           plate: (v as any).license_plate ?? null,
+          // Last 6 only; the full VIN never leaves the server. No unit number.
+          vin_last6: vinLast6ForDriver((v as any).vin),
           status: v.status ?? null,
         };
       }
@@ -397,13 +407,22 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
       .in("driver_id", appIds)
       .order("created_at", { ascending: false });
 
-    const rows = (data ?? []).filter((d: any) => (d.visibility ?? []).includes("driver"));
+    // Rows came through the renter's own session, so RLS has already limited
+    // them to this renter's application(s). Internal categories never pass,
+    // whatever the row's visibility says (src/lib/driver-portal-documents.ts).
+    const { driverPortalShows } = await import("@/lib/driver-portal-documents");
+    const rows = (data ?? []).filter((d: any) => driverPortalShows(d));
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const shared = await Promise.all(
       rows.map(async (d: any) => {
         let url: string | null = null;
         if (!preview) {
-          const { data: signed } = await supabase.storage
+          // Signed as the service role. Renters have no storage read policy
+          // on these buckets, so signing with their session returned no link
+          // and the file could be listed but not opened. Ownership is the
+          // RLS-scoped row read above.
+          const { data: signed } = await supabaseAdmin.storage
             .from(d.storage_bucket)
             .createSignedUrl(d.storage_path, 60 * 10);
           url = signed?.signedUrl ?? null;
@@ -411,7 +430,9 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
         return {
           id: d.id,
           kind: d.kind,
-          notes: d.notes ?? null,
+          // Staff notes stay internal; only a shared receipt's note is meant
+          // for the renter (Shared By Our Team).
+          notes: d.kind === "receipt" && (d.visibility ?? []).includes("driver") ? d.notes ?? null : null,
           category: d.category ?? "other",
           label: d.label ?? null,
           file_name: d.file_name ?? null,
@@ -424,13 +445,12 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
           created_at: d.created_at,
           url,
           review_status: d.review_status ?? "uploaded",
-          review_note: d.review_note ?? null,
+          review_note: null,
           reviewed_at: d.reviewed_at ?? null,
           signed_agreement: isSignedAgreementEvidence(d),
         } satisfies DriverDocument;
       }),
     );
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const stored = await listStoredDriverDocuments(supabaseAdmin, appIds, !preview);
     const merged = new Map<string, DriverDocument>();
     for (const document of [...shared, ...stored]) merged.set(document.id, document);

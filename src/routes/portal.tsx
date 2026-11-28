@@ -2204,6 +2204,8 @@ function VehicleView({ data }: { data: DriverDashboard }) {
         <Field label="Model" value={v.model} />
         <Field label="Trim" value={v.trim} />
         <Field label="Color" value={v.color} />
+        <Field label="Plate" value={v.plate} />
+        <Field label="VIN" value={v.vin_last6 ? `…${v.vin_last6}` : null} />
         <Field label="Status" value={v.status} />
       </div>
     </div>

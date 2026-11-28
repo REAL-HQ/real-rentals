@@ -23,6 +23,7 @@ import {
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { documentExpiryTone } from "@/lib/document-expiry";
 import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
+import { DRIVER_PORTAL_INTERNAL_CATEGORIES } from "@/lib/driver-portal-documents";
 
 const MAX_MB = 15;
 
@@ -167,10 +168,12 @@ export function DocumentVault({
   }
 
   const current = docs.filter((d) => d.is_current);
+  // The driver never sees internal sections (screening, insurance quote,
+  // verification recording), not even as an empty "Not On File" row.
   const categories =
     mode === "admin"
       ? DOC_CATEGORIES
-      : DOC_CATEGORIES.filter((c) => c.key !== "verification_recording");
+      : DOC_CATEGORIES.filter((c) => !DRIVER_PORTAL_INTERNAL_CATEGORIES.includes(c.key));
 
   if (isLoading) {
     return (
