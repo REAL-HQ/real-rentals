@@ -27,7 +27,7 @@ mock.module("@/integrations/supabase/client", () => ({
   supabase: { from: () => ({ select: () => ({ order: () => Promise.resolve({ data: [], error: null }) }) }) },
 }));
 
-const { PartnersPanel } = await import("../src/components/admin/PartnersPanel.tsx");
+const { PartnersPanel, legacySubmissionDeleteCopy } = await import("../src/components/admin/PartnersPanel.tsx");
 
 const front = swatch("#D6D6DB", "Front");
 const side = swatch("#C8C8CE", "Side");
@@ -132,6 +132,33 @@ describe("legacy submission details", () => {
     assert.match(rows[2], /No Photo/);
     assert.doesNotMatch(rows[2], /owner-photo-thumb/);
     assert.equal(html.match(/Convert To Partner/g)?.length, 3);
+    assert.equal(html.match(/More Actions For /g)?.length, 3);
+    assert.match(rows[0], /More Actions For Jordan Hale/);
+    assert.match(rows[0], /data-testid="legacy-submission-menu"/);
+  });
+
+  it("names the submitter and vehicle before deleting a legacy submission", () => {
+    const alix = owner({
+      id: "alix",
+      full_name: "Alixandra Brett",
+      email: "alixandra.brett@example.com",
+      phone: "(813) 555-0100",
+      year: 2017,
+      make: "Volvo",
+      model: "XC90",
+      photo_urls: [],
+    });
+    assert.deepEqual(legacySubmissionDeleteCopy(alix), {
+      title: "Delete Submission?",
+      body: "This removes Alixandra Brett's 2017 Volvo XC90 submission. This can't be undone.",
+    });
+    const html = renderToStaticMarkup(createElement(PartnersPanel, {
+      preview: { owners: [alix], menuOwnerId: "alix" },
+    }));
+    assert.match(html, /data-testid="legacy-submission-delete"/);
+    assert.match(html, /text-real-red/);
+    assert.match(html, />Delete</);
+    assert.match(html, /Convert To Partner/);
   });
 });
 
