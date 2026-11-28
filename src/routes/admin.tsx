@@ -873,6 +873,26 @@ function Admin() {
       );
     });
 
+  const sectionToggle = workspaceTabs.length > 1 && !recordParent ? (
+    <div role="tablist" aria-label={`${workspace.label} sections`} className="inline-flex rounded-lg bg-[#F0F0F2] p-0.5 w-max">
+      {workspaceTabs.map((v) => (
+        <Link
+          key={v.id}
+          to="/admin"
+          search={rootSearch(v.id)}
+          role="tab"
+          aria-selected={tab === v.id}
+          className={`px-3 py-1.5 rounded-md text-[13px] font-medium whitespace-nowrap ${tab === v.id ? "bg-white text-[#111114] shadow-sm" : "text-[#55555E] hover:text-[#111114]"}`}
+        >
+          {v.label}
+        </Link>
+      ))}
+    </div>
+  ) : null;
+  // Payments keeps the subtitle under the title and puts the same section
+  // toggle on that title row, at the far right. A narrow row may wrap it.
+  const paymentsHeader = ownerTab === "payments" && tab !== "overview" && tab !== "issues" && !recordParent;
+
   return (
     <DncProvider>
       <div className="min-h-screen flex bg-[#FAFAFB] text-[#111114]">
@@ -1077,31 +1097,32 @@ function Admin() {
 
           <div className="px-4 md:px-8 pt-3 md:pt-4">
             {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
-            {tab !== "overview" && tab !== "issues" && !recordParent && (
+            {paymentsHeader ? (
               <div className="mb-3">
-                <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <h1 className="shrink-0 text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
+                  {sectionToggle ? (
+                    <div className="max-w-full shrink-0 overflow-x-auto">{sectionToggle}</div>
+                  ) : null}
+                </div>
                 {workspace.description ? (
                   <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
                 ) : null}
               </div>
-            )}
-            {workspaceTabs.length > 1 && !recordParent && (
-              <div className="-mx-4 px-4 md:mx-0 md:px-0 mb-3 overflow-x-auto">
-                <div role="tablist" aria-label={`${workspace.label} sections`} className="inline-flex rounded-lg bg-[#F0F0F2] p-0.5 w-max">
-                  {workspaceTabs.map((v) => (
-                    <Link
-                      key={v.id}
-                      to="/admin"
-                      search={rootSearch(v.id)}
-                      role="tab"
-                      aria-selected={tab === v.id}
-                      className={`px-3 py-1.5 rounded-md text-[13px] font-medium whitespace-nowrap ${tab === v.id ? "bg-white text-[#111114] shadow-sm" : "text-[#55555E] hover:text-[#111114]"}`}
-                    >
-                      {v.label}
-                    </Link>
-                  ))}
-                </div>
-              </div>
+            ) : (
+              <>
+                {tab !== "overview" && tab !== "issues" && !recordParent && (
+                  <div className="mb-3">
+                    <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
+                    {workspace.description ? (
+                      <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+                    ) : null}
+                  </div>
+                )}
+                {sectionToggle ? (
+                  <div className="-mx-4 px-4 md:mx-0 md:px-0 mb-3 overflow-x-auto">{sectionToggle}</div>
+                ) : null}
+              </>
             )}
           </div>
           </div>
