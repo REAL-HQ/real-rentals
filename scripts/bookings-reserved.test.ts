@@ -40,9 +40,10 @@ describe("Bookings Reserved tab", () => {
     assert.equal(vinLast6(null), null);
   });
 
-  it("panel has Active-style columns, count, Open button, Title Case, no deposit wording", () => {
-    for (const h of ["Driver", "Vehicle", "Reserved", "Pickup", "Rate", "Open"]) assert.match(panel, new RegExp(`>${h}</th>|>\\{chargeLabel\\}</th>`));
+  it("panel has Active-style columns, count, whole-row open, Title Case, no deposit wording", () => {
+    for (const h of ["Driver", "Vehicle", "Reserved", "Pickup", "Rate"]) assert.match(panel, new RegExp(`>${h}</th>|>\\{chargeLabel\\}</th>`));
     assert.match(panel, /Reserved Vehicle\{rows\.length === 1/);
+    assert.doesNotMatch(panel, />Open<\/th>/);
     assert.match(panel, /<VehicleCell/);
     assert.match(panel, /vinLast6: row\.vinLast6/);
     assert.match(panel, /view: "past", id: row\.id/);

@@ -435,6 +435,13 @@ export const listBookings = createServerFn({ method: "POST" })
       }
     }
 
+    // Money each of these drivers has paid us to date, Manager+ only.
+    let revenue: Awaited<ReturnType<typeof import("@/lib/driver-revenue.server").loadDriverRevenue>> | null = null;
+    if (canSeeMoney && appIds.length) {
+      const { loadDriverRevenue } = await import("@/lib/driver-revenue.server");
+      revenue = await loadDriverRevenue(sb, appIds);
+    }
+
     const out: BookingRow[] = rows.map((r) => {
       const app = r.application_id ? appById.get(String(r.application_id)) : undefined;
       const veh = r.vehicle_id ? vehById.get(String(r.vehicle_id)) : undefined;
@@ -467,6 +474,7 @@ export const listBookings = createServerFn({ method: "POST" })
         row.paymentStatus = (r.payment_status as string | null) ?? null;
         row.depositStatus = (r.deposit_status as string | null) ?? null;
         row.balanceDue = balance.get(String(r.id)) ?? 0;
+        row.driverRevenue = revenue?.ok && r.application_id ? revenue.totals[String(r.application_id)] ?? 0 : null;
       }
       return row;
     });
