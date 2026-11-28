@@ -4,6 +4,7 @@ import { rowNav } from "@/lib/row-click";
 import { useEffect, useState } from "react";
 import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { FleetServiceCenter } from "./FleetServiceCenter";
+import { OilChangePhotoReminders } from "./OilChangePhotoNotice";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Wrench, Plus, X, AlertTriangle, Clock, Gauge, Check } from "lucide-react";
@@ -355,6 +356,8 @@ export function MaintenancePanel({
           </ul>
         </div>
       )}
+
+      {statusFilter === "needs_odo" && <OilChangePhotoReminders />}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="text-sm text-muted-foreground">{recordCount(filtered.length)}</div>

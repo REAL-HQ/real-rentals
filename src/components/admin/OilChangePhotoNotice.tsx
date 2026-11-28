@@ -43,7 +43,7 @@ export function OilChangePhotoNotice({
   );
 }
 
-/** Overview and the fleet Service page. Hidden when nobody needs a photo. */
+/** Service page, when the Needs Odometer filter is selected. Hidden when nobody needs a photo. */
 export function OilChangePhotoReminders() {
   const load = useServerFn(listOilChangePhotoReminders);
   const [rows, setRows] = useState<OilChangePhotoDraft[] | null>(null);

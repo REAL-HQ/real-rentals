@@ -9,7 +9,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { SectionCard } from "./ui";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, Field } from "./modal";
 import { VehicleService } from "./VehicleService";
-import { OilChangePhotoReminders } from "./OilChangePhotoNotice";
 import { VehicleCombobox, type VehicleComboboxVehicle } from "./VehicleCombobox";
 import { VEHICLE_COMBOBOX_SELECT } from "@/lib/vehicle-label";
 
@@ -32,7 +31,6 @@ export function FleetServiceCenter({ autoOpenAdd = false }: { autoOpenAdd?: bool
   const rows = data ? data[view] : [];
   return (
     <>
-      <OilChangePhotoReminders />
       <SectionCard
         title="Maintenance"
         icon={view === "attention" ? <AlertTriangle className="h-4 w-4" /> : <Clock className="h-4 w-4" />}

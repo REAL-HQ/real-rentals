@@ -50,7 +50,6 @@ import { buildWeeklyBilledCollected, OVERVIEW_REVENUE_TYPES } from "@/lib/overvi
 import { isUnpaidReservationFee } from "@/lib/payments-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import { MaintenanceDueTile } from "./MaintenanceLog";
-import { OilChangePhotoReminders } from "./OilChangePhotoNotice";
 import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
 import {
   APPLICANT_WINDOW,
@@ -506,8 +505,6 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
       </div>
 
       {OVERVIEW_TODAY_ENABLED && canSeeCollections && <OverviewToday />}
-
-      <OilChangePhotoReminders />
 
       {/* Four cards sit above Lead Priorities so the health check is first.
           Order: Revenue, Collections, Service, then Active Renters. */}

@@ -103,6 +103,8 @@ describe("Overview wiring", () => {
     const payments = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
     const leads = readFileSync("src/components/admin/LeadPriorities.tsx", "utf8");
     expect(overview).not.toContain("Hot Prospects");
+    expect(overview).not.toContain("OilChangePhotoReminders");
+    expect(overview).not.toContain("Needs Mileage Photo");
     expect(overview).not.toContain("isHotProspect");
     expect(overview).not.toContain("<StripeCollections");
     expect(overview).toContain("summarizeFleetOccupancy");
