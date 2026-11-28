@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Download } from "lucide-react";
 import { AdminTableScroll } from "./AdminTableScroll";
+import { LinkedVehicleCell } from "./VehicleCell";
 import { getOwnerPnlView } from "@/lib/owner-pnl.functions";
 import { ownerPnlViewCsv, type OwnerPnlView, type PnlCarRow, type PnlPreset } from "@/lib/owner-pnl-range";
 import type { OwnerPnlViewResponse } from "@/lib/owner-pnl.server";
@@ -250,7 +251,12 @@ export function OwnerPnlPanel() {
                   <tbody>
                     {cars.map((row) => (
                       <tr key={row.id} className="border-t border-[#EDEDF0]">
-                        <td className="px-3 py-3 font-medium whitespace-nowrap">{row.label}</td>
+                        <td className="px-3 py-3 font-medium whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <LinkedVehicleCell vehicleId={row.id} size="sm" thumbOnly fallback={{ label: row.label }} />
+                            <span>{row.label}</span>
+                          </div>
+                        </td>
                         <td className="px-3 py-3 text-right tabular-nums">{money(row.revenueCents)}</td>
                         <td className="px-3 py-3 text-right tabular-nums">{money(row.expenseCents)}</td>
                         <td className="px-3 py-3 text-right tabular-nums">—</td>
@@ -363,24 +369,34 @@ function SortHead({ label, onClick, active, align = "left" }: { label: string; o
   );
 }
 
+// Flat fills. The pill washes (blue-100, amber-100, rose-100, Paid green at 8%)
+// disappear on a white card at this bar width, so each series keeps that
+// family at a brighter pastel that still reads: Tailwind blue-400 (New and
+// Contacted), amber-400 which is also --chart-4 (Promising and reviewing),
+// the Paid green, and rose-400 (Needs Staff) when net is negative.
+const PNL_REVENUE = "#51A2FF";
+const PNL_EXPENSES = "#FFB900";
+const PNL_NET = "#50C060";
+const PNL_NET_LOSS = "#FF637E";
+
 function TrendChart({ points }: { points: OwnerPnlView["trend"] }) {
   const max = Math.max(1, ...points.flatMap((point) => [Math.abs(point.revenueCents ?? 0), Math.abs(point.expenseCents ?? 0), Math.abs(point.netCents ?? 0)]));
   if (points.length === 0) return <Empty>No Months In This Range</Empty>;
   return (
     <div className="rounded-xl border border-[#EDEDF0] bg-white p-3">
       <div className="mb-3 flex flex-wrap gap-4 text-xs text-[#55555E]">
-        <span className="inline-flex items-center gap-1.5"><i className="inline-block h-2 w-2 bg-[#3D5A80]" /> Revenue</span>
-        <span className="inline-flex items-center gap-1.5"><i className="inline-block h-2 w-2 bg-[#8C6A3D]" /> Expenses</span>
-        <span className="inline-flex items-center gap-1.5"><i className="inline-block h-2 w-2 bg-[#2F6F4E]" /> Net</span>
+        <span className="inline-flex items-center gap-1.5"><i className="inline-block h-2 w-2" style={{ backgroundColor: PNL_REVENUE }} /> Revenue</span>
+        <span className="inline-flex items-center gap-1.5"><i className="inline-block h-2 w-2" style={{ backgroundColor: PNL_EXPENSES }} /> Expenses</span>
+        <span className="inline-flex items-center gap-1.5"><i className="inline-block h-2 w-2" style={{ backgroundColor: PNL_NET }} /> Net</span>
       </div>
       <div className="overflow-x-auto">
         <div className="flex items-end gap-3 min-w-max">
           {points.map((point) => (
             <div key={point.month} className="flex w-14 flex-col items-center gap-1">
               <div className="flex h-28 items-end gap-1">
-                <Bar cents={point.revenueCents} max={max} color="#3D5A80" />
-                <Bar cents={point.expenseCents} max={max} color="#8C6A3D" />
-                <Bar cents={point.netCents} max={max} color={(point.netCents ?? 0) < 0 ? "#A33B32" : "#2F6F4E"} />
+                <Bar cents={point.revenueCents} max={max} color={PNL_REVENUE} />
+                <Bar cents={point.expenseCents} max={max} color={PNL_EXPENSES} />
+                <Bar cents={point.netCents} max={max} color={(point.netCents ?? 0) < 0 ? PNL_NET_LOSS : PNL_NET} />
               </div>
               <span className="text-[10px] text-[#55555E]">{point.label}</span>
             </div>

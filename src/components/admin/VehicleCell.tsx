@@ -21,12 +21,15 @@ export function VehicleCell({
   vehicleId = null,
   thumbnailPath = null,
   size = "md",
+  thumbOnly = false,
   className = "",
 }: {
   vehicle: VehicleCellInput | null | undefined;
   vehicleId?: string | null;
   thumbnailPath?: string | null;
   size?: "sm" | "md";
+  /** The shared photo box only, so a list can keep its own name beside it. */
+  thumbOnly?: boolean;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -58,10 +61,12 @@ export function VehicleCell({
           <VehicleStaffPhoto path={null} name={p.title} className="h-full w-full object-cover" />
         </span>
       )}
-      <span className="min-w-0">
-        <span className="block truncate font-medium leading-tight" data-vehicle-title>{p.title}</span>
-        <span className="mt-0.5 block truncate text-xs text-muted-foreground" data-vehicle-details>{p.detailLine}</span>
-      </span>
+      {thumbOnly ? null : (
+        <span className="min-w-0">
+          <span className="block truncate font-medium leading-tight" data-vehicle-title>{p.title}</span>
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground" data-vehicle-details>{p.detailLine}</span>
+        </span>
+      )}
       {thumbnailPath ? (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="max-w-3xl" onClick={(e) => e.stopPropagation()}>
