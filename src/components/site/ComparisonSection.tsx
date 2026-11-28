@@ -1,45 +1,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { Json } from "@/integrations/supabase/types";
 import { FadeUp } from "./FadeUp";
 import { fmtDate } from "@/lib/date-format";
-
-type ComparisonRow = {
-  feature: string;
-  real: string;
-  uberlyft: string;
-  traditional: string;
-  real_is_win: boolean;
-};
-
-type ComparisonData = {
-  title: string;
-  columns: string[];
-  rows: ComparisonRow[];
-  disclaimer: string;
-  as_of_date: string;
-};
-
-const DEFAULT_DATA: ComparisonData = {
-  title: "The Gig Driver's Breakdown.",
-  columns: ["Real Rentals", "Uber Rent / Lyft Express", "Avis / Hertz / Enterprise"],
-  rows: [
-    { feature: "Multi-App Use", real: "Yes", uberlyft: "No", traditional: "No", real_is_win: true },
-    { feature: "Insurance", real: "Insurance Included", uberlyft: "Varies", traditional: "Varies", real_is_win: true },
-    { feature: "Mileage", real: "Unlimited (In Service Area)", uberlyft: "Restrictive / Per-Mile", traditional: "Restrictive / Per-Mile", real_is_win: true },
-    { feature: "Gig-App Eligibility", real: "Any Gig Service", uberlyft: "One Platform", traditional: "Not Gig-Focused", real_is_win: true },
-    { feature: "Credit Check", real: "No", uberlyft: "No", traditional: "Often Yes", real_is_win: true },
-    { feature: "Approval Speed", real: "As Soon As Same Day", uberlyft: "Varies", traditional: "Varies", real_is_win: true },
-    { feature: "Deposit", real: "No Deposit", uberlyft: "~$200-250 Hold", traditional: "~$200-500 Hold", real_is_win: true },
-    { feature: "Local Support", real: "Local Team", uberlyft: "Call Center", traditional: "Rental Counter", real_is_win: true },
-  ],
-  disclaimer:
-    "Comparison reflects general program features; competitor terms vary by location and change over time. Figures are estimates.",
-  as_of_date: "June 2026",
-};
+import { DEFAULT_COMPARISON, normalizeComparisonRows, parseComparison } from "@/lib/comparison-chart";
 
 export function ComparisonSection({ siteId }: { siteId?: string }) {
-  const [data, setData] = useState<ComparisonData>(DEFAULT_DATA);
+  const [data, setData] = useState(DEFAULT_COMPARISON);
 
   useEffect(() => {
     async function load() {
@@ -52,7 +18,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
       const { data: row } = await query.maybeSingle();
       if (row?.value) {
         const parsed = parseComparison(row.value);
-        if (parsed) setData({ ...parsed, rows: withInsuranceRow(parsed.rows) });
+        if (parsed) setData({ ...parsed, rows: normalizeComparisonRows(parsed.rows) });
       }
     }
     load();
@@ -63,7 +29,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
   const cellToneClass = (text: string): string => {
     const t = text.toLowerCase().trim();
     const negative = t.startsWith("restrictive") || t.startsWith("not ") || t.startsWith("often") || t.startsWith("~$") || t.startsWith("call ") || t.startsWith("rental") || t === "varies" || t === "single platform";
-    const positive = t === "yes" || t === "no" || t === "included" || t.startsWith("insurance included") || t.startsWith("unlimited") || t.startsWith("any ") || t.startsWith("as soon") || t.startsWith("local ") || t.startsWith("one low") || t.startsWith("no deposit");
+    const positive = t === "yes" || t === "no" || t === "included" || t.startsWith("insurance included") || t.startsWith("maintenance included") || t.startsWith("unlimited") || t.startsWith("any ") || t.startsWith("as soon") || t.startsWith("local ") || t.startsWith("one low") || t.startsWith("no deposit");
     if (negative) return "text-red-500/80";
     if (positive) return "text-emerald-700";
     return "text-muted-foreground";
@@ -136,38 +102,4 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
       </div>
     </section>
   );
-}
-
-const INSURANCE_ROW: ComparisonRow = {
-  feature: "Insurance",
-  real: "Insurance Included",
-  uberlyft: "Varies",
-  traditional: "Varies",
-  real_is_win: true,
-};
-
-/** Saved site content can replace the whole table. Keep the insurance row in
- *  that copy too, directly under Multi-App Use, without duplicating it. */
-function withInsuranceRow(rows: ComparisonRow[]): ComparisonRow[] {
-  if (rows.some((row) => row.feature.trim().toLowerCase() === "insurance")) return rows;
-  const after = rows.findIndex((row) => row.feature.trim().toLowerCase() === "multi-app use");
-  const at = after >= 0 ? after + 1 : Math.min(1, rows.length);
-  const next = rows.slice();
-  next.splice(at, 0, INSURANCE_ROW);
-  return next;
-}
-
-function parseComparison(value: Json): ComparisonData | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const v = value as Record<string, unknown>;
-  if (
-    typeof v.title === "string" &&
-    Array.isArray(v.columns) &&
-    Array.isArray(v.rows) &&
-    typeof v.disclaimer === "string" &&
-    typeof v.as_of_date === "string"
-  ) {
-    return v as unknown as ComparisonData;
-  }
-  return null;
 }
