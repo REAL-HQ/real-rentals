@@ -17,6 +17,23 @@ export function paymentOwed(p: { status?: unknown; balance_due?: unknown; amount
   return Math.max(0, num(p.amount) + num(p.late_fees));
 }
 
+/**
+ * Unpaid late fees still on this payment row. Forgiveness already lowers
+ * payments.late_fees, so forgiven dollars are not counted. Settled rows
+ * (paid, void, waived, refunded, cancelled) show none, even if the column
+ * still holds a historical figure.
+ */
+export function unpaidLateFeeOnPayment(p: {
+  status?: unknown;
+  lateFees?: unknown;
+  late_fees?: unknown;
+}): number {
+  if (SETTLED.has(String(p.status ?? "").toLowerCase())) return 0;
+  const raw = p.lateFees ?? p.late_fees;
+  const n = raw == null || raw === "" ? 0 : Number(raw);
+  return Number.isFinite(n) && n > 0.004 ? money(n) : 0;
+}
+
 function day(value: unknown): string | null {
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(value ?? "").trim());
   return m ? m[1] : null;
