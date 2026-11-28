@@ -387,6 +387,35 @@ try { await history("mgr-1", { previewDriverId: "not-a-uuid" }); } catch (e) { t
 ok(!!threw && /Invalid driver/.test(String(threw.message)), "and a malformed one never reaches the database");
 ok(!(await history("mgr-1")).length, "a Manager with no preview id reads their OWN rentals, not every driver's");
 
+// ======================================================= late fees on payment rows
+console.log("\\na payment row carries its unpaid late fees, without changing outstanding");
+seed();
+S.tables.payments = [
+  { id: "p-1", rental_id: R1, driver_id: A1, vehicle_id: V1, type: "rent", status: "overdue", amount: 350,
+    late_fees: 100, balance_due: 450, due_date: "2026-11-26", paid_date: null, net_collected: null },
+  { id: "p-2", rental_id: R1, driver_id: A1, vehicle_id: V1, type: "rent", status: "paid", amount: 350,
+    late_fees: 50, balance_due: 0, due_date: "2026-11-19", paid_date: "2026-11-19", net_collected: 338.5 },
+  { id: "p-4", rental_id: R1, driver_id: A1, vehicle_id: V1, type: "rent", status: "due", amount: 350,
+    late_fees: 0, balance_due: 350, due_date: "2026-12-03", paid_date: null, net_collected: null },
+];
+const late = await detail(R1);
+const overdue = late.money.payments.find((p) => p.id === "p-1");
+const paidRow = late.money.payments.find((p) => p.id === "p-2");
+const dueRow = late.money.payments.find((p) => p.id === "p-4");
+ok(overdue.amount === 350 && overdue.lateFees === 100 && overdue.balanceDue === 450,
+  "the overdue row reports amount, unpaid late fees, and outstanding (balance due)");
+ok(overdue.balanceDue === overdue.amount + overdue.lateFees,
+  "outstanding is the unpaid amount plus the unpaid late fee, same as today");
+ok(late.booking.balanceDue === 800,
+  `booking outstanding still sums balance_due on unpaid rows (${late.booking.balanceDue})`);
+ok(paidRow.lateFees === 50 && paidRow.balanceDue === 0,
+  "a paid row can still carry a historical late_fees figure; outstanding stays 0");
+ok(dueRow.lateFees === 0 && dueRow.balanceDue === 350,
+  "a due row with no late fees reports 0, not null invented as a fee");
+const crdLate = await detail(R1, "crd-1");
+ok(crdLate.money === undefined && !JSON.stringify(crdLate).includes("lateFees"),
+  "a Coordinator still sees no late-fee figures");
+
 // ======================================================= the source itself
 console.log("\\nthe readers are readers");
 const DETAIL_SRC = readFileSync("src/lib/bookings.functions.ts", "utf8");
