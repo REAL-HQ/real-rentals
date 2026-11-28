@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { isBookingsListMode, type BookingsListMode } from "@/lib/rental-length-order";
 
 const OPTIONS: { value: BookingsListMode; label: string }[] = [
@@ -19,7 +20,7 @@ export function RentalLengthSort({
   owesCount?: number | null;
 }) {
   return (
-    <select
+    <AppSelect
       aria-label="Bookings Filter"
       title="Length order, or only bookings that owe money."
       data-testid="rental-length-sort"
@@ -35,6 +36,6 @@ export function RentalLengthSort({
           {option.value === "owes" && owesCount != null ? `Owes Money (${owesCount})` : option.label}
         </option>
       ))}
-    </select>
+    </AppSelect>
   );
 }
