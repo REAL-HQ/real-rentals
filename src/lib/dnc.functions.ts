@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { DNC_REASON_MAX, type DncEntry, type DncIndexEntry } from "@/lib/dnc";
+import type { DncNameSource } from "@/lib/dnc-added-by";
 import type { DncTriggerMessage } from "@/lib/dnc-message";
 
 /**
@@ -18,7 +19,7 @@ async function deps() {
 
 export const listDnc = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ installed: boolean; entries: DncEntry[] }> => {
+  .handler(async ({ context }): Promise<{ installed: boolean; entries: DncEntry[]; nameSources: DncNameSource[] }> => {
     const { requireStaff } = await import("@/lib/roles.server");
     await requireStaff(context.userId);
     const { admin, core } = await deps();

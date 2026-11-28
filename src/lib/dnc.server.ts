@@ -13,6 +13,7 @@ import {
   type DncPersonType,
 } from "@/lib/dnc";
 import { TIER_RANK, type StaffTier } from "@/lib/roles";
+import { type DncNameSource } from "@/lib/dnc-added-by";
 
 export type DncActor = { userId: string; email: string | null; tier: StaffTier };
 type Audit = (
@@ -60,6 +61,7 @@ export function toDncEntry(r: any): DncEntry {
     fullName: r.full_name ?? null,
     reason: String(r.reason ?? ""),
     addedBy: String(r.added_by_label ?? ""),
+    addedByUserId: r.added_by ?? null,
     createdAt: r.created_at ?? null,
     removedAt: r.removed_at ?? null,
     removedBy: r.removed_by_label ?? null,
@@ -75,22 +77,58 @@ function toIndexEntry(r: any): DncIndexEntry {
   };
 }
 
+/** Staff names the Added By column can shorten. Reads only; nothing is written. */
+export async function loadDncNameSources(admin: any, userIds: string[]): Promise<DncNameSource[]> {
+  const sources: DncNameSource[] = [];
+  try {
+    const schedules = await admin.from("staff_schedules").select("staff_key,display_name");
+    if (!schedules.error) {
+      for (const row of (schedules.data ?? []) as { staff_key?: string; display_name?: string }[]) {
+        const name = String(row.display_name ?? "").trim();
+        if (name) sources.push({ staffKey: String(row.staff_key ?? ""), name });
+      }
+    }
+  } catch {
+    /* A missing schedule table still leaves the mailbox-name fallback. */
+  }
+  const ids = [...new Set(userIds.filter(Boolean))].slice(0, 40);
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const user = (await admin.auth?.admin?.getUserById?.(id))?.data?.user;
+        const meta = user?.user_metadata ?? {};
+        const name = String(meta.full_name ?? meta.name ?? meta.display_name ?? "").trim();
+        if (!name && !user?.email) return;
+        sources.push({ userId: id, email: user?.email ?? null, name });
+      } catch {
+        /* One missing account does not blank the column. */
+      }
+    }),
+  );
+  return sources;
+}
+
 /** Every entry (active first, newest first), for the DNC section. */
 export async function listDncEntries(
   admin: any,
-): Promise<{ installed: boolean; entries: DncEntry[] }> {
+): Promise<{ installed: boolean; entries: DncEntry[]; nameSources: DncNameSource[] }> {
   const { data, error } = await admin
     .from("dnc_list")
-    .select(ENTRY_COLS)
+    .select(`${ENTRY_COLS},added_by`)
     .order("created_at", { ascending: false })
     .limit(2000);
   if (error) {
-    if (dncNotInstalled(error)) return { installed: false, entries: [] };
+    if (dncNotInstalled(error)) return { installed: false, entries: [], nameSources: [] };
     throw new Error(error.message);
   }
-  const entries = ((data ?? []) as any[]).map(toDncEntry);
+  const rows = (data ?? []) as any[];
+  const nameSources = await loadDncNameSources(
+    admin,
+    rows.map((row) => String(row.added_by ?? "")),
+  );
+  const entries = rows.map(toDncEntry);
   entries.sort((a, b) => Number(!!a.removedAt) - Number(!!b.removedAt));
-  return { installed: true, entries };
+  return { installed: true, entries, nameSources };
 }
 
 /** Active entries with their normalized phones / emails, so the browser can badge and warn everywhere. */

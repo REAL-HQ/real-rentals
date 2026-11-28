@@ -14,6 +14,7 @@ import * as realStart from "@tanstack/react-start";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Application } from "../src/components/admin/types";
 import type { DncEntry } from "../src/lib/dnc";
+import type { DncNameSource } from "../src/lib/dnc-added-by";
 import { DNC_NO_MESSAGE_LABEL, DNC_TRIGGER_LABEL, type DncTriggerMessage } from "../src/lib/dnc-message";
 
 mock.module("@tanstack/react-router", () => ({
@@ -37,7 +38,10 @@ const NO_MESSAGE = "cccccccc-0000-4000-8000-000000000003";
 const reason =
   "Asked not to be contacted after replying negatively to a promo text on Nov 27, 2026. Dolmar requested DNC (moved over from the text STOP list).";
 
-function entry(id: string, name: string, applicationId: string | null): DncEntry {
+const STORED_ADDED_BY = "dolmarcross@gmail.com (Owner, approved t731u, via VIBE)";
+const nameSources: DncNameSource[] = [{ staffKey: "dolmar", name: "Dolmar Cross" }];
+
+function entry(id: string, name: string, applicationId: string | null, addedBy: string): DncEntry {
   return {
     id,
     applicationId,
@@ -46,7 +50,7 @@ function entry(id: string, name: string, applicationId: string | null): DncEntry
     personTypeLabel: "Applicant",
     fullName: name,
     reason,
-    addedBy: "Dolmar",
+    addedBy,
     createdAt: "2026-11-27T18:11:00Z",
     removedAt: null,
     removedBy: null,
@@ -70,18 +74,20 @@ const message: DncTriggerMessage = {
 };
 
 const entries = [
-  entry(WITH_MESSAGE, "Pattie Maupin-Phillips", APPLICANT),
-  entry(NO_MESSAGE, "Casey No-Reply", null),
+  entry(WITH_MESSAGE, "Pattie Maupin-Phillips", APPLICANT, STORED_ADDED_BY),
+  entry(NO_MESSAGE, "Casey No-Reply", null, "Responder"),
 ];
 
-function table(openMessageId?: string) {
+function table(extra?: { openMessageId?: string; openMenuId?: string }) {
   return renderToStaticMarkup(
     createElement(DncPanel, {
       canRemove: true,
       preview: {
         entries,
         messages: { [WITH_MESSAGE]: message, [NO_MESSAGE]: null },
-        openMessageId: openMessageId ?? null,
+        openMessageId: extra?.openMessageId ?? null,
+        openMenuId: extra?.openMenuId ?? null,
+        nameSources,
       },
     }),
   );
@@ -124,17 +130,31 @@ describe("DNC names and messages", () => {
     const html = table();
     assert.match(html, /data-testid="dnc-open-person"[^>]*>Pattie Maupin-Phillips/);
     assert.match(html, /data-testid="dnc-open-person"[^>]*>Casey No-Reply/);
-    assert.match(html, /Applicant/);
+    assert.doesNotMatch(html, />Type</);
+    assert.doesNotMatch(html, /data-testid="dnc-badge"/);
     assert.match(html, /Please stop texting me/);
+    assert.match(html, /data-testid="dnc-open-message"/);
+    assert.match(html, /cursor-pointer/);
     assert.match(html, new RegExp(DNC_TRIGGER_LABEL));
     assert.match(html, new RegExp(DNC_NO_MESSAGE_LABEL));
-    assert.match(html, /View Message/);
+    assert.match(html, /aria-label="Row Options"/);
+    assert.match(html, new RegExp(`title="${STORED_ADDED_BY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
+    assert.match(html, />Dolmar</);
+    assert.match(html, />Responder</);
+    assert.doesNotMatch(html, />Owner</);
+    assert.doesNotMatch(html, /data-testid="dnc-view-message"/);
+    assert.equal((html.match(/data-testid="dnc-no-message"/g) ?? []).length, 1);
+  });
+
+  it("puts Remove From DNC in the row options menu", () => {
+    const html = table({ openMenuId: WITH_MESSAGE });
+    assert.match(html, /data-testid="dnc-row-remove"/);
     assert.match(html, /Remove From DNC/);
-    assert.equal((html.match(/data-testid="dnc-view-message"/g) ?? []).length, 1);
+    assert.match(html, /aria-label="Row Options"/);
   });
 
   it("opens the triggering message with the outbound it replied to", () => {
-    const html = table(WITH_MESSAGE);
+    const html = table({ openMessageId: WITH_MESSAGE });
     assert.match(html, /aria-label="View Message"/);
     assert.match(html, /Most Recent Inbound On Or Before Added/);
     assert.match(html, /Please stop texting me\. I am not interested\./);
@@ -158,7 +178,8 @@ if (process.env.WRITE_DNC_HTML === "1") {
   const wrap = (title: string, body: string) =>
     `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body class="bg-[#F6F6F7]"><main class="mx-auto max-w-6xl p-6"><h1 class="mb-4 text-lg font-semibold">${title}</h1>${body}</main></body></html>`;
   writeFileSync(`${dir}/table.html`, wrap("Do Not Contact", table()));
-  writeFileSync(`${dir}/message.html`, wrap("Do Not Contact", table(WITH_MESSAGE)));
+  writeFileSync(`${dir}/menu.html`, wrap("Do Not Contact", table({ openMenuId: WITH_MESSAGE })));
+  writeFileSync(`${dir}/message.html`, wrap("Do Not Contact", table({ openMessageId: WITH_MESSAGE })));
   writeFileSync(`${dir}/profile.html`, wrap("Applicant Profile", profile()));
   console.log(dir);
 }

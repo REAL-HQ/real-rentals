@@ -92,6 +92,8 @@ export type DncEntry = {
   fullName: string | null;
   reason: string;
   addedBy: string;
+  /** Auth user id behind addedBy, when the list read has it. Not shown. */
+  addedByUserId?: string | null;
   createdAt: string | null;
   removedAt: string | null;
   removedBy: string | null;
