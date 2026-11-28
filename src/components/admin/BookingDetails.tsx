@@ -24,6 +24,7 @@ import { BookingActions } from "@/components/admin/BookingActions";
 import { CloseoutPreview } from "@/components/admin/CloseoutPreview";
 import { CLOSEOUT_PREVIEW_ENABLED, showsCloseoutPreview } from "@/lib/closeout-preview-flag";
 import { listConditionMedia } from "@/lib/inspections.functions";
+import { ConditionPhotoSections, type ConditionPhotoItem } from "@/components/ConditionPhotoSections";
 import { listAuditLog, type AuditRow } from "@/lib/team.functions";
 import { AgreementViewerDialog } from "@/components/admin/AgreementViewerDialog";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
@@ -620,39 +621,13 @@ function Inspections({ d }: { d: BookingDetail }) {
           <div className="flex items-center gap-2 py-6 text-[13px] text-[#9A9AA3]">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading photos…
           </div>
-        ) : media.length === 0 ? (
-          <p className="text-[13px] text-[#55555E]">
-            No condition photos were taken on this booking.
-          </p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="condition-photos">
-            {media.map((m) => {
-              const url = (m.url as string | null) ?? null;
-              return (
-                <button
-                  key={String(m.id)}
-                  onClick={() => url && setViewing(url)}
-                  className="rounded-lg overflow-hidden border border-[#EDEDF0] bg-white text-left"
-                >
-                  {url ? (
-                    <img
-                      src={url}
-                      alt={String(m.caption ?? m.angle ?? "Condition photo")}
-                      className="h-24 w-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-24 w-full grid place-items-center text-[11px] text-[#9A9AA3]">
-                      Unavailable
-                    </div>
-                  )}
-                  <div className="px-2 py-1 text-[11px] text-[#55555E] truncate">
-                    {titleCase(String(m.phase ?? "")) || "Photo"}
-                    {m.angle ? ` · ${titleCase(String(m.angle))}` : ""}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <ConditionPhotoSections
+            photos={media as ConditionPhotoItem[]}
+            audience="staff"
+            showGps
+            onPreview={(url) => setViewing(url)}
+          />
         )}
       </SectionCard>
 
