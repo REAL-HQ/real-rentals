@@ -271,3 +271,23 @@ describe("reminder ui does not send", () => {
     expect(notice).not.toContain("Send Text");
   });
 });
+
+describe("mileage photo reminder placement", () => {
+  test("Overview does not show the list", () => {
+    const overview = readFileSync("src/components/admin/OverviewPanel.tsx", "utf8");
+    expect(overview).not.toContain("OilChangePhotoReminders");
+    expect(overview).not.toContain("OilChangePhotoNotice");
+  });
+
+  test("the fleet Service card does not show the list at the top", () => {
+    const fleet = readFileSync("src/components/admin/FleetServiceCenter.tsx", "utf8");
+    expect(fleet).not.toContain("OilChangePhotoReminders");
+  });
+
+  test("the list appears when the Needs Odometer filter is selected", () => {
+    const panel = readFileSync("src/components/admin/MaintenancePanel.tsx", "utf8");
+    expect(panel).toContain('import { OilChangePhotoReminders } from "./OilChangePhotoNotice"');
+    expect(panel).toContain('{statusFilter === "needs_odo" && <OilChangePhotoReminders />}');
+    expect(panel).not.toContain('statusFilter === "all" && <OilChangePhotoReminders');
+  });
+});
