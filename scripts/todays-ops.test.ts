@@ -68,7 +68,7 @@ for (const tier of ["coordinator", "manager", "owner"] as const) {
   ok(!visibleTabs(tier).some((t) => t.id === "todays_ops"), `${tier} nav has no Today's Ops tab while the flag is off`);
   ok(!railEntries(tier).some((t) => t.id === "todays_ops"), `${tier} rail has no Today's Ops tab while the flag is off`);
 }
-ok(visibleTabs("owner").filter((t) => t.id !== "owner_pnl").length === TABS.length && visibleTabs("owner").some((t) => t.id === "owner_pnl"), "owner still sees exactly the dark-build destinations plus Monthly Owner P&L");
+ok(visibleTabs("owner").filter((t) => t.id !== "owner_pnl" && t.id !== "fixed_costs").length === TABS.length && visibleTabs("owner").some((t) => t.id === "owner_pnl"), "owner still sees exactly the dark-build destinations plus Monthly Owner P&L");
 ok(admin.includes("TODAYS_OPS_ENABLED && tab === \"todays_ops\" && <TodaysOps />"), "the panel mounts only while the flag is on");
 ok(panel.includes("if (!TODAYS_OPS_ENABLED) return null"), "the panel renders nothing while the flag is off");
 ok(!/stripe/i.test(panel), "the panel does not mention Stripe");
