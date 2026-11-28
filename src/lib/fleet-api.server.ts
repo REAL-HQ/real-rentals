@@ -20,15 +20,27 @@ export const fleetJson = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 
 /** Auth + JSON body. Returns the parsed object, or the Response to send back. */
-export async function fleetRequestBody(request: Request, deps: FleetDeps): Promise<{ body: Record<string, any> } | { response: Response }> {
-  if (request.method !== "POST") return { response: fleetJson(405, { ok: false, error: "POST only." }) };
-  const auth = await fleetApiAuthorized(request, deps.env ?? (process.env as FleetEnv));
-  if (auth === "not_configured") return { response: fleetJson(503, { ok: false, error: "FLEET API is not configured." }) };
-  if (auth !== "ok") return { response: fleetJson(401, { ok: false, error: "Unauthorized." }) };
+export async function fleetRequestBody(
+  request: Request,
+  deps: FleetDeps,
+  methods: readonly string[] = ["POST"],
+): Promise<{ body: Record<string, any> } | { response: Response }> {
+  if (!methods.includes(request.method))
+    return { response: fleetJson(405, { ok: false, error: `${methods.join(" or ")} only.` }) };
+  const denied = await fleetAuthOnly(request, deps);
+  if (denied) return { response: denied };
   let body: any;
   try { body = await request.json(); } catch { return { response: fleetJson(400, { ok: false, error: "Body must be JSON." }) }; }
   if (!body || typeof body !== "object" || Array.isArray(body)) return { response: fleetJson(400, { ok: false, error: "Body must be a JSON object." }) };
   return { body };
+}
+
+/** Bearer check only (for GET reads). Returns the refusal Response, or null when the key is good. */
+export async function fleetAuthOnly(request: Request, deps: FleetDeps): Promise<Response | null> {
+  const auth = await fleetApiAuthorized(request, deps.env ?? (process.env as FleetEnv));
+  if (auth === "not_configured") return fleetJson(503, { ok: false, error: "FLEET API is not configured." });
+  if (auth !== "ok") return fleetJson(401, { ok: false, error: "Unauthorized." });
+  return null;
 }
 
 export async function fleetAdmin(deps: FleetDeps): Promise<any> {

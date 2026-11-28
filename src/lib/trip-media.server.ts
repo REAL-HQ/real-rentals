@@ -30,7 +30,7 @@ export type StoreArgs = {
   mimeType: string;
   sizeBytes: number | null;
   caption: string | null;
-  capturedBy: string;
+  capturedBy: string | null;
   capturedByRole: "staff" | "driver";
 };
 
