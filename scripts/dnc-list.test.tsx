@@ -34,6 +34,7 @@ mock.module("@/components/ui/alert-dialog", () => {
 });
 
 const dnc = await import("../src/lib/dnc");
+const dncMessage = await import("../src/lib/dnc-message");
 const { DncBadge, DncWarningDialog } = await import("../src/components/admin/DncGuard");
 const { TABS, visibleTabs, navOwner, visibleWorkspaceTabs } = await import("../src/components/admin/nav-config");
 
@@ -344,5 +345,97 @@ describe("contact entry points", () => {
       expect(read(f)).not.toMatch(/\(?\b\d{3}\)?[ .-]\d{3}[ .-]\d{4}\b/);
       expect(read(f)).not.toMatch(/@(gmail|yahoo|icloud|hotmail|outlook)\./i);
     }
+  });
+
+  test("every DNC name opens a profile, and the message read stays on the staff session", () => {
+    const panel = read("src/components/admin/DncPanel.tsx");
+    expect(panel).toContain('data-testid="dnc-open-person"');
+    expect(panel).toContain("Open Profile");
+    expect(panel).toContain("View Message");
+    expect(panel).toContain("DNC_NO_MESSAGE_LABEL");
+    expect(panel).not.toContain("e.applicationId ? (");
+    const fns = read("src/lib/dnc.functions.ts");
+    const messages = fns.slice(fns.indexOf("export const getDncTriggerMessages"));
+    expect(messages).toContain("context.supabase");
+    expect(messages).not.toContain("supabaseAdmin");
+    const lookup = read("src/lib/dnc-message.server.ts");
+    expect(lookup).toContain("id, application_id, waitlist_id, full_name, created_at");
+    expect(lookup).not.toContain("phones, emails");
+    expect(read("src/components/admin/DriversPanel.tsx")).toContain("getDriverListRow");
+    expect(read("src/lib/drivers-list.functions.ts")).toContain("driverProfileId");
+  });
+});
+
+describe("trigger message", () => {
+  const { pickDncTrigger, DNC_TRIGGER_LABEL, dncE164, isInboundMessageKind } = dncMessage;
+
+  test("uses the latest inbound on or before Added, and the outbound it answered", () => {
+    const hit = pickDncTrigger(
+      "2026-11-27T18:11:00Z",
+      "Pattie Example",
+      [
+        { id: "later", channel: "sms", body: "After the list", at: "2026-11-27T19:00:00Z" },
+        { id: "text", channel: "sms", body: "Please stop texting me", at: "2026-11-27T16:04:00Z" },
+        { id: "older", channel: "email", body: "Earlier note", at: "2026-11-20T12:00:00Z" },
+      ],
+      [
+        { id: "email-out", channel: "email", body: "An older email", at: "2026-11-27T15:00:00Z" },
+        { id: "promo", channel: "sms", body: "A car is ready this week", at: "2026-11-27T15:40:00Z" },
+        { id: "after-reply", channel: "sms", body: "Sent after the reply", at: "2026-11-27T16:30:00Z" },
+      ],
+    );
+    expect(hit?.id).toBe("text");
+    expect(hit?.inferred).toBe(true);
+    expect(hit?.label).toBe(DNC_TRIGGER_LABEL);
+    expect(hit?.sender).toBe("Pattie Example");
+    expect(hit?.repliedTo?.body).toBe("A car is ready this week");
+    expect(hit?.repliedTo?.channel).toBe("sms");
+  });
+
+  test("falls back to another channel when nothing on the same channel came first", () => {
+    const hit = pickDncTrigger(
+      "2026-11-27T18:00:00Z",
+      "Pat",
+      [{ id: "in", channel: "sms", body: "Stop", at: "2026-11-27T16:00:00Z" }],
+      [{ id: "mail", channel: "email", body: "Hello from email", at: "2026-11-27T12:00:00Z" }],
+    );
+    expect(hit?.repliedTo?.body).toBe("Hello from email");
+  });
+
+  test("an inbound after Added, or no inbound at all, is not a trigger", () => {
+    expect(
+      pickDncTrigger(
+        "2026-11-27T18:00:00Z",
+        "Pat",
+        [{ id: "later", channel: "sms", body: "Too late", at: "2026-11-27T18:00:01Z" }],
+        [],
+      ),
+    ).toBeNull();
+    expect(pickDncTrigger("2026-11-27T18:00:00Z", "Pat", [], [])).toBeNull();
+    expect(pickDncTrigger(null, "Pat", [{ id: "x", channel: "sms", body: "Hi", at: "2026-11-27T18:00:00Z" }], [])).toBeNull();
+  });
+
+  test("a message timestamped exactly at Added still counts", () => {
+    const at = "2026-11-27T18:11:00Z";
+    expect(pickDncTrigger(at, "Pat", [{ id: "same", channel: "email", body: "  ", at }], [])?.body).toBe(
+      "Empty Message",
+    );
+  });
+
+  test("phone helper and inbound kind", () => {
+    expect(dncE164("+1 (813) 555-0100")).toBe("+18135550100");
+    expect(dncE164("555-0100")).toBeNull();
+    expect(isInboundMessageKind("inbound_other")).toBe(true);
+    expect(isInboundMessageKind("staff_message")).toBe(false);
+  });
+});
+
+describe("profile id", () => {
+  test("a duplicate opens the surviving application; a deleted row opens nothing", async () => {
+    const { driverProfileId } = await import("../src/lib/drivers-list");
+    expect(driverProfileId({ id: "app", status: "new", deleted_at: null, primary_application_id: null })).toBe("app");
+    expect(driverProfileId({ id: "dup", status: "duplicate", deleted_at: null, primary_application_id: "app" })).toBe("app");
+    expect(driverProfileId({ id: "gone", status: "new", deleted_at: "2026-11-01T00:00:00Z", primary_application_id: null })).toBeNull();
+    expect(driverProfileId(null)).toBeNull();
   });
 });

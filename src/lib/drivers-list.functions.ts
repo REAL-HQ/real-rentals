@@ -1,8 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireStaff } from "@/lib/roles.server";
 import { tierAllows } from "@/lib/roles";
-import { projectDriverRow, type DriverListRow } from "@/lib/drivers-list";
+import { driverProfileId, projectDriverRow, type DriverListRow } from "@/lib/drivers-list";
 
 /**
  * The Drivers list read, moved to the server.
@@ -51,4 +52,35 @@ export const listDriverRows = createServerFn({ method: "POST" })
       rows: ((data ?? []) as DriverListRow[]).map((r) => projectDriverRow(r, canSeeSensitive)),
       canSeeSensitive,
     };
+  });
+
+/**
+ * One application for a deep link, with the same tier projection as the list.
+ *
+ * The list query does not page, and PostgREST stops at its max-rows (1000 on
+ * Supabase), newest first. An older applicant is in the database but not in
+ * that page, so ?tab=drivers&id= used to land on the list. This is that same
+ * read for the one id the address bar named, including a merged duplicate's
+ * surviving profile.
+ */
+export const getDriverListRow = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }): Promise<DriverListRow | null> => {
+    const actor = await requireStaff(context.userId);
+    const canSeeSensitive = tierAllows(actor.tier, "manager");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const load = async (id: string) => {
+      const { data: row, error } = await supabaseAdmin.from("applications").select("*").eq("id", id).maybeSingle();
+      if (error) throw new Error(error.message);
+      return (row ?? null) as DriverListRow | null;
+    };
+    let row = await load(data.id);
+    let target = driverProfileId(row as { id: string; status?: string | null; deleted_at?: string | null; primary_application_id?: string | null } | null);
+    if (target && row && target !== row.id) {
+      row = await load(target);
+      target = driverProfileId(row as { id: string; status?: string | null; deleted_at?: string | null; primary_application_id?: string | null } | null);
+    }
+    if (!row || target !== row.id) return null;
+    return projectDriverRow(row, canSeeSensitive);
   });
