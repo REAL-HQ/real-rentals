@@ -1,14 +1,15 @@
 import { useMemo, useEffect, useState } from "react";
 import { dailyRateLabel } from "@/lib/rent-standing";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
+import { rowOpenProps, rowHref, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { useServerFn } from "@tanstack/react-start";
 import { CalendarCheck, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "./ui";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { VehicleCell } from "./VehicleCell";
-import { OPEN_COLUMN, ROW_MENU_COLUMN } from "./open-column";
+import { ROW_MENU_COLUMN } from "./open-column";
+import { formatRevenue } from "@/lib/driver-revenue";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -130,6 +131,8 @@ export function ActiveRentalsPanel({
   }, [fetchBoard, reload, previewRows]);
 
   const today = etDateISO();
+  // Revenue is manager data the server attaches to every row of this board.
+  const showRevenue = rows.some((row) => row.driverRevenue !== undefined);
   const owesCount = rows.filter((row) => owesAmount(row.rentOwed)).length;
   const lengthSort: RentalLengthOrder = lengthOrder === "owes" ? "default" : lengthOrder;
   const visible = useMemo(() => {
@@ -197,13 +200,13 @@ export function ActiveRentalsPanel({
           <table className="w-full table-fixed text-left text-sm" data-testid="active-rentals-table">
             <thead className="text-[11px] font-semibold text-[#55555E]">
               <tr className="border-b border-[#EDEDF0]">
-                <th className="w-[16%] px-2 py-2.5 font-semibold">Driver</th>
-                <th className="w-[22%] px-2 py-2.5 font-semibold">Vehicle</th>
+                <th className="w-[14%] px-2 py-2.5 font-semibold">Driver</th>
+                <th className="w-[21%] px-2 py-2.5 font-semibold">Vehicle</th>
                 <th className="w-[14%] px-2 py-2.5 font-semibold">Started</th>
                 <th className="w-[10%] px-2 py-2.5 font-semibold">Rate</th>
+                {showRevenue ? <th className="w-[9%] px-2 py-2.5 font-semibold" data-revenue-header>Revenue</th> : null}
                 <th className="w-[16%] px-2 py-2.5 font-semibold">Due</th>
-                <th className="w-[12%] px-2 py-2.5 font-semibold">Status</th>
-                <th className={`${OPEN_COLUMN} py-2.5 font-semibold`}>Open</th>
+                <th className="w-[10%] px-2 py-2.5 font-semibold">Status</th>
                 <th className={`${ROW_MENU_COLUMN} py-2.5`} aria-hidden="true" />
               </tr>
             </thead>
@@ -219,7 +222,10 @@ export function ActiveRentalsPanel({
                     key={row.id}
                     className={`border-b border-[#EDEDF0] last:border-0 ${ROW_OPEN_CLASS}`}
                     data-testid="active-rental-row"
-                    {...rowOpenProps(() => void navigate({ to: "/admin", search: { tab: "bookings", view: "past", id: row.id } as never }))}
+                    {...rowOpenProps(
+                      () => void navigate({ to: "/admin", search: { tab: "bookings", view: "past", id: row.id } as never }),
+                      rowHref({ tab: "bookings", view: "past", id: row.id }),
+                    )}
                   >
                     <td className="px-2 py-2 align-middle font-medium text-[#111114]">
                       <span className="block truncate">{row.driverName}</span>
@@ -245,6 +251,11 @@ export function ActiveRentalsPanel({
                         formatWeeklyRate(row.weeklyRate)
                       )}
                     </td>
+                    {showRevenue ? (
+                      <td className="px-2 py-2 align-middle whitespace-nowrap tabular-nums" data-testid="revenue-cell">
+                        {formatRevenue(row.driverRevenue)}
+                      </td>
+                    ) : null}
                     <td className="px-2 py-2 align-middle">
                       <span className="block whitespace-nowrap">{formatBoardDate(row.nextPaymentDue) || "No Due Date"}</span>
                       <span className="block text-xs text-muted-foreground">
@@ -277,15 +288,6 @@ export function ActiveRentalsPanel({
                       ) : (
                         <OverdueCellBody row={row} fee={fee} feesLoaded={feesLoaded} lateDue={lateDue} today={today} />
                       )}
-                    </td>
-                    <td className={`${OPEN_COLUMN} py-2`}>
-                        <Link
-                          to="/admin"
-                          search={{ tab: "bookings", view: "past", id: row.id }}
-                          className="inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
-                        >
-                          Open
-                        </Link>
                     </td>
                     <td className={`${ROW_MENU_COLUMN} py-2`}>
                         <DropdownMenu>

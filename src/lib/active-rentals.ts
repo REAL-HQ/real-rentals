@@ -183,6 +183,8 @@ export type ActiveRentalRow = {
   openIncidents: number | null;
   /** Null when the document dates could not be read. */
   documentsExpiring: boolean | null;
+  /** Dollars this driver has paid us to date across all rentals (driver-revenue.ts). Null when it could not be read. Absent in older previews. */
+  driverRevenue?: number | null;
 };
 
 function paymentRank(payment: PaymentFact): string {

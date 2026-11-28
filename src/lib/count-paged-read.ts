@@ -29,6 +29,7 @@ function badCount(count: number | null | undefined): boolean {
 export async function readCounted(
   query: (from: number, to: number) => PromiseLike<CountedPage>,
   cap = COUNTED_MAX,
+  pageSize = COUNTED_PAGE,
 ): Promise<CountedRead> {
   const rows: Record<string, unknown>[] = [];
   const seen = new Set<string>();
@@ -37,7 +38,7 @@ export async function readCounted(
   do {
     const room = stop - rows.length;
     if (room <= 0) break;
-    const size = Math.min(COUNTED_PAGE, room);
+    const size = Math.min(pageSize, room);
     const from = rows.length;
     const to = from + size - 1;
     let page: CountedPage;

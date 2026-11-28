@@ -250,13 +250,22 @@ export const listActiveRentals = createServerFn({ method: "POST" })
         : { ok: false },
     });
 
+    // Money this driver has paid us to date (driver-revenue.ts). The board is
+    // manager-only already. A failed read is null, shown as a dash.
+    const { loadDriverRevenue } = await import("@/lib/driver-revenue.server");
+    const revenue = await loadDriverRevenue(supabaseAdmin, applicationIds);
+
     const thumbnailFor = chooseVehicleThumbnailPaths(
       (media.data ?? []) as VehicleThumbnailMedia[],
       thumbnailSettings.data ?? [],
     );
 
     return {
-      rows: rows.map((row) => ({ ...row, thumbnailPath: row.vehicleId ? thumbnailFor.get(row.vehicleId) ?? null : null })),
+      rows: rows.map((row) => ({
+        ...row,
+        thumbnailPath: row.vehicleId ? thumbnailFor.get(row.vehicleId) ?? null : null,
+        driverRevenue: revenue.ok && row.applicationId ? revenue.totals[row.applicationId] ?? 0 : null,
+      })),
       today,
       paymentsLoaded: paymentsRead.ok,
       issuesLoaded: issuesRead.ok,
