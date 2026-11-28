@@ -640,7 +640,7 @@ function templateSendRefusal(meta: TemplateMeta): string | null {
 }
 
 /**
- * The agreement new sends use when no saved template is active: v1.17
+ * The agreement new sends use when no saved template is active: v1.18
  * (Insurance Included; agreement-library.ts DEFAULT_LIBRARY_KEY). Signed
  * agreements keep the text they were signed with.
  */
@@ -792,7 +792,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     prep = amendment.prep ? forceNoFee(amendment.prep) : undefined;
     templateKey = amendment.templateKey ?? templateKey;
   }
-  // No template named: a saved, active template wins; otherwise the default (v1.17).
+  // No template named: a saved, active template wins; otherwise the default (v1.18).
   let key = templateKey;
   let saved: { body: string; meta: TemplateMeta } | null = null;
   if (!key) {

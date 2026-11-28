@@ -24,7 +24,7 @@ try {
     const filters = document.querySelector('[data-toolbar-filters]');
     const actions = document.querySelector('[data-toolbar-actions]');
     const table = document.querySelector('[aria-label="Vehicles Table"]');
-    return { viewFonts:[...actions.querySelectorAll("button")].filter(el=>["List","Cards"].includes(el.textContent.trim())).map(el=>parseFloat(getComputedStyle(el).fontSize)), zoom:visualViewport.scale, font:parseFloat(getComputedStyle(document.querySelector('[data-toolbar-search] input')).fontSize), tableFont:parseFloat(getComputedStyle(document.querySelector('table')).fontSize), page:document.documentElement.scrollWidth, window:innerWidth, primary:rect(primary), filters:rect(filters), search:rect(document.querySelector('[data-toolbar-search] input')), selects:[...filters.querySelectorAll('[role="combobox"]')].map(rect), actions:[...actions.children].filter(visible).map(rect), controls:[...actions.querySelectorAll('button')].filter(visible).map(rect), actionBox:rect(actions), table:table && { ...rect(table), scrollWidth:table.scrollWidth, clientWidth:table.clientWidth, overflow:getComputedStyle(table).overflowX }, context:rect(document.querySelector('[data-toolbar-context]')), open:(()=>{const b=document.querySelector('[data-vehicles-open-col] button'); return b && rect(b);})() };
+    return { viewFonts:[...actions.querySelectorAll("button")].filter(el=>["List","Cards"].includes(el.textContent.trim())).map(el=>parseFloat(getComputedStyle(el).fontSize)), zoom:visualViewport.scale, font:parseFloat(getComputedStyle(document.querySelector('[data-toolbar-search] input')).fontSize), tableFont:parseFloat(getComputedStyle(document.querySelector('table')).fontSize), page:document.documentElement.scrollWidth, window:innerWidth, primary:rect(primary), filters:rect(filters), search:rect(document.querySelector('[data-toolbar-search] input')), selects:[...filters.querySelectorAll('[role="combobox"]')].map(rect), actions:[...actions.children].filter(visible).map(rect), controls:[...actions.querySelectorAll('button')].filter(visible).map(rect), actionBox:rect(actions), table:table && { ...rect(table), scrollWidth:table.scrollWidth, clientWidth:table.clientWidth, overflow:getComputedStyle(table).overflowX }, context:rect(document.querySelector('[data-toolbar-context]')) };
    });
    const label = `${variant} at ${width}px`;
    assert(layout.page <= width + 1, `${label}: no page overflow ${JSON.stringify(layout)}`);
@@ -48,9 +48,9 @@ try {
    }
    if (width >= 1280 && (variant !== "maintenance" || width >= 1440)) {
      assert.equal(new Set(controls.map(r=>Math.round(r.y))).size,1, `${label}: compact single desktop row at 100%`);
-     // Integration's table keeps min-w-[64rem] with a pinned Open column, so at
-    // 1280 it may scroll sideways; Open must still be fully visible.
-    assert(layout.table.scrollWidth <= layout.table.clientWidth+1 || (layout.open && layout.open.right <= layout.table.right+1 && layout.open.x >= layout.table.x), `${label}: all columns fit, or Open stays visible while the table scrolls`);
+     // The table keeps min-w-[64rem], so at 1280 it may scroll sideways inside its card.
+     // There is no Open column any more: the whole row opens the vehicle.
+    assert(layout.table.scrollWidth <= layout.table.clientWidth+1 || layout.table.overflow === "auto", `${label}: all columns fit, or the table scrolls inside its card`);
    }
    if (width === 1024) {
      assert.equal(new Set(layout.actions.map(r=>Math.round(r.y))).size,1, `${label}: whole action group wraps coherently`);

@@ -10,7 +10,7 @@
  *      Vehicle → Swap Vehicle). Only Available, Rental Ready cars that are on
  *      no other open rental can be picked.
  *   2. A swap agreement is generated from the current default template
- *      (v1.17) through the normal agreement step (prepareAgreement /
+ *      (v1.18) through the normal agreement step (prepareAgreement /
  *      issueAgreement): it names the NEW car (full VIN, plate, colour), keeps
  *      the rental's weekly rate and payment choices, carries no Reservation
  *      Fee, and prints a Vehicle Swap notice at the top.
@@ -36,7 +36,7 @@ export const VEHICLE_SWAP_FN = "complete_rental_vehicle_swap_tx";
 export const VEHICLE_SWAP_MIGRATION = "20261120171500_rental_vehicle_swaps.sql";
 export const VEHICLE_SWAP_TITLE = "Vehicle Swap Addendum To Rental Agreement";
 /** The terms every swap moves the renter onto (Dolmar t542u: "Upgrade to new terms"). Fixed, not a choice. */
-export const SWAP_TERMS_VERSION = "v1.17";
+export const SWAP_TERMS_VERSION = "v1.18";
 
 export const SWAP_REASON_CODES = ["upgrade", "downgrade", "maintenance", "damage", "replacement", "other"] as const;
 export type SwapReasonCode = (typeof SWAP_REASON_CODES)[number];
