@@ -241,7 +241,9 @@ export const getVehicleMaintenanceTrack = createServerFn({ method: "POST" })
     const { loadVehicleMaintenance } = await import("@/lib/maintenance.server");
     const view = await loadVehicleMaintenance(sb, data.vehicleId);
     if (!view) return { ok: false as const, error: "Vehicle not found." };
-    return { ok: true as const, ...view };
+    const { oilChangeReminderForVehicle } = await import("@/lib/oil-next-due.server");
+    const oilChangeReminder = await oilChangeReminderForVehicle(sb, view).catch(() => null);
+    return { ok: true as const, ...view, oil_change_reminder: oilChangeReminder };
   });
 
 export const setNextServiceDue = createServerFn({ method: "POST" })

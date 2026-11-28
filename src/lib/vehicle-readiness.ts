@@ -14,6 +14,7 @@
 // This file mirrors the DB rules for display only.
 import { checkVin } from "@/lib/vin";
 import { presentSlots } from "@/lib/vehicle-doc-presence";
+import { isOilChangeItem, OIL_CHANGE_REMINDER_WINDOW_MILES } from "@/lib/oil-next-due";
 
 export const ONBOARDING_STATUS = "onboarding";
 
@@ -196,8 +197,9 @@ export function vehicleReadinessChecks(v: V, f: ReadinessFacts, docKinds: string
       : { key: "inspection", label: "Pre-Delivery Inspection", category: "operational", status: "ready", value: "Passed", reason: `Passed ${mdY(f.lastPreDeliveryPassedAt)}.` });
   }
   const odo = v.current_odometer != null ? Number(v.current_odometer) : null;
+  const milesWindow = (item: string) => (isOilChangeItem(item) ? OIL_CHANGE_REMINDER_WINDOW_MILES : 500);
   const overdue = f.schedules.filter((s) => (s.next_due_on && daysUntil(s.next_due_on, today) < 0) || (odo != null && s.next_due_miles != null && odo >= s.next_due_miles));
-  const soon = f.schedules.filter((s) => !overdue.includes(s) && ((s.next_due_on && daysUntil(s.next_due_on, today) <= SOON_DAYS) || (odo != null && s.next_due_miles != null && s.next_due_miles - odo <= 500)));
+  const soon = f.schedules.filter((s) => !overdue.includes(s) && ((s.next_due_on && daysUntil(s.next_due_on, today) <= SOON_DAYS) || (odo != null && s.next_due_miles != null && s.next_due_miles - odo <= milesWindow(s.item))));
   checks.push(!f.schedules.length
     ? { key: "maintenance", label: "Maintenance", category: "operational", status: "info", value: "No Schedule", reason: "No service schedule set up yet.", fix: { kind: "tab", tab: "service" }, fixLabel: "Open Service" }
     : overdue.length

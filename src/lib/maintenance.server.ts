@@ -283,7 +283,7 @@ export async function loadVehicleMaintenance(
   sb: any,
   vehicleId: string,
 ): Promise<VehicleMaintenanceView | null> {
-  const [{ data: vehicle, error: vehicleErr }, schedules, readings, records] = await Promise.all([
+  const [{ data: vehicle, error: vehicleErr }, schedules, readings, records, oilSources] = await Promise.all([
     sb.from("vehicles").select(VEHICLE_COLUMNS).eq("id", vehicleId).maybeSingle(),
     sb
       .from("maintenance_schedules")
@@ -305,6 +305,7 @@ export async function loadVehicleMaintenance(
       .ilike("item", "monthly inspection")
       .order("performed_on", { ascending: false })
       .limit(INSPECTION_HISTORY_LIMIT + 1),
+    import("@/lib/oil-next-due.server").then((mod) => mod.loadOilDueSources(sb, vehicleId)),
   ]);
   if (vehicleErr) throw new Error("Could not load the vehicle.");
   if (!vehicle) return null;
@@ -315,6 +316,8 @@ export async function loadVehicleMaintenance(
     schedules: (schedules.data ?? []) as ScheduleRow[],
     readings: (readings.data ?? []) as ReadingRow[],
     records: (records.data ?? []) as InspectionRecordRow[],
+    oilRecords: oilSources.oilRecords,
+    settingsIntervals: oilSources.settingsIntervals,
   });
 }
 

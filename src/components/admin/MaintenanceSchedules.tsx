@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { CalendarClock, Plus, X, Check, Wrench, Trash2 } from "lucide-react";
 import { StatusPill, EmptyState, MicroLabel } from "./ui";
 import { fmtDate } from "@/lib/date-format";
+import { isOilChangeItem, OIL_CHANGE_REMINDER_WINDOW_MILES } from "@/lib/oil-next-due";
 
 type Schedule = {
   id: string;
@@ -65,10 +66,16 @@ export type DueState = { due: boolean; soon: boolean; reasons: string[] };
  * and the odometer. Either axis can trip it — an oil change is due at 5,000
  * miles OR six months, whichever lands first.
  */
-export function scheduleDueState(s: Schedule, odometer: number | null): DueState {
+export function scheduleDueState(
+  s: Schedule,
+  odometer: number | null,
+  effectiveOilMiles?: number | null,
+): DueState {
   const reasons: string[] = [];
   let due = false;
   let soon = false;
+  const dueMiles = s.next_due_miles ?? (isOilChangeItem(s.item) ? effectiveOilMiles ?? null : null);
+  const soonMiles = isOilChangeItem(s.item) ? OIL_CHANGE_REMINDER_WINDOW_MILES : 500;
 
   if (s.next_due_on) {
     const days = Math.round((new Date(s.next_due_on).getTime() - Date.now()) / 86400000);
@@ -81,12 +88,12 @@ export function scheduleDueState(s: Schedule, odometer: number | null): DueState
     }
   }
 
-  if (s.next_due_miles != null && odometer != null && odometer > 0) {
-    const left = s.next_due_miles - odometer;
+  if (dueMiles != null && odometer != null && odometer > 0) {
+    const left = dueMiles - odometer;
     if (left <= 0) {
       due = true;
       reasons.push(`${Math.abs(left).toLocaleString()} mi over`);
-    } else if (left <= 500) {
+    } else if (left <= soonMiles) {
       soon = true;
       reasons.push(`${left.toLocaleString()} mi left`);
     }

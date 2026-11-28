@@ -733,6 +733,15 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
       .limit(1)
       .maybeSingle();
 
+    const { loadOilDueSources } = await import("@/lib/oil-next-due.server");
+    const { companyOilChangeIntervalMiles, lastCompletedOilServiceMiles, oilDueMilesForAlert, parseOilMiles } = await import("@/lib/oil-next-due");
+    const oilSources = await loadOilDueSources(supabaseAdmin, data.id);
+    const oilInputs = {
+      lastOilServiceMiles: lastCompletedOilServiceMiles(oilSources.oilRecords),
+      latestOdometerMiles: parseOilMiles(v.current_odometer),
+      settingsIntervalMiles: companyOilChangeIntervalMiles(oilSources.settingsIntervals),
+    };
+
     let finance: VehicleProfile["finance"] = null;
     // Acquisition, lender, lien and payoff data: Owner only (DB policy matches).
     if (isOwnerView) {
@@ -845,7 +854,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
         ? {
             item: schedule.item,
             due_date: schedule.next_due_on,
-            due_mileage: schedule.next_due_miles,
+            due_mileage: oilDueMilesForAlert(schedule.item, schedule.next_due_miles, oilInputs),
           }
         : null,
       financials,
@@ -864,7 +873,11 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
         ]);
         return {
           lastPreDeliveryPassedAt: (insp.data as any)?.completed_at ?? null,
-          schedules: ((sched.data ?? []) as any[]).map((s) => ({ item: s.item, next_due_on: s.next_due_on, next_due_miles: s.next_due_miles })),
+          schedules: ((sched.data ?? []) as any[]).map((s) => ({
+            item: s.item,
+            next_due_on: s.next_due_on,
+            next_due_miles: oilDueMilesForAlert(s.item, s.next_due_miles, oilInputs),
+          })),
           openIssues: ((iss.data ?? []) as any[]).map((i) => ({ title: i.title, severity: i.severity })),
           openIncidents: ((inc.data ?? []) as any[]).map((i) => ({ type: i.incident_type, severity: i.severity, drivable: i.drivable })),
           hasActiveRental: !!rental,
