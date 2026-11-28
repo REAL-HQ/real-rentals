@@ -37,7 +37,8 @@ const dnc = await import("../src/lib/dnc");
 const dncMessage = await import("../src/lib/dnc-message");
 const dncAddedBy = await import("../src/lib/dnc-added-by");
 const { DncBadge, DncWarningDialog } = await import("../src/components/admin/DncGuard");
-const { TABS, visibleTabs, navOwner, visibleWorkspaceTabs } = await import("../src/components/admin/nav-config");
+const { TABS, visibleTabs, navOwner, visibleWorkspaceTabs } =
+  await import("../src/components/admin/nav-config");
 
 const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 
@@ -127,6 +128,56 @@ describe("matching", () => {
     expect(dnc.dncMatchesSearch(entry(), "asked")).toBe(true);
     expect(dnc.dncMatchesSearch(entry(), "manager")).toBe(true);
     expect(dnc.dncMatchesSearch(entry(), "zzz")).toBe(false);
+  });
+
+  test("DNC tab search finds people by phone (any format) or email", () => {
+    for (const q of [
+      "5550100199",
+      "(555) 010-0199",
+      "555.010.0199",
+      "+1 555 010 0199",
+      "1-555-010-0199",
+      "0100199",
+      "199",
+    ])
+      expect(dnc.dncMatchesSearch(entry(), q)).toBe(true);
+    for (const q of ["Pat@Example.com", "pat@", "example.com"])
+      expect(dnc.dncMatchesSearch(entry(), q)).toBe(true);
+    // Too short to be a phone, a different number, or a different email.
+    expect(dnc.dncMatchesSearch(entry(), "55")).toBe(false);
+    expect(dnc.dncMatchesSearch(entry(), "(555) 010-0177")).toBe(false);
+    expect(dnc.dncMatchesSearch(entry(), "lee@example.com")).toBe(false);
+    // An entry without contact details still searches by name; digits never match it.
+    expect(dnc.dncMatchesSearch(entry({ phones: [], emails: [] }), "pat")).toBe(true);
+    expect(dnc.dncMatchesSearch(entry({ phones: [], emails: [] }), "5550100199")).toBe(false);
+    // A plain DncEntry (no contact arrays) does not throw.
+    const { phones: _p, emails: _e, ...plain } = entry();
+    expect(dnc.dncMatchesSearch(plain, "0100199")).toBe(false);
+  });
+});
+
+describe("DNC tab contact column", () => {
+  test("shows formatted phones and emails as plain text, not contact links", async () => {
+    const { DncContact } = await import("../src/components/admin/DncPanel");
+    const html = renderToStaticMarkup(
+      <DncContact entry={{ phones: ["5550100199"], emails: ["pat@example.com"] }} />,
+    );
+    expect(html).toContain("(555) 010-0199");
+    expect(html).toContain("pat@example.com");
+    expect(html).not.toMatch(/href="(tel|sms|mailto):/);
+    expect(html).not.toMatch(/\b(absolute|fixed|sticky)\b/);
+    expect(renderToStaticMarkup(<DncContact entry={{ phones: [], emails: [] }} />)).toContain("—");
+  });
+
+  test("the DNC tab loads contact columns and searches them", () => {
+    const panel = read("src/components/admin/DncPanel.tsx");
+    expect(panel).toContain("Search Name, Phone, Email Or Reason");
+    expect(panel).toContain("<DncContact entry={e} />");
+    expect(panel).toContain(">\n                  Contact\n");
+    const server = read("src/lib/dnc.server.ts");
+    expect(server).toMatch(/listDncEntries[\s\S]*?\.select\([\s\S]*?INDEX_COLS/);
+    // Still staff-gated on the server.
+    expect(read("src/lib/dnc.functions.ts")).toMatch(/export const listDnc[\s\S]*?requireStaff/);
   });
 });
 

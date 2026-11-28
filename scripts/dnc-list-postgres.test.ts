@@ -181,7 +181,7 @@ describe.skipIf(skip)("internal DNC list in Postgres", () => {
     expect(anon.ok).toBe(false);
   });
 
-  test("staff read display columns only; non-staff see nothing; browsers cannot write", () => {
+  test("before 20261127180000: staff read display columns only; non-staff see nothing; browsers cannot write", () => {
     const id = addRow();
     expect(
       asUser(true, `SELECT full_name || '|' || reason FROM public.dnc_list WHERE id = '${id}'`).out,
@@ -299,5 +299,64 @@ describe.skipIf(skip)("internal DNC list in Postgres", () => {
         `SELECT count(*) FROM public.dnc_list WHERE full_name = 'Wai Lister' AND waitlist_id IS NULL`,
       ),
     ).toBe("1");
+  });
+
+  test("20261127180000: staff can read phones / emails; non-staff and anon still nothing; no writes", () => {
+    const next = readFileSync(
+      new URL(
+        "../supabase/migrations/20261127180000_dnc_list_staff_contact_columns.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    must(next);
+    must(next); // re-runnable
+    expect(
+      must(
+        `SELECT relrowsecurity || ',' || relforcerowsecurity FROM pg_class WHERE oid = 'public.dnc_list'::regclass`,
+      ),
+    ).toBe("true,true");
+    for (const col of ["phones", "emails"]) {
+      expect(
+        must(`SELECT has_column_privilege('authenticated', 'public.dnc_list', '${col}', 'SELECT')`),
+      ).toBe("t");
+      expect(
+        must(`SELECT has_column_privilege('anon', 'public.dnc_list', '${col}', 'SELECT')`),
+      ).toBe("f");
+    }
+    // Still no table-level SELECT (added_by / removed_by uuids stay server-only) and no writes.
+    expect(must(`SELECT has_table_privilege('authenticated', 'public.dnc_list', 'SELECT')`)).toBe(
+      "f",
+    );
+    for (const priv of ["INSERT", "UPDATE", "DELETE", "TRUNCATE"]) {
+      expect(
+        must(`SELECT has_table_privilege('authenticated', 'public.dnc_list', '${priv}')`),
+      ).toBe("f");
+      expect(must(`SELECT has_table_privilege('anon', 'public.dnc_list', '${priv}')`)).toBe("f");
+    }
+    expect(
+      must(`SELECT has_any_column_privilege('authenticated', 'public.dnc_list', 'UPDATE')`),
+    ).toBe("f");
+    expect(
+      must(`SELECT has_any_column_privilege('authenticated', 'public.dnc_list', 'INSERT')`),
+    ).toBe("f");
+    expect(must(`SELECT has_any_column_privilege('anon', 'public.dnc_list', 'SELECT')`)).toBe("f");
+
+    must(`INSERT INTO public.dnc_list (person_type, full_name, phones, emails, reason, added_by_label)
+      VALUES ('lead', 'Contact Check', ARRAY['5550100133'], ARRAY['cc@example.com'], 'Asked not to be contacted', 'x (Owner)')`);
+    expect(
+      asUser(
+        true,
+        `SELECT phones[1] || '|' || emails[1] FROM public.dnc_list WHERE full_name = 'Contact Check'`,
+      ).out,
+    ).toBe("5550100133|cc@example.com");
+    // Non-staff authenticated: the policy still hides every row.
+    expect(asUser(false, `SELECT count(*) FROM public.dnc_list WHERE phones IS NOT NULL`).out).toBe(
+      "0",
+    );
+    expect(psql(`SET ROLE anon; SELECT phones FROM public.dnc_list;`).ok).toBe(false);
+    expect(asUser(true, `SELECT added_by FROM public.dnc_list`).ok).toBe(false);
+    expect(asUser(true, `UPDATE public.dnc_list SET phones = '{}'`).ok).toBe(false);
+    expect(asUser(true, `DELETE FROM public.dnc_list`).ok).toBe(false);
   });
 });

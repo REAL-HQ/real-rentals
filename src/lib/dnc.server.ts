@@ -108,13 +108,13 @@ export async function loadDncNameSources(admin: any, userIds: string[]): Promise
   return sources;
 }
 
-/** Every entry (active first, newest first), for the DNC section. */
+/** Every entry (active first, newest first), with phones / emails, for the DNC section (staff only). */
 export async function listDncEntries(
   admin: any,
-): Promise<{ installed: boolean; entries: DncEntry[]; nameSources: DncNameSource[] }> {
+): Promise<{ installed: boolean; entries: DncIndexEntry[]; nameSources: DncNameSource[] }> {
   const { data, error } = await admin
     .from("dnc_list")
-    .select(`${ENTRY_COLS},added_by`)
+    .select(`${INDEX_COLS},added_by`)
     .order("created_at", { ascending: false })
     .limit(2000);
   if (error) {
@@ -126,7 +126,7 @@ export async function listDncEntries(
     admin,
     rows.map((row) => String(row.added_by ?? "")),
   );
-  const entries = rows.map(toDncEntry);
+  const entries = rows.map(toIndexEntry);
   entries.sort((a, b) => Number(!!a.removedAt) - Number(!!b.removedAt));
   return { installed: true, entries, nameSources };
 }
