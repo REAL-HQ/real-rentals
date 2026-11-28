@@ -69,6 +69,8 @@ import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
 import { Route as ApiPublicFleetProfileNoteRouteImport } from './routes/api/public/fleet/profile-note'
 import { Route as ApiPublicFleetRefundReservationRouteImport } from './routes/api/public/fleet/refund-reservation'
+import { Route as ApiPublicFleetRentalInspectionPhotoRouteImport } from './routes/api/public/fleet/rental-inspection-photo'
+import { Route as ApiPublicFleetRentalPickupOdometerRouteImport } from './routes/api/public/fleet/rental-pickup-odometer'
 import { Route as ApiPublicFleetResendLinkRouteImport } from './routes/api/public/fleet/resend-link'
 import { Route as ApiPublicFleetReservationFeeLinkRouteImport } from './routes/api/public/fleet/reservation-fee-link'
 import { Route as ApiPublicFleetScreeningResultRouteImport } from './routes/api/public/fleet/screening-result'
@@ -76,6 +78,8 @@ import { Route as ApiPublicFleetSendAgreementRouteImport } from './routes/api/pu
 import { Route as ApiPublicFleetServiceDueRouteImport } from './routes/api/public/fleet/service-due'
 import { Route as ApiPublicFleetStatusRouteImport } from './routes/api/public/fleet/status'
 import { Route as ApiPublicFleetTeamAlertRouteImport } from './routes/api/public/fleet/team-alert'
+import { Route as ApiPublicFleetVehicleExpensesRouteImport } from './routes/api/public/fleet/vehicle-expenses'
+import { Route as ApiPublicFleetVehicleExpensesListRouteImport } from './routes/api/public/fleet/vehicle-expenses-list'
 import { Route as ApiPublicFleetVehicleMaintenanceRouteImport } from './routes/api/public/fleet/vehicle-maintenance'
 import { Route as ApiPublicInboundEmailRouteImport } from './routes/api/public/inbound/email'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
@@ -411,6 +415,18 @@ const ApiPublicFleetRefundReservationRoute =
     path: '/api/public/fleet/refund-reservation',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetRentalInspectionPhotoRoute =
+  ApiPublicFleetRentalInspectionPhotoRouteImport.update({
+    id: '/api/public/fleet/rental-inspection-photo',
+    path: '/api/public/fleet/rental-inspection-photo',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicFleetRentalPickupOdometerRoute =
+  ApiPublicFleetRentalPickupOdometerRouteImport.update({
+    id: '/api/public/fleet/rental-pickup-odometer',
+    path: '/api/public/fleet/rental-pickup-odometer',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetResendLinkRoute =
   ApiPublicFleetResendLinkRouteImport.update({
     id: '/api/public/fleet/resend-link',
@@ -451,6 +467,18 @@ const ApiPublicFleetTeamAlertRoute = ApiPublicFleetTeamAlertRouteImport.update({
   path: '/api/public/fleet/team-alert',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicFleetVehicleExpensesRoute =
+  ApiPublicFleetVehicleExpensesRouteImport.update({
+    id: '/api/public/fleet/vehicle-expenses',
+    path: '/api/public/fleet/vehicle-expenses',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicFleetVehicleExpensesListRoute =
+  ApiPublicFleetVehicleExpensesListRouteImport.update({
+    id: '/api/public/fleet/vehicle-expenses-list',
+    path: '/api/public/fleet/vehicle-expenses-list',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetVehicleMaintenanceRoute =
   ApiPublicFleetVehicleMaintenanceRouteImport.update({
     id: '/api/public/fleet/vehicle-maintenance',
@@ -563,6 +591,8 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/profile-note': typeof ApiPublicFleetProfileNoteRoute
   '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
+  '/api/public/fleet/rental-inspection-photo': typeof ApiPublicFleetRentalInspectionPhotoRoute
+  '/api/public/fleet/rental-pickup-odometer': typeof ApiPublicFleetRentalPickupOdometerRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
@@ -570,6 +600,8 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/service-due': typeof ApiPublicFleetServiceDueRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
+  '/api/public/fleet/vehicle-expenses': typeof ApiPublicFleetVehicleExpensesRoute
+  '/api/public/fleet/vehicle-expenses-list': typeof ApiPublicFleetVehicleExpensesListRoute
   '/api/public/fleet/vehicle-maintenance': typeof ApiPublicFleetVehicleMaintenanceRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -641,6 +673,8 @@ export interface FileRoutesByTo {
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/profile-note': typeof ApiPublicFleetProfileNoteRoute
   '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
+  '/api/public/fleet/rental-inspection-photo': typeof ApiPublicFleetRentalInspectionPhotoRoute
+  '/api/public/fleet/rental-pickup-odometer': typeof ApiPublicFleetRentalPickupOdometerRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
@@ -648,6 +682,8 @@ export interface FileRoutesByTo {
   '/api/public/fleet/service-due': typeof ApiPublicFleetServiceDueRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
+  '/api/public/fleet/vehicle-expenses': typeof ApiPublicFleetVehicleExpensesRoute
+  '/api/public/fleet/vehicle-expenses-list': typeof ApiPublicFleetVehicleExpensesListRoute
   '/api/public/fleet/vehicle-maintenance': typeof ApiPublicFleetVehicleMaintenanceRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -720,6 +756,8 @@ export interface FileRoutesById {
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/profile-note': typeof ApiPublicFleetProfileNoteRoute
   '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
+  '/api/public/fleet/rental-inspection-photo': typeof ApiPublicFleetRentalInspectionPhotoRoute
+  '/api/public/fleet/rental-pickup-odometer': typeof ApiPublicFleetRentalPickupOdometerRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
@@ -727,6 +765,8 @@ export interface FileRoutesById {
   '/api/public/fleet/service-due': typeof ApiPublicFleetServiceDueRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
+  '/api/public/fleet/vehicle-expenses': typeof ApiPublicFleetVehicleExpensesRoute
+  '/api/public/fleet/vehicle-expenses-list': typeof ApiPublicFleetVehicleExpensesListRoute
   '/api/public/fleet/vehicle-maintenance': typeof ApiPublicFleetVehicleMaintenanceRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -800,6 +840,8 @@ export interface FileRouteTypes {
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/profile-note'
     | '/api/public/fleet/refund-reservation'
+    | '/api/public/fleet/rental-inspection-photo'
+    | '/api/public/fleet/rental-pickup-odometer'
     | '/api/public/fleet/resend-link'
     | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
@@ -807,6 +849,8 @@ export interface FileRouteTypes {
     | '/api/public/fleet/service-due'
     | '/api/public/fleet/status'
     | '/api/public/fleet/team-alert'
+    | '/api/public/fleet/vehicle-expenses'
+    | '/api/public/fleet/vehicle-expenses-list'
     | '/api/public/fleet/vehicle-maintenance'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
@@ -878,6 +922,8 @@ export interface FileRouteTypes {
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/profile-note'
     | '/api/public/fleet/refund-reservation'
+    | '/api/public/fleet/rental-inspection-photo'
+    | '/api/public/fleet/rental-pickup-odometer'
     | '/api/public/fleet/resend-link'
     | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
@@ -885,6 +931,8 @@ export interface FileRouteTypes {
     | '/api/public/fleet/service-due'
     | '/api/public/fleet/status'
     | '/api/public/fleet/team-alert'
+    | '/api/public/fleet/vehicle-expenses'
+    | '/api/public/fleet/vehicle-expenses-list'
     | '/api/public/fleet/vehicle-maintenance'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
@@ -956,6 +1004,8 @@ export interface FileRouteTypes {
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/profile-note'
     | '/api/public/fleet/refund-reservation'
+    | '/api/public/fleet/rental-inspection-photo'
+    | '/api/public/fleet/rental-pickup-odometer'
     | '/api/public/fleet/resend-link'
     | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
@@ -963,6 +1013,8 @@ export interface FileRouteTypes {
     | '/api/public/fleet/service-due'
     | '/api/public/fleet/status'
     | '/api/public/fleet/team-alert'
+    | '/api/public/fleet/vehicle-expenses'
+    | '/api/public/fleet/vehicle-expenses-list'
     | '/api/public/fleet/vehicle-maintenance'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
@@ -1035,6 +1087,8 @@ export interface RootRouteChildren {
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
   ApiPublicFleetProfileNoteRoute: typeof ApiPublicFleetProfileNoteRoute
   ApiPublicFleetRefundReservationRoute: typeof ApiPublicFleetRefundReservationRoute
+  ApiPublicFleetRentalInspectionPhotoRoute: typeof ApiPublicFleetRentalInspectionPhotoRoute
+  ApiPublicFleetRentalPickupOdometerRoute: typeof ApiPublicFleetRentalPickupOdometerRoute
   ApiPublicFleetResendLinkRoute: typeof ApiPublicFleetResendLinkRoute
   ApiPublicFleetReservationFeeLinkRoute: typeof ApiPublicFleetReservationFeeLinkRoute
   ApiPublicFleetScreeningResultRoute: typeof ApiPublicFleetScreeningResultRoute
@@ -1042,6 +1096,8 @@ export interface RootRouteChildren {
   ApiPublicFleetServiceDueRoute: typeof ApiPublicFleetServiceDueRoute
   ApiPublicFleetStatusRoute: typeof ApiPublicFleetStatusRoute
   ApiPublicFleetTeamAlertRoute: typeof ApiPublicFleetTeamAlertRoute
+  ApiPublicFleetVehicleExpensesRoute: typeof ApiPublicFleetVehicleExpensesRoute
+  ApiPublicFleetVehicleExpensesListRoute: typeof ApiPublicFleetVehicleExpensesListRoute
   ApiPublicFleetVehicleMaintenanceRoute: typeof ApiPublicFleetVehicleMaintenanceRoute
   ApiPublicInboundEmailRoute: typeof ApiPublicInboundEmailRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
@@ -1475,6 +1531,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetRefundReservationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/rental-inspection-photo': {
+      id: '/api/public/fleet/rental-inspection-photo'
+      path: '/api/public/fleet/rental-inspection-photo'
+      fullPath: '/api/public/fleet/rental-inspection-photo'
+      preLoaderRoute: typeof ApiPublicFleetRentalInspectionPhotoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/rental-pickup-odometer': {
+      id: '/api/public/fleet/rental-pickup-odometer'
+      path: '/api/public/fleet/rental-pickup-odometer'
+      fullPath: '/api/public/fleet/rental-pickup-odometer'
+      preLoaderRoute: typeof ApiPublicFleetRentalPickupOdometerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/resend-link': {
       id: '/api/public/fleet/resend-link'
       path: '/api/public/fleet/resend-link'
@@ -1522,6 +1592,20 @@ declare module '@tanstack/react-router' {
       path: '/api/public/fleet/team-alert'
       fullPath: '/api/public/fleet/team-alert'
       preLoaderRoute: typeof ApiPublicFleetTeamAlertRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/vehicle-expenses': {
+      id: '/api/public/fleet/vehicle-expenses'
+      path: '/api/public/fleet/vehicle-expenses'
+      fullPath: '/api/public/fleet/vehicle-expenses'
+      preLoaderRoute: typeof ApiPublicFleetVehicleExpensesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/vehicle-expenses-list': {
+      id: '/api/public/fleet/vehicle-expenses-list'
+      path: '/api/public/fleet/vehicle-expenses-list'
+      fullPath: '/api/public/fleet/vehicle-expenses-list'
+      preLoaderRoute: typeof ApiPublicFleetVehicleExpensesListRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/fleet/vehicle-maintenance': {
@@ -1651,6 +1735,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
   ApiPublicFleetProfileNoteRoute: ApiPublicFleetProfileNoteRoute,
   ApiPublicFleetRefundReservationRoute: ApiPublicFleetRefundReservationRoute,
+  ApiPublicFleetRentalInspectionPhotoRoute:
+    ApiPublicFleetRentalInspectionPhotoRoute,
+  ApiPublicFleetRentalPickupOdometerRoute:
+    ApiPublicFleetRentalPickupOdometerRoute,
   ApiPublicFleetResendLinkRoute: ApiPublicFleetResendLinkRoute,
   ApiPublicFleetReservationFeeLinkRoute: ApiPublicFleetReservationFeeLinkRoute,
   ApiPublicFleetScreeningResultRoute: ApiPublicFleetScreeningResultRoute,
@@ -1658,6 +1746,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetServiceDueRoute: ApiPublicFleetServiceDueRoute,
   ApiPublicFleetStatusRoute: ApiPublicFleetStatusRoute,
   ApiPublicFleetTeamAlertRoute: ApiPublicFleetTeamAlertRoute,
+  ApiPublicFleetVehicleExpensesRoute: ApiPublicFleetVehicleExpensesRoute,
+  ApiPublicFleetVehicleExpensesListRoute:
+    ApiPublicFleetVehicleExpensesListRoute,
   ApiPublicFleetVehicleMaintenanceRoute: ApiPublicFleetVehicleMaintenanceRoute,
   ApiPublicInboundEmailRoute: ApiPublicInboundEmailRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,

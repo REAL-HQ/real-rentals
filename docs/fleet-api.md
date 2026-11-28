@@ -1,6 +1,7 @@
 # FLEET API: Every Endpoint
 
-All endpoints: `POST`, JSON body, `Authorization: Bearer <FLEET_API_KEY>`
+All endpoints: `POST`, JSON body (exceptions: `vehicle-expenses` also answers `GET`, and
+`rental-pickup-odometer` also answers `PATCH`), `Authorization: Bearer <FLEET_API_KEY>`
 (compared in constant time; under 24 characters means "not configured", `503`),
 `Cache-Control: no-store` JSON replies. Every write is audited as
 "FLEET (automated)". FLEET may decline (`applicant-decision`, reason required;
@@ -38,6 +39,10 @@ Base: `https://drivereal.com/api/public/fleet/`
 | `mileage-reading` | append one mileage log entry, optional photo (switch, Off) | [below](#mileage-reading) |
 | `service-due` | set the next oil service due miles and date (switch, Off) | [below](#service-due) |
 | `monthly-inspection` | set monthly inspection last done, next due, notes, and one photo (switch, Off) | [below](#monthly-inspection) |
+| `vehicle-expenses` | `POST` record an expense on a vehicle (repair, maintenance, registration…) with an optional receipt, idempotent, duplicates flagged; `GET` list a vehicle's expenses (create: switch, Off) | [below](#vehicle-expenses) |
+| `vehicle-expenses-list` | the same list for callers that can only POST | [below](#vehicle-expenses) |
+| `rental-inspection-photo` | add one Pickup or Return photo to a rental, shown as Ours; renter not notified (switch, Off) | [below](#rental-inspection-photo) |
+| `rental-pickup-odometer` | `PATCH` set a rental's pickup odometer; lowering needs `force` and a note (switch, Off) | [below](#rental-pickup-odometer) |
 
 Events the site sends FLEET (signed webhooks): [fleet-webhooks.md](fleet-webhooks.md).
 
@@ -376,3 +381,290 @@ Staff edit the same facts on the vehicle record, Service tab: Mileage Log
 (Add Reading, with an optional photo), Next Service Due, and Monthly
 Inspection. The read-only Maintenance Log flag stays off, and renter
 oil-change or maintenance texts stay off.
+
+## vehicle-expenses
+
+Writes the same `vehicle_expenses` table Back Office → Expenses reads and
+writes, so an entry shows there at once (Expenses → the vehicle, or the
+Expenses list). Staff can edit or delete any entry there.
+
+Create is off until Automations → **Expenses (FLEET)** (`fleet_expenses`) is
+On; while Off: `409 {"reason":"switched_off"}`, nothing saved. Listing stays
+available while it is Off. Sends nothing to anyone and changes no rental,
+payment or billing record.
+
+### Create: `POST https://drivereal.com/api/public/fleet/vehicle-expenses`
+
+```json
+{
+  "license_plate": "EC20LK",
+  "date": "2026-11-25",
+  "amount": 74.50,
+  "category": "repair",
+  "vendor": "Pep Boys",
+  "description": "Front brake pads",
+  "notes": "Replaced both front pads",
+  "invoice_number": "INV-1001",
+  "payment_method": "card",
+  "is_recurring": false,
+  "receipt_base64": "<optional receipt, base64; a data: prefix is accepted>",
+  "receipt_file_name": "invoice-1001.pdf",
+  "idempotency_key": "ec20lk-2026-11-25-brakes-inv1001"
+}
+```
+
+```bash
+curl -sS -X POST https://drivereal.com/api/public/fleet/vehicle-expenses \
+  -H "Authorization: Bearer <FLEET_API_KEY>" -H "Content-Type: application/json" \
+  -d '{"license_plate":"EC20LK","date":"2026-11-25","amount":74.50,"category":"repair",
+       "vendor":"Pep Boys","description":"Front brake pads","invoice_number":"INV-1001",
+       "idempotency_key":"ec20lk-2026-11-25-brakes-inv1001"}'
+```
+
+- **Vehicle**: `vehicle_id` (UUID) or `license_plate` (`plate` is accepted
+  too; case, spaces and dashes are ignored). Both together must match. Unknown
+  vehicle `404`; a plate on more than one vehicle `409` (send `vehicle_id`);
+  an archived vehicle `409` (staff add those in Expenses).
+- `date` (also `incurred_on`): a real `YYYY-MM-DD`, not in the future (Eastern
+  Time) and not more than 5 years old.
+- `amount`: dollars, greater than 0, at most 2 decimals, up to 1,000,000. A
+  number or a plain numeric string (`"74.50"`).
+- `category`: one of `registration`, `insurance`, `maintenance`, `repair`,
+  `tires`, `fuel`, `cleaning`, `towing`, `parking`, `tolls`, `finance`,
+  `purchase`, `gps`, `other` (the same list as Expenses; case-insensitive).
+- `description` up to 300 characters. Send `description` or `notes`; with only
+  notes, the description is the start of the notes. `notes` up to 1,500.
+- `vendor` (name): matched to the Vendors list when exactly one vendor has
+  that name (ignoring case, spaces and punctuation); that vendor is attached.
+  A vendor that is not in the list is never created: its name is kept in the
+  notes as `Vendor: <name>` and `vendor_matched` is `false`.
+- `invoice_number` (also `ticket_number`): saved as the expense's Reference.
+- `payment_method` free text up to 60 characters; `is_recurring` boolean.
+- **Receipt** (optional, one per expense): PDF, JPEG, PNG, WebP or HEIC, read
+  from the bytes, up to 20 MB (`415` / `413`). Stored the way Expenses stores
+  one: private `receipts` bucket at `<vehicle_id>/<time>-<random>.<ext>`, with
+  `receipt_path`, `receipt_name` and `receipt_mime` on the expense row, so
+  Expenses shows it under Receipt → View.
+- The row is saved with no staff user as creator and the line `Added by FLEET.`
+  at the end of its notes. Audited as `expense.fleet_created`
+  ("FLEET (automated)").
+- **Idempotent on `idempotency_key`**: the same key with the same request
+  returns the original (`200`, `"duplicate": true`, `"matched_by":
+  "idempotency_key"`) and saves nothing. The same key with anything different
+  (vehicle, date, amount, category, vendor, description, notes, invoice
+  number, payment method, recurring, or receipt file) is `409
+  {"reason":"idempotency_key_reused"}` and saves nothing. If staff deleted the
+  expense since, the replay says `"deleted": true` and does not recreate it.
+- **Likely duplicates warn, never refuse.** `duplicate_warnings` lists earlier
+  expenses on the same vehicle with the same date, amount and vendor (a row
+  with no vendor on file counts; with no vendor sent, any vendor counts), and
+  any expense, on any vehicle, with the same invoice or ticket number
+  (spacing and punctuation ignored; `same_vehicle` says which). The new
+  expense is saved either way. `warnings` can also hold
+  `same_receipt_file_already_on:<expense_id>`.
+
+Reply `201`:
+
+```json
+{
+  "ok": true,
+  "duplicate": false,
+  "expense": {
+    "id": "…",
+    "vehicle_id": "ca3d2cc6-0144-4efa-b0d6-5091b27db254",
+    "license_plate": "EC20LK",
+    "vin_last6": "123456",
+    "date": "2026-11-25",
+    "amount": 74.5,
+    "category": "repair",
+    "vendor": "Pep Boys",
+    "description": "Front brake pads",
+    "invoice_number": "INV-1001",
+    "payment_method": "card",
+    "has_receipt": true,
+    "receipt_name": "invoice-1001.pdf",
+    "created_by": "FLEET",
+    "created_at": "2026-11-27T20:15:00.000Z"
+  },
+  "vendor_matched": true,
+  "duplicate_warnings": [],
+  "warnings": [],
+  "next": "Saved to Back Office → Expenses."
+}
+```
+
+A likely duplicate adds, for example:
+
+```json
+"duplicate_warnings": [
+  { "expense_id": "…", "reason": "same_vehicle_date_amount_vendor", "same_vehicle": true,
+    "date": "2026-11-25", "amount": 74.5, "invoice_number": null }
+]
+```
+
+### List: `GET https://drivereal.com/api/public/fleet/vehicle-expenses`
+
+Query: `vehicle_id` or `license_plate` (required), `from` and `to`
+(`YYYY-MM-DD`, inclusive, optional), `limit` (1 through 500, default 200).
+Newest first. Works for an archived vehicle. `POST
+/api/public/fleet/vehicle-expenses-list` with the same fields as a JSON body
+gives the same answer.
+
+```bash
+curl -sS "https://drivereal.com/api/public/fleet/vehicle-expenses?license_plate=EC20LK&from=2026-11-01&to=2026-11-30" \
+  -H "Authorization: Bearer <FLEET_API_KEY>"
+```
+
+Reply `200`:
+
+```json
+{
+  "ok": true,
+  "vehicle": { "vehicle_id": "…", "license_plate": "EC20LK", "vin_last6": "123456", "archived": false },
+  "from": "2026-11-01",
+  "to": "2026-11-30",
+  "count": 2,
+  "total_amount": 86.84,
+  "truncated": false,
+  "expenses": [
+    { "id": "…", "date": "2026-11-25", "amount": 74.5, "category": "repair", "vendor": "Pep Boys",
+      "description": "Front brake pads", "invoice_number": "INV-1001", "payment_method": "card",
+      "has_receipt": true, "receipt_name": "invoice-1001.pdf", "created_by": "FLEET",
+      "created_at": "2026-11-27T20:15:00.000Z" }
+  ]
+}
+```
+
+`created_by` is `"FLEET"` for entries added through this API, `"Staff"` for
+entries a signed-in person added, and `null` for older entries with no creator
+on file. `vendor` is the Vendors-list name, or the name kept in the notes when
+it was not in the list. `truncated` is true when more rows match than `limit`.
+Neither call returns unit numbers or the full VIN.
+
+## rental-inspection-photo
+
+`POST https://drivereal.com/api/public/fleet/rental-inspection-photo`. Off
+until Automations → **Rental Records (FLEET)** (`fleet_rental_records`);
+while Off: `409 {"reason":"switched_off"}`, nothing saved.
+
+```json
+{
+  "rental_id": "<rental id>",
+  "stage": "pickup",
+  "label": "Driver side",
+  "file_name": "IMG_1204.jpg",
+  "content_base64": "<the photo, base64; a data: prefix is accepted>",
+  "idempotency_key": "rental-<rental id>-pickup-driver-side"
+}
+```
+
+```bash
+curl -sS -X POST https://drivereal.com/api/public/fleet/rental-inspection-photo \
+  -H "Authorization: Bearer <FLEET_API_KEY>" -H "Content-Type: application/json" \
+  -d "{\"rental_id\":\"<rental id>\",\"stage\":\"pickup\",\"label\":\"Front\",\"content_base64\":\"$(base64 -w0 front.jpg)\"}"
+```
+
+- `stage`: `pickup` (the Pickup tab; stored as phase `checkout`) or `return`
+  (the Return tab; phase `checkin`).
+- `label` (required, up to 200 characters) is the photo's caption. A label
+  that names a standard angle (Front, Rear, Driver side, Passenger side,
+  Interior front, Interior rear, Odometer, Fuel, Damage, Other) also sets the
+  photo's angle.
+- Photo: JPEG, PNG, WebP or HEIC, read from the bytes, up to 20 MB (`415` /
+  `413`), one per call. The rental must exist (`404`), not be cancelled and
+  have a vehicle (`409`).
+- Stored exactly like a staff upload on the driver's Pickup / Return tab:
+  `condition-media` bucket at
+  `<vehicle>/trip/<application>/<rental>/<phase>-<uuid>.<ext>`, one
+  `condition_media` row with `captured_by_role` `staff`, so it shows under
+  **Ours**. The time taken comes from the photo's own EXIF when it has one.
+- **GPS and camera data**: the original keeps its metadata for staff. The
+  copy the renter sees is rebuilt with all metadata, including GPS, removed
+  and checked clean; when that cannot be done safely (HEIC, over 20 MB) the
+  renter sees the entry without the file. `renter_preview` says which.
+- **No renter notification** of any kind (`renter_notified` is always `false`).
+- Idempotent on `idempotency_key` (same rental, stage, label and photo; a
+  different one under the same key is `409`), and the same bytes for the same
+  rental and stage are never filed twice (`200`, `"matched_by":"content"`).
+- Audited as `fleet.rental_inspection_photo`. Changes nothing else on the
+  rental: not its status, payments, vehicle or driver.
+
+Reply `201`:
+
+```json
+{
+  "ok": true,
+  "duplicate": false,
+  "photo_id": "…",
+  "rental_id": "…",
+  "vehicle_id": "…",
+  "license_plate": "EC20LK",
+  "vin_last6": "123456",
+  "stage": "pickup",
+  "label": "Driver side",
+  "shown_as": "Ours",
+  "mime_type": "image/jpeg",
+  "renter_preview": true,
+  "taken_at_from_photo": true,
+  "renter_notified": false
+}
+```
+
+## rental-pickup-odometer
+
+`PATCH https://drivereal.com/api/public/fleet/rental-pickup-odometer` (`POST`
+with the same body is accepted too). Same switch as `rental-inspection-photo`
+(Off until On).
+
+```json
+{
+  "rental_id": "<rental id>",
+  "odometer": 163977,
+  "force": false,
+  "note": "Photo of the odometer at handover shows 163977",
+  "idempotency_key": "rental-<rental id>-pickup-odometer"
+}
+```
+
+```bash
+curl -sS -X PATCH https://drivereal.com/api/public/fleet/rental-pickup-odometer \
+  -H "Authorization: Bearer <FLEET_API_KEY>" -H "Content-Type: application/json" \
+  -d '{"rental_id":"<rental id>","odometer":163977,"idempotency_key":"rental-<rental id>-pickup-odometer"}'
+```
+
+- `odometer`: whole miles, 0 through 1,999,999. `note` up to 500 characters.
+- A rental's pickup mileage is the odometer reading its `pickup_reading_id`
+  points at, and a reading is never edited. A change adds a **correcting
+  reading** (source `rental_checkout`, dated like the one it replaces, or the
+  pickup day for a first reading), marks the old reading `superseded` (kept
+  as history), and points the rental at the new one. The vehicle's current
+  mileage follows from the database trigger as always.
+- **Lowering**: a number below the one on file is `409
+  {"reason":"would_lower"}` unless `force` is `true`, and a forced lowering
+  also needs a `note` (`400` without one). Same number: `200
+  {"unchanged":true}`, nothing written.
+- Also refused with `409`: above the same rental's return odometer
+  (`above_return`), and more than 500 miles below a valid reading the vehicle
+  already has on or before that date (`below_vehicle_history`; `force` plus a
+  `note` overrides, and the new reading is then flagged `conflict` for staff).
+- Idempotent on `idempotency_key` (same rental and odometer; another number
+  under the same key is `409`).
+- Audited as `fleet.rental_pickup_odometer`. Sends nothing to the renter. The
+  signed pickup checklist record is not touched.
+
+Reply `200`:
+
+```json
+{
+  "ok": true,
+  "rental_id": "…",
+  "vehicle_id": "…",
+  "license_plate": "EC20LK",
+  "vin_last6": "123456",
+  "pickup_odometer": 163977,
+  "previous_odometer": 163000,
+  "reading_id": "…",
+  "superseded_reading_id": "…",
+  "status": "valid"
+}
+```
