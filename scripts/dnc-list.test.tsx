@@ -181,7 +181,8 @@ describe("navigation", () => {
     expect(navOwner("dnc")).toBe("drivers");
     for (const tier of ["coordinator", "manager", "owner"] as const) {
       expect(visibleTabs(tier).some((t) => t.id === "dnc")).toBe(true);
-      expect(visibleWorkspaceTabs("drivers", tier).map((t) => t.id)).toEqual(["drivers", "dnc"]);
+      // Add Driver (requests from the Driver Portal) is a Manager+ tab in the same workspace.
+      expect(visibleWorkspaceTabs("drivers", tier).map((t) => t.id)).toEqual(tier === "coordinator" ? ["drivers", "dnc"] : ["drivers", "dnc", "add_drivers"]);
     }
     const admin = read("src/routes/admin.tsx");
     expect(admin).toContain(

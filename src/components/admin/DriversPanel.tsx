@@ -285,6 +285,7 @@ import { DncBadge, useDnc } from "@/components/admin/DncGuard";
 import { DncCard, openDncDialog } from "@/components/admin/DncControls";
 import { MOVE_TO_DNC_LABEL, REMOVE_FROM_DNC_LABEL } from "@/lib/dnc";
 import { AdditionalDriversSection } from "@/components/admin/AdditionalDriversSection";
+import { AddDriverRequestsSection } from "@/components/admin/AddDriverRequests";
 import { CollectionsCard } from "@/components/admin/CollectionsCard";
 import { BackgroundReportsCard } from "@/components/admin/BackgroundReportsCard";
 import { BlacklistMatchAlert } from "@/components/admin/BlacklistMatchAlert";
@@ -3237,6 +3238,7 @@ function DriverDetail({
                   canRemove={isManager || isOwner}
                 />
                 {isManager ? <AdditionalDriversSection applicationId={driver.id} /> : null}
+                {isManager ? <AddDriverRequestsSection applicationId={driver.id} /> : null}
                 <CollectionsCard applicationId={driver.id} canSee={isOwner || isManager} />
                 {summaryRow}
                 <details className="text-xs text-muted-foreground">

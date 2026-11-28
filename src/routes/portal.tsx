@@ -2,6 +2,8 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { chargeTypeLabel, enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { initialPortalTab, rememberPayIntent, wantsPay } from "@/lib/portal-pay-link";
+import { AddDriverCard } from "@/components/portal/AddDriverCard";
+import { addDriverReturn } from "@/lib/add-driver-requests";
 import { SigningPanel } from "@/components/esign/SigningPanel";
 import { StandaloneDocumentView } from "@/components/esign/StandaloneDocumentView";
 import { layoutToText } from "@/lib/agreement-layout";
@@ -258,7 +260,7 @@ function Portal() {
   const [isDriver, setIsDriver] = useState(false);
   const [staffTier, setStaffTier] = useState<StaffTier | null>(null);
   const wantsPreview = typeof window !== "undefined" && /^"?1"?$/.test(new URLSearchParams(window.location.search).get("preview") ?? "");
-  const [tab, setTab] = useState<Tab>(() => initialPortalTab<Tab>(typeof window === "undefined" ? "" : window.location.search, "dashboard", typeof window === "undefined" ? null : window.localStorage) as Tab);
+  const [tab, setTab] = useState<Tab>(() => (addDriverReturn(typeof window === "undefined" ? "" : window.location.search) ? "documents" : initialPortalTab<Tab>(typeof window === "undefined" ? "" : window.location.search, "dashboard", typeof window === "undefined" ? null : window.localStorage)) as Tab);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -590,6 +592,8 @@ function DocumentsView() {
           />
         </div>
       </div>
+
+      <AddDriverCard previewDriverId={docsPreviewId} />
 
       {!isLoading && shared.length > 0 ? (
         <div className="rounded-2xl border border-border bg-white p-5">
@@ -2549,7 +2553,7 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
  * another driver's data (no impersonation, no new access path).
  */
 function DriverPreview({ tier }: { tier: StaffTier | null }) {
-  const [tab, setTab] = useState<Tab>(() => initialPortalTab<Tab>(typeof window === "undefined" ? "" : window.location.search, "dashboard", typeof window === "undefined" ? null : window.localStorage) as Tab);
+  const [tab, setTab] = useState<Tab>(() => (addDriverReturn(typeof window === "undefined" ? "" : window.location.search) ? "documents" : initialPortalTab<Tab>(typeof window === "undefined" ? "" : window.location.search, "dashboard", typeof window === "undefined" ? null : window.localStorage)) as Tab);
   const [picking, setPicking] = useState(false);
   const [driverName, setDriverName] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);

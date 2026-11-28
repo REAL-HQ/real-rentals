@@ -43,6 +43,7 @@ import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { DncProvider } from "@/components/admin/DncGuard";
 import { DncPanel } from "@/components/admin/DncPanel";
+import { AddDriverRequestsPanel } from "@/components/admin/AddDriverRequests";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
 import { listConversations } from "@/lib/messages.functions";
 import { getReservationDepositSettings } from "@/lib/reservations.functions";
@@ -1135,6 +1136,7 @@ function Admin() {
               <DriversPanel initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} canViewOnboarding={tierAllows(tier, "manager")} canIssueCardLink={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
             {tab === "dnc" && <DncPanel canRemove={tierAllows(tier, "manager")} />}
+            {tab === "add_drivers" && tierAllows(tier, "manager") && <AddDriverRequestsPanel />}
             {tab === "vehicles" && <VehiclesPanel autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
             {tab === "bookings" && (
               <BookingsWorkspace

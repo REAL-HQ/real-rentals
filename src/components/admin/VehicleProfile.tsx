@@ -1,5 +1,6 @@
 import { VehicleBodyTypeSelect } from "./VehicleBodyTypeSelect";
 import { AdditionalDriverBadgeSlot, AdditionalDriversSection } from "./AdditionalDriversSection";
+import { AddDriverRequestsSection } from "./AddDriverRequests";
 import { useUnsavedGuard, confirmLeaveIfUnsaved } from "@/lib/unsaved-changes";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -585,6 +586,7 @@ function Overview({
         </SectionCard>
 
         {p.currentRental ? <AdditionalDriversSection applicationId={p.currentRental.application_id} rentalId={p.currentRental.id} /> : null}
+        {p.currentRental?.application_id ? <AddDriverRequestsSection applicationId={p.currentRental.application_id} /> : null}
 
         <SectionCard title="Vehicles" subtitle="Booking History" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
           <BookingVehicleHistory vehicleId={v.id} />

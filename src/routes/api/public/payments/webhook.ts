@@ -307,6 +307,10 @@ export async function warnUnmatchedPayment(admin: any, pi: any, status: 'paid' |
 }
 
 async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed') {
+  // A declined card inside the Add Driver Checkout is not a failed rent payment:
+  // the $100 stays owed on its own row, the renter can try again in Checkout,
+  // and the rental, its payment status and the failure notices are untouched.
+  if (status === 'failed' && pi?.metadata?.reason === 'add_driver') return;
   const admin: any = getSupabase();
   const rentalId = pi.metadata?.rentalId as string | undefined;
   const reason = (pi.metadata?.reason as string | undefined) ?? 'other';
@@ -416,7 +420,8 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
     read: false,
   }).then(() => {}, () => {});
 
-  const driver = (await driverForRental(rentalId))
+  // Add Driver adds no renter email: no app receipt for its $100 (Dolmar, Nov 28 2026).
+  const driver = reason === 'add_driver' ? null : (await driverForRental(rentalId))
     ?? (reason === 'reservation_fee' ? await driverForApplication(pi.metadata?.applicationId as string | undefined) : null);
   if (status === 'paid' && reason === 'reservation_fee') {
     await alertTeamReservationFeePaid(driver, amount, pi.metadata?.applicationId as string | undefined);
@@ -926,8 +931,14 @@ async function handleVerifiedPaymentEvent(event: { type: string; data: { object:
     case 'payment_intent.succeeded':
       await upsertPaymentFromPaymentIntent(event.data.object, 'paid');
       await holdReservationAfterFee(event.data.object);
+      if (event.data.object?.metadata?.reason === 'add_driver') {
+        // Moves the Add Driver request to Paid once its $100 row is paid. Never throws.
+        const { settleAddDriverPayment } = await import('@/lib/add-driver-requests.server');
+        await settleAddDriverPayment(getSupabase(), event.data.object);
+      }
       await fillIntentReceipt(event.data.object, env);
-      await welcomeAfterPaid({
+      // The renter already has their portal; an Add Driver payment never sends a welcome.
+      if (event.data.object?.metadata?.reason !== 'add_driver') await welcomeAfterPaid({
         paymentIntentId: stripeId(event.data.object?.id),
         paymentIds: String(event.data.object?.metadata?.paymentIds ?? '').split(',').map((x: string) => x.trim()).filter((x: string) => /^[0-9a-f-]{36}$/i.test(x)),
         rentalId: (event.data.object?.metadata?.rentalId as string | undefined) ?? null,

@@ -36,6 +36,7 @@ import {
   RotateCcw,
   RefreshCw,
   PhoneOff,
+  UserPlus,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -91,6 +92,9 @@ export const TABS: readonly TabDef[] = [
   // Internal Do Not Contact list (public.dnc_list), a tab inside the Drivers workspace (no rail entry of its own).
   // Any staff tier reads and adds; Manager+ removes (server-checked).
   { id: "dnc", label: "DNC", icon: PhoneOff, minTier: "coordinator", description: "Everyone On The Internal Do Not Contact List" },
+  // Add Driver requests from the Driver Portal (public.additional_driver_requests), a tab inside the Drivers workspace.
+  // Manager+ only, the same tier that reads additional drivers and works the insurance step (server-checked).
+  { id: "add_drivers", label: "Add Driver", icon: UserPlus, minTier: "manager", description: "Renter Requests To Add A Driver" },
   // Bookings: reservations (Reserved), who is out (Active), and past rentals.
   // Coordinator-visible so staff can open paperwork; the Active board stays
   // Manager+ on the server. Old ?tab=bookings links redirect here.
@@ -621,13 +625,13 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
  * own id, minTier, panel and server checks — this only groups them.
  */
 export const WORKSPACE_TABS: Record<string, readonly { id: string; label: string }[]> = {
-  drivers: [{ id: "drivers", label: "Drivers" }, { id: "dnc", label: "DNC" }],
+  drivers: [{ id: "drivers", label: "Drivers" }, { id: "dnc", label: "DNC" }, { id: "add_drivers", label: "Add Driver" }],
   payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }, { id: "stripe_match", label: "Matching" }, { id: "collections_watch", label: "Watch" }, { id: "deposits_ledger", label: "Deposits" }, { id: "weekly_cash_flow", label: "Cashflow" }],
   maintenance: [{ id: "maintenance", label: "Maintenance" }, { id: "inspections", label: "Inspections" }],
   partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }],
 };
 
-/** Which rail entry is highlighted for a tab (DNC → Drivers, Charges → Payments, Inspections → Service, Vendors → Partners). */
+/** Which rail entry is highlighted for a tab (DNC → Drivers, Add Driver → Drivers, Charges → Payments, Inspections → Service, Vendors → Partners). */
 export function navOwner(tab: string): string {
   for (const [parent, kids] of Object.entries(WORKSPACE_TABS)) if (kids.some((k) => k.id === tab)) return parent;
   return tab;

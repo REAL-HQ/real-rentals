@@ -625,6 +625,19 @@ export const AUTOMATIONS: AutomationDef[] = [
     defaultOn: false,
     note: "Off until turned on. Refunds the paid Reservation Fee in full (insurance declined) and tells FLEET. Needs proposed/reservation-fee-refunds-v1.sql. Never names the insurance company. A fee kept for a missed pickup is not refunded.",
   },
+  {
+    key: "renter_add_driver",
+    title: "Add Driver (Portal)",
+    audience: "Renters",
+    channels: [],
+    trigger: "A renter with an active rental asks to add a driver who lives at the same address, from the Driver Portal Documents tab.",
+    cadence: "Only when a renter asks. The renter uploads the license front and back, then pays $100 by Stripe Checkout.",
+    emailWorkflows: [],
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on. Off hides the Add Driver button and refuses new requests and payments; staff can still work requests that exist. A paid request waits in Drivers → Add Driver for staff to start the insurance step, then record Approved (with the insurance card, which then shows in the renter's portal) or Denied (with a note). Nothing is sent to an insurer automatically and no text or email is added. A refund after a denial is a staff action in Payments. Needs migration 20261128170000_add_driver_requests.sql.",
+  },
 ];
 
 export const AUTOMATION_KEYS = AUTOMATIONS.map((a) => a.key);
