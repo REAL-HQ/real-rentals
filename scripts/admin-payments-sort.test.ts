@@ -12,6 +12,11 @@ import {
   sortRows,
 } from "../src/lib/admin-table-sort";
 import { countsAsOwed, isZeroMoneyRow, rowOwed } from "../src/lib/payments-summary";
+import {
+  etDateISO,
+  paymentActivitySortValue,
+  sortPaymentsByActivity,
+} from "../src/lib/payments-list-sort";
 
 describe("column sort helpers", () => {
   test("first click uses firstDir, second flips, third clears", () => {
@@ -77,15 +82,22 @@ describe("Payments / Charges / Bookings wiring", () => {
   const overdue = readFileSync("src/components/admin/OverdueStatus.tsx", "utf8");
   const header = readFileSync("src/components/admin/SortableColumnHeader.tsx", "utf8");
 
-  test("Payments headers are sortable, Outstanding uses the filtered set, default is due earliest", () => {
+  test("Payments headers are sortable, Outstanding uses the filtered set, default is newest activity first", () => {
     for (const key of ["driver", "vehicle", "type", "amount", "due", "status", "method", "late_fees", "balance"]) {
       expect(payments).toContain(`"${key}"`);
     }
     expect(payments).toContain("SortableColumnHeader");
     expect(payments).toContain("cycleColumnSort");
-    expect(payments).toContain('PAYMENT_FIRST_DIR');
+    expect(payments).toContain("PAYMENT_FIRST_DIR");
     expect(payments).toContain('due: "desc"');
-    expect(payments).toContain('sortRows(filtered, (p) => p.due_date || "", "date", "asc")');
+    expect(payments).toContain('sortPaymentsByActivity(filtered, listSort === "oldest" ? "asc" : "desc", etDateISO())');
+    expect(payments).toContain('label: "Newest First"');
+    expect(payments).toContain('label: "Oldest First"');
+    expect(payments).toContain('useState<"newest" | "oldest">("newest")');
+    expect(payments).toContain('if (option.value === "newest")');
+    expect(payments).toContain('if (option.value === "oldest")');
+    expect(payments).toContain('else if (option.value === "due_asc") setColumnSort({ key: "due", dir: "asc" })');
+    expect(payments).not.toContain('sortRows(filtered, (p) => p.due_date || "", "date", "asc")');
     expect(payments).toContain("const totalDue = filtered");
     expect(payments).toContain("isZeroMoneyRow");
     expect(payments).toContain("ledgerPayments");
@@ -144,5 +156,68 @@ describe("Payments / Charges / Bookings wiring", () => {
     expect(outstanding(all)).toBe(350);
     expect(outstanding(visible)).toBe(350);
     expect(visible.map((p) => p.id)).toEqual(["rent", "paid"]);
+  });
+});
+
+describe("Payments default activity sort", () => {
+  const today = "2026-11-28";
+
+  test("etDateISO keeps date-only values and reads timestamps in Eastern Time", () => {
+    expect(etDateISO("2026-11-28")).toBe("2026-11-28");
+    // 2026-11-28 00:30 ET is 2026-11-28T05:30:00Z
+    expect(etDateISO("2026-11-28T05:30:00.000Z")).toBe("2026-11-28");
+    // 2026-11-27 23:30 ET is 2026-11-28T04:30:00Z
+    expect(etDateISO("2026-11-28T04:30:00.000Z")).toBe("2026-11-27");
+  });
+
+  test("paid time prefers stripe_paid_at, then paid_date, and ignores future paid dates", () => {
+    expect(paymentActivitySortValue({
+      stripe_paid_at: "2026-11-27T20:00:00.000Z",
+      paid_date: "2026-11-01",
+      created_at: "2026-10-01T00:00:00.000Z",
+      due_date: "2026-10-15",
+    }, today)).toBe("2026-11-27T20:00:00.000Z");
+    expect(paymentActivitySortValue({
+      paid_date: "2026-11-26",
+      created_at: "2026-10-01T00:00:00.000Z",
+      due_date: "2026-10-15",
+    }, today)).toBe("2026-11-26");
+    expect(paymentActivitySortValue({
+      stripe_paid_at: "2026-12-01T00:00:00.000Z",
+      paid_date: "2026-12-01",
+      created_at: "2026-11-10T12:00:00.000Z",
+      due_date: "2026-12-01",
+    }, today)).toBe("2026-11-10T12:00:00.000Z");
+  });
+
+  test("unpaid rows use created_at, then a due date on or before today", () => {
+    expect(paymentActivitySortValue({
+      created_at: "2026-11-13T15:00:00.000Z",
+      due_date: "2026-11-20",
+    }, today)).toBe("2026-11-13T15:00:00.000Z");
+    expect(paymentActivitySortValue({
+      due_date: "2026-11-20",
+    }, today)).toBe("2026-11-20");
+    expect(paymentActivitySortValue({
+      due_date: "2026-12-15",
+    }, today)).toBe("");
+  });
+
+  test("newest first puts recent activity above upcoming rent with a later due date", () => {
+    const paidYesterday = { id: "paid", stripe_paid_at: "2026-11-27T18:00:00.000Z", due_date: "2026-10-15", created_at: "2026-10-01T00:00:00.000Z" };
+    const overdue = { id: "overdue", due_date: "2026-11-20", created_at: "2026-11-13T10:00:00.000Z" };
+    const upcoming = { id: "upcoming", due_date: "2026-12-15", created_at: "2026-11-01T10:00:00.000Z" };
+    const futureOnly = { id: "future", due_date: "2026-12-20" };
+    const newest = sortPaymentsByActivity([upcoming, futureOnly, overdue, paidYesterday], "desc", today).map((r) => r.id);
+    const oldest = sortPaymentsByActivity([upcoming, futureOnly, overdue, paidYesterday], "asc", today).map((r) => r.id);
+    expect(newest).toEqual(["paid", "overdue", "upcoming", "future"]);
+    expect(oldest).toEqual(["upcoming", "overdue", "paid", "future"]);
+  });
+
+  test("equal activity dates break ties by created_at then id, and keep original order when both match", () => {
+    const a = { id: "a", paid_date: "2026-11-20", created_at: "2026-11-20T08:00:00.000Z" };
+    const b = { id: "b", paid_date: "2026-11-20", created_at: "2026-11-20T12:00:00.000Z" };
+    const c = { id: "c", paid_date: "2026-11-20", created_at: "2026-11-20T12:00:00.000Z" };
+    expect(sortPaymentsByActivity([a, c, b], "desc", today).map((r) => r.id)).toEqual(["c", "b", "a"]);
   });
 });
