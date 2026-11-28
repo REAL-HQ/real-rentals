@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useServerFn } from "@tanstack/react-start";
+import { AppSelect } from "@/components/ui/app-select";
 import { Download } from "lucide-react";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { PnlRenterFilter } from "./PnlRenterFilter";
@@ -138,19 +139,19 @@ export function OwnerPnlPanel() {
         )}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 print:hidden">
-        <select aria-label="Car" value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} className={field}>
+        <AppSelect aria-label="Car" value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} className={`${field} w-full`}>
           <option value="">All Cars</option>
           {(view?.options.cars ?? []).map((car) => <option key={car.id} value={car.id}>{car.label}</option>)}
-        </select>
+        </AppSelect>
         <PnlRenterFilter renters={view?.options.renters ?? []} value={driverId} onChange={setDriverId} />
-        <select aria-label="Payment Source" value={source} onChange={(event) => setSource(event.target.value)} className={field}>
+        <AppSelect aria-label="Payment Source" value={source} onChange={(event) => setSource(event.target.value)} className={`${field} w-full`}>
           <option value="">All Sources</option>
           {(view?.options.sources ?? []).map((row) => <option key={row.source} value={row.source}>{row.label}</option>)}
-        </select>
-        <select aria-label="Expense Category" value={category} onChange={(event) => setCategory(event.target.value)} className={field}>
+        </AppSelect>
+        <AppSelect aria-label="Expense Category" value={category} onChange={(event) => setCategory(event.target.value)} className={`${field} w-full`}>
           <option value="">All Categories</option>
           {(view?.options.categories ?? []).map((row) => <option key={row.category} value={row.category}>{row.label}</option>)}
-        </select>
+        </AppSelect>
       </div>
 
       {loading && <p className="text-sm text-[#55555E]">Loading…</p>}

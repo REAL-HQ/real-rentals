@@ -79,6 +79,7 @@ const active: ActiveRentalRow[] = [
     openIncidents: 0,
     documentsExpiring: false,
     rentOwed: 0,
+    driverRevenue: 4200,
   },
 ];
 
@@ -94,6 +95,7 @@ function booking(partial: Pick<BookingRow, "id" | "driverName" | "driverEmail" |
     plate: "ABC1234",
     vinLast6: "004352",
     balanceDue: 0,
+    driverRevenue: 1234.5,
     ...partial,
   };
 }
@@ -156,40 +158,44 @@ const views: Record<string, ReactElement> = {
 };
 
 describe("real Bookings tables line each header up with its cell", () => {
-  it("Reserved: Paid under Reservation Fee, rate under Rate, Open over the button, menu unlabeled", () => {
+  it("Reserved: Paid under Reservation Fee, rate under Rate, no Open column, menu unlabeled", () => {
     const html = markup(views.reserved);
     const lined = pair(html);
     assert.match(lined[2], /^Reserved => Apr 20, 2026$/);
     assert.match(lined[3], /^Pickup => May 1, 2026/);
     assert.match(lined[4], /^Reservation Fee => Paid$/);
     assert.match(lined[5], /^Rate => \$350\/wk$/);
-    assert.match(lined[6], /^Open => Open$/);
-    assert.match(lined[7], /^\(menu\) => $/);
-    assert.equal(html.includes(">Open</th>"), true);
-    assert.equal((html.match(/<th\b/g) ?? []).length, 8);
+    assert.match(lined[6], /^\(menu\) => $/);
+    assert.equal(html.includes(">Open</th>"), false);
+    assert.equal(html.includes(">Open<"), false);
+    assert.equal((html.match(/<th\b/g) ?? []).length, 7);
   });
 
-  it("Active: rate under Rate, due under Due, Open over the button, menu unlabeled", () => {
+  it("Active: rate under Rate, Revenue under Revenue, due under Due, no Open column, menu unlabeled", () => {
     const html = markup(views.active);
     const lined = pair(html);
     assert.match(lined[3], /^Rate => \$350\.00$/);
-    assert.match(lined[4], /^Due => May 29, 2026/);
-    assert.match(lined[5], /^Overdue => Current/);
-    assert.match(lined[6], /^Open => Open$/);
+    assert.match(lined[4], /^Revenue => \$4,200$/);
+    assert.match(lined[5], /^Due => May 29, 2026/);
+    assert.match(lined[6], /^Status => Current/);
     assert.match(lined[7], /^\(menu\) => $/);
+    assert.equal(html.includes(">Open<"), false);
     assert.equal((html.match(/<th\b/g) ?? []).length, 8);
+    assert.match(html, /data-row-href="\/admin\?tab=bookings&amp;view=past&amp;id=a1"/);
   });
 
-  it("Completed and Cancelled: Open is the last column and there is no menu", () => {
-    for (const view of ["completed", "cancelled"] as const) {
-      const html = markup(views[view]);
-      const { headers, cells } = columns(html);
-      assert.deepEqual(headers, ["Driver", "Vehicle", "Dates", "Status", "Rent", "Open"]);
-      assert.equal(cells.length, headers.length);
-      assert.match(cells[4], /^\$\d+\/wk/);
-      assert.equal(cells[5], "Open");
-      assert.equal(html.includes("ROW_MENU") || headers.includes(""), false);
-    }
+  it("Completed: Revenue follows Rent. Cancelled keeps Credit and leaves Revenue out. No Open column", () => {
+    const done = columns(markup(views.completed));
+    assert.deepEqual(done.headers, ["Driver", "Vehicle", "Dates", "Status", "Rent", "Revenue"]);
+    assert.equal(done.cells.length, done.headers.length);
+    assert.match(done.cells[4], /^\$\d+\/wk/);
+    assert.equal(done.cells[5], "$1,235");
+    const gone = markup(views.cancelled);
+    const { headers, cells } = columns(gone);
+    assert.equal(headers.includes("Open"), false);
+    assert.equal(headers.includes("Revenue"), false);
+    assert.equal(cells.length, headers.length);
+    assert.equal(gone.includes(">Open<"), false);
   });
 });
 

@@ -19,6 +19,7 @@ import {
 import { AdminTableScroll } from "./AdminTableScroll";
 import { SortableColumnHeader } from "./SortableColumnHeader";
 import { cycleColumnSort, sortRows, type ColumnSort } from "@/lib/admin-table-sort";
+import { etDateISO, sortPaymentsByActivity } from "@/lib/payments-list-sort";
 import { ManualPaymentsWorkspace } from "./ManualPaymentsWorkspace";
 import { StatusPill, EmptyState } from "./ui";
 import {
@@ -86,6 +87,8 @@ const STATUS_LABEL: Record<string, string> = {
 };
 const STATUS_FILTERS = ["all", "overdue", ...STATUSES.filter((status) => status !== "overdue")] as const;
 const SORT_OPTIONS = [
+  { value: "newest", label: "Newest First" },
+  { value: "oldest", label: "Oldest First" },
   { value: "due_asc", label: "Due Date: Earliest" },
   { value: "due_desc", label: "Due Date: Latest" },
   { value: "amount_desc", label: "Amount: Highest" },
@@ -115,9 +118,10 @@ const PAYMENT_SORT_KIND: Record<PaymentSortKey, "text" | "number" | "date"> = {
   balance: "number",
 };
 
-/** Due is the exception: the first header click is newest first (desc).
+/** Due is the exception: the first header click is newest due date first (desc).
  *  Every other column starts ascending. A third click clears the header
- *  and restores the default: due date earliest first, no arrow. */
+ *  and restores the default: newest activity first, no arrow.
+ *  Activity date is defined in payments-list-sort.ts. */
 const PAYMENT_FIRST_DIR: Partial<Record<PaymentSortKey, "asc" | "desc">> = { due: "desc" };
 
 // Date-only values (due_date, paid_date) are calendar dates: formatDate reads
@@ -148,6 +152,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
   const [statusFilter, setStatusFilter] = useState<string>(initialFilter && initialFilter !== COLLECTIONS_TAB_FILTER ? initialFilter : "all");
   const [typeFilter, setTypeFilter] = useState<PaymentCategory | "all">("all");
   const [columnSort, setColumnSort] = useState<ColumnSort<PaymentSortKey> | null>(null);
+  const [listSort, setListSort] = useState<"newest" | "oldest">("newest");
   const [showAdd, setShowAdd] = useState(!!autoOpenAdd);
   const [showManual, setShowManual] = useState(false);
   const [paymentsSection, setPaymentsSection] = useState<"ledger" | "stripe" | "collections">(initialFilter === COLLECTIONS_TAB_FILTER ? "collections" : "ledger");
@@ -333,16 +338,18 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
 
   const sorted = columnSort
     ? sortRows(filtered, (p) => paymentSortValue(p, columnSort.key), PAYMENT_SORT_KIND[columnSort.key], columnSort.dir)
-    : sortRows(filtered, (p) => p.due_date || "", "date", "asc");
+    : sortPaymentsByActivity(filtered, listSort === "oldest" ? "asc" : "desc", etDateISO());
 
   const dropdownSortValue =
-    columnSort == null || (columnSort.key === "due" && columnSort.dir === "asc")
-      ? "due_asc"
-      : columnSort.key === "due" && columnSort.dir === "desc"
-        ? "due_desc"
-        : columnSort.key === "amount" && columnSort.dir === "desc"
-          ? "amount_desc"
-          : null;
+    columnSort == null
+      ? (listSort === "oldest" ? "oldest" : "newest")
+      : columnSort.key === "due" && columnSort.dir === "asc"
+        ? "due_asc"
+        : columnSort.key === "due" && columnSort.dir === "desc"
+          ? "due_desc"
+          : columnSort.key === "amount" && columnSort.dir === "desc"
+            ? "amount_desc"
+            : null;
 
   // Owed now: due/unpaid states only. Upcoming isn't due yet; paid, refunded,
   // waived and void owe nothing. A settled balance of 0 is 0, not the amount.
@@ -436,7 +443,9 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
                     <DropdownMenuItem
                       key={option.value}
                       onSelect={() => {
-                        if (option.value === "due_asc") setColumnSort(null);
+                        if (option.value === "newest") { setListSort("newest"); setColumnSort(null); }
+                        else if (option.value === "oldest") { setListSort("oldest"); setColumnSort(null); }
+                        else if (option.value === "due_asc") setColumnSort({ key: "due", dir: "asc" });
                         else if (option.value === "due_desc") setColumnSort({ key: "due", dir: "desc" });
                         else setColumnSort({ key: "amount", dir: "desc" });
                       }}
@@ -514,7 +523,11 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
                   align={align}
                   active={columnSort?.key === key}
                   dir={columnSort?.key === key ? columnSort.dir : undefined}
-                  onClick={() => setColumnSort((cur) => cycleColumnSort(cur, key, PAYMENT_FIRST_DIR[key] ?? "asc"))}
+                  onClick={() => setColumnSort((cur) => {
+                    const next = cycleColumnSort(cur, key, PAYMENT_FIRST_DIR[key] ?? "asc");
+                    if (next == null) setListSort("newest");
+                    return next;
+                  })}
                 />
               ))}
               <th></th>

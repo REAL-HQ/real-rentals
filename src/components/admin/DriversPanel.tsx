@@ -194,7 +194,9 @@ import {
   type CachedCardLink,
 } from "@/lib/card-link-cache";
 import { AgreementsCard } from "./AgreementsCard";
-import { rowOpenProps } from "@/lib/row-click";
+import { rowOpenProps, rowHref } from "@/lib/row-click";
+import { getDriverRevenue } from "@/lib/driver-revenue.functions";
+import { compareByRevenueDesc, formatRevenue, revenueForIds, DRIVER_SORT_LABEL, type DriverSort } from "@/lib/driver-revenue";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { RecordPaymentDialog } from "./RentPaymentActions";
 import { RenterPayments } from "./RenterPayments";
@@ -252,7 +254,7 @@ import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.fu
 import { InterviewDrawer } from "./InterviewDrawer";
 import { RecordCallDialog } from "./RecordCallDialog";
 import { acknowledgeApplication } from "@/lib/applications.functions";
-import { ClipboardList, Clock as ClockIcon, ExternalLink } from "lucide-react";
+import { ArrowDown, ClipboardList, Clock as ClockIcon, ExternalLink } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
 import { DeleteDriverDialog } from "./DeleteDriverDialog";
 import { RecentlyDeletedDialog } from "./RecentlyDeletedDialog";
@@ -370,6 +372,7 @@ export function DriversPanel({
   previewDrivers,
   previewBookingOutcomes,
   previewMenuOpen = false,
+  previewRevenue,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
@@ -395,6 +398,8 @@ export function DriversPanel({
   previewBookingOutcomes?: { completed: string[]; cancelled: string[] };
   /** Force the Filters menu open so a static render can show it. */
   previewMenuOpen?: boolean;
+  /** Skip the Revenue read. Screenshots and tests pass dollars per application id. */
+  previewRevenue?: Record<string, number>;
 } = {}) {
   const [drivers, setDrivers] = useState<Application[]>(previewDrivers ?? []);
   // Whether the applications fetch has come back, as distinct from having
@@ -455,6 +460,13 @@ export function DriversPanel({
   const [onboardingFailed, setOnboardingFailed] = useState(false);
   const [docExpiry, setDocExpiry] = useState<DriverDocExpiryResult | null>(null);
   const [docFilter, setDocFilter] = useState("all");
+  // Revenue = money each driver has paid us (driver-revenue.ts). Manager and
+  // above only: null means not loaded, not allowed, or the read failed, and the
+  // column is hidden rather than showing a wrong number.
+  const loadRevenue = useServerFn(getDriverRevenue);
+  const [revenueTotals, setRevenueTotals] = useState<Record<string, number> | null>(previewRevenue ?? null);
+  const [driverSort, setDriverSort] = useState<DriverSort>("newest");
+  const showRevenue = revenueTotals != null;
   /*
    * False for a Coordinator: the server sent operational fields only, so
    * anything computed from licence, insurance or document data would be
@@ -629,6 +641,14 @@ export function DriversPanel({
     weeklyRate: number | null;
   } | null>(null);
   const [activationRefresh, setActivationRefresh] = useState(0);
+  useEffect(() => {
+    if (previewRevenue || !driversLoaded) return;
+    let live = true;
+    void loadRevenue()
+      .then((res) => { if (live) setRevenueTotals(res.canSee && res.ok ? res.totals : null); })
+      .catch(() => { if (live) setRevenueTotals(null); });
+    return () => { live = false; };
+  }, [loadRevenue, driversLoaded, activationRefresh, previewRevenue]);
   const [readVersions] = useState(createDriverReadVersions);
   useEffect(() => () => readVersions.invalidateAll(), [readVersions]);
   const refreshActivationContext = useCallback(() => setActivationRefresh((n) => n + 1), []);
@@ -1071,10 +1091,22 @@ setDocCounts(requiredDocCounts(rows));
     }
     // Sort by received time, newest first. Filters narrow the set but keep
     // the same chronological order.
-    return Array.from(byKey.values()).sort((a, b) => {
+    const groups = Array.from(byKey.values());
+    if (driverSort === "revenue" && revenueTotals) {
+      // Top earners first. A driver's total covers every submission they made.
+      const total = (g: { primary: Application; history: Application[] }) =>
+        revenueForIds(revenueTotals, [g.primary.id, ...g.history.map((h) => h.id)]);
+      return groups.sort((a, b) =>
+        compareByRevenueDesc(
+          { revenue: total(a), createdAt: a.primary.created_at ?? null },
+          { revenue: total(b), createdAt: b.primary.created_at ?? null },
+        ),
+      );
+    }
+    return groups.sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted, completedBookingIds, cancelledBookingIds]);
+  }, [driverSort, revenueTotals, drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted, completedBookingIds, cancelledBookingIds]);
 
   const funnelRows = useMemo(() => {
     const q = externalSearch.trim().toLowerCase();
@@ -1389,7 +1421,7 @@ setDocCounts(requiredDocCounts(rows));
   }
   const hiddenFilter = PRIMARY_FILTER_ORDER.includes(filter) ? null : filter;
   const activeContact = CONTACT_STATUSES.find((cs) => cs.key === contactFilter);
-  const activeFilterCount = Number(hiddenFilter !== null) + Number(contactFilter !== "all") + Number(docFilter !== "all");
+  const activeFilterCount = Number(hiddenFilter !== null) + Number(contactFilter !== "all") + Number(docFilter !== "all") + Number(showRevenue && driverSort !== "newest");
   return (
     <div className="max-lg:min-w-0">
       {deleteDialog}
@@ -1531,6 +1563,22 @@ setDocCounts(requiredDocCounts(rows));
                   ))}
                 </AppSelect>
               </div>
+              {showRevenue ? (
+                <div className="px-2 py-1.5" onPointerDown={(event) => event.stopPropagation()}>
+                  <label htmlFor="drivers-sort" className="mb-1.5 block text-[11px] font-medium text-muted-foreground">Sort</label>
+                  <AppSelect
+                    id="drivers-sort"
+                    aria-label="Sort Drivers"
+                    data-driver-sort
+                    value={driverSort}
+                    onChange={(e) => setDriverSort(e.target.value === "revenue" ? "revenue" : "newest")}
+                    className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-xs text-foreground"
+                  >
+                    <option value="newest">{DRIVER_SORT_LABEL.newest}</option>
+                    <option value="revenue">{DRIVER_SORT_LABEL.revenue}</option>
+                  </AppSelect>
+                </div>
+              ) : null}
               {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                 <div className="px-2 py-1.5 [&_select]:w-full" onPointerDown={(event) => event.stopPropagation()}>
                   <DriverDocExpiryFilter
@@ -1606,17 +1654,35 @@ setDocCounts(requiredDocCounts(rows));
           <table className="w-full table-fixed text-sm" data-testid="drivers-table">
             <thead className="bg-[#FAFAFB] text-[11px] tracking-wider text-muted-foreground">
               <tr>
-                <th className="w-[16%] text-left font-medium px-2 py-2.5 border-b border-border">Name</th>
+                <th className={`${showRevenue ? "w-[16%]" : "w-[16%]"} text-left font-medium px-2 py-2.5 border-b border-border`}>Name</th>
                 <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Contact</th>
                 <th className="w-[11%] text-left font-medium px-2 py-2.5 border-b border-border">Status</th>
-                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Phone</th>
-                <th className="w-[16%] text-left font-medium px-2 py-2.5 border-b border-border">Email</th>
-                <th className="w-[13%] text-left font-medium px-2 py-2.5 border-b border-border">Readiness</th>
+                <th className={`${showRevenue ? "w-[11%]" : "w-[12%]"} text-left font-medium px-2 py-2.5 border-b border-border`}>Phone</th>
+                <th className={`${showRevenue ? "w-[12%]" : "w-[16%]"} text-left font-medium px-2 py-2.5 border-b border-border`}>Email</th>
+                <th className={`${showRevenue ? "w-[14%]" : "w-[13%]"} text-left font-medium px-2 py-2.5 border-b border-border`}>Readiness</th>
                 {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                   <DriverDocExpiryHeader />
                 ) : null}
-                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Applied</th>
-                <th className="w-[8%] px-2 py-2.5 border-b border-border text-right sticky right-0 bg-[#FAFAFB]">Open</th>
+                {showRevenue ? (
+                  <th
+                    scope="col"
+                    aria-sort={driverSort === "revenue" ? "descending" : "none"}
+                    data-revenue-header
+                    className="w-[9%] text-left font-medium px-2 py-2.5 border-b border-border"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setDriverSort((cur) => (cur === "revenue" ? "newest" : "revenue"))}
+                      title={driverSort === "revenue" ? "Sorted By Top Revenue. Click For Newest." : "Sort By Top Revenue"}
+                      aria-label={driverSort === "revenue" ? "Revenue, Highest First. Click For Newest." : "Sort By Top Revenue"}
+                      className="inline-flex items-center gap-1 rounded-sm font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/40"
+                    >
+                      Revenue{driverSort === "revenue" ? <ArrowDown className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
+                    </button>
+                  </th>
+                ) : null}
+                <th className={`${showRevenue ? "w-[10%]" : "w-[13%]"} text-left font-medium px-2 py-2.5 border-b border-border`}>Applied</th>
+                <th className={`${showRevenue ? "w-[5%]" : "w-[7%]"} px-2 py-2.5 border-b border-border text-right sticky right-0 bg-[#FAFAFB]`}><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -1639,7 +1705,7 @@ setDocCounts(requiredDocCounts(rows));
                 const rows = [
                   <tr
                     key={a.id}
-                    {...rowOpenProps(() => openDriver(a))}
+                    {...rowOpenProps(() => openDriver(a), rowHref({ tab: "drivers", id: a.id }))}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 focus-visible:outline-none focus-visible:bg-soft/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D03020]/40 transition-colors"
                   >
                     <td className="px-2 py-2.5 font-medium whitespace-nowrap">
@@ -1804,6 +1870,11 @@ setDocCounts(requiredDocCounts(rows));
                         />
                       </td>
                     ) : null}
+                    {showRevenue ? (
+                      <td className="px-2 py-2.5 whitespace-nowrap tabular-nums font-medium" data-revenue-cell>
+                        {formatRevenue(revenueForIds(revenueTotals, [a.id, ...history.map((h) => h.id)]))}
+                      </td>
+                    ) : null}
                     <td className="px-2 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
                       {a.created_at ? (
                         <>
@@ -1908,7 +1979,7 @@ setDocCounts(requiredDocCounts(rows));
                     rows.push(
                       <tr
                         key={h.id}
-                        {...rowOpenProps(() => openDriver(h))}
+                        {...rowOpenProps(() => openDriver(h), rowHref({ tab: "drivers", id: h.id }))}
                         className="cursor-pointer bg-soft/30 border-b border-border text-xs text-muted-foreground hover:bg-soft/60"
                       >
                         <td className="pl-10 pr-4 py-2 italic">↳ earlier submission</td>
@@ -1928,6 +1999,7 @@ setDocCounts(requiredDocCounts(rows));
                             />
                           </td>
                         ) : null}
+                        {showRevenue ? <td className="px-2 py-2">—</td> : null}
                         <td className="px-4 py-2">
                           <div>{fmtDate(h.created_at!)}</div>
                           <div className="opacity-70">
@@ -1946,7 +2018,7 @@ setDocCounts(requiredDocCounts(rows));
               })}
               {grouped.length === 0 && (
                 <tr>
-                  <td colSpan={DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? 9 : 8} className="p-4">
+                  <td colSpan={(DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? 9 : 8) + (showRevenue ? 1 : 0)} className="p-4">
                     <EmptyState
                       title="No Drivers Yet"
                       hint="Drivers appear here as soon as someone completes the quote form or an application."

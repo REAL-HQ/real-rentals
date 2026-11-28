@@ -169,6 +169,11 @@ export type BookingRow = {
   autopayActive?: boolean | null;
   /** Manager+ only. From rentals.next_payment_due. */
   nextPaymentDue?: string | null;
+  /**
+   * Manager+ only. Dollars this driver has paid us to date across all rentals
+   * (driver-revenue.ts). Null when it could not be read. Never sent to a Coordinator.
+   */
+  driverRevenue?: number | null;
 };
 
 /** Bookings detail: "Autopay On · Next Charge Nov 30, 2026 · $350.00" or "Autopay Off". */
