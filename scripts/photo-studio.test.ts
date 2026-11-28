@@ -183,6 +183,32 @@ describe("marketing shot notes stay off the photo", () => {
     expect(panel).not.toMatch(/<span[^>]*absolute[^>]*>\s*\{?Angle Inferred/);
   });
 
+  test("shot actions are icon buttons that stay inside the card", () => {
+    const panel = readFileSync(new URL("../src/components/admin/PhotoStudioPanel.tsx", import.meta.url), "utf8");
+    expect(panel).toContain('size="icon"');
+    expect(panel).toContain('variant="ghost"');
+    expect(panel).toContain('label="Approve"');
+    expect(panel).toContain('label="Reject"');
+    expect(panel).toContain('label="Regenerate"');
+    expect(panel).toContain("min-w-0");
+    expect(panel).toContain("flex-wrap");
+    expect(panel).toContain("<Check ");
+    expect(panel).toContain("<X ");
+    expect(panel).toContain("<RefreshCw ");
+    expect(panel).toContain("<Clock ");
+    expect(panel).toContain("<CheckCircle ");
+    expect(panel).toContain("<XCircle ");
+    expect(panel).toContain("aria-label={label}");
+    expect(panel).toContain('decide(s.id, "approved")');
+    expect(panel).toContain('decide(s.id, "rejected")');
+    expect(panel).toContain("run([slot])");
+    expect(panel).toContain("marketingShotNote(");
+    expect(panel).toContain("{shots.length ? \"Regenerate All\" : \"Generate Shots\"}");
+    expect(panel).not.toMatch(/>\s*Approve\s*</);
+    expect(panel).not.toMatch(/>\s*Reject\s*</);
+    expect(panel).not.toMatch(/>\s*Regenerate\s*</);
+  });
+
   test("public, driver, and fleet photo views do not render those labels", () => {
     const files = [
       "../src/components/site/VehicleCard.tsx",
