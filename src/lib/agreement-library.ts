@@ -10,7 +10,11 @@
 //   insurance_included_v116  "REAL RENTALS - Vehicle Rental Agreement (v1.16)" (agreement-v116.ts):
 //                       v1.15 with Section 13 toll and citation terms.
 //   insurance_included_v117  "REAL RENTALS - Vehicle Rental Agreement (v1.17)" (agreement-v117.ts):
-//                       v1.16 with the luxury / premium minimum age at 23; the default for new sends.
+//                       v1.16 with the luxury / premium minimum age at 23.
+//   insurance_included_v118  "REAL RENTALS - Vehicle Rental Agreement (v1.18)" (agreement-v118.ts):
+//                       v1.17 with Section 13 GPS history and photos, and Section 15
+//                       remote-disable wording with no engine-off or moving-vehicle
+//                       timing; the default for new sends.
 // no_insurance and insurance_required are RETIRED (Nov 19 2026): they stay here
 // so they can still be previewed and compared, but nothing can send them. See
 // RETIRED_REASON below for why they were retired rather than patched.
@@ -26,6 +30,7 @@ import { V114_SOURCE, V114_TERM_DEFAULTS } from "@/lib/agreement-v114";
 import { V115_SOURCE, V115_TERM_DEFAULTS } from "@/lib/agreement-v115";
 import { V116_SOURCE, V116_TERM_DEFAULTS } from "@/lib/agreement-v116";
 import { V117_SOURCE, V117_TERM_DEFAULTS } from "@/lib/agreement-v117";
+import { V118_SOURCE, V118_TERM_DEFAULTS } from "@/lib/agreement-v118";
 
 export type LibraryTemplate = {
   key: string;
@@ -159,6 +164,12 @@ export const LIBRARY: LibraryTemplate[] = [
     source: V117_SOURCE, terms: V117_TERM_DEFAULTS, body: writeTerms(V117_SOURCE, V117_TERM_DEFAULTS), reservationStyle: "amount",
     compareWith: "insurance_included_v116",
   },
+  {
+    key: "insurance_included_v118", name: "Vehicle Rental Agreement — Insurance Included", displayVersion: "1.18",
+    insuranceRequired: false, insuranceIncluded: true, sourceFile: "agreement-v118.ts (v1.17 with Section 13 GPS history and photos, and Section 15 remote-disable wording, Nov 28 2026)",
+    source: V118_SOURCE, terms: V118_TERM_DEFAULTS, body: writeTerms(V118_SOURCE, V118_TERM_DEFAULTS), reservationStyle: "amount",
+    compareWith: "insurance_included_v117",
+  },
 ];
 
 export const LIBRARY_KEYS = LIBRARY.map((t) => t.key) as [string, ...string[]];
@@ -195,13 +206,14 @@ export function lineDiff(a: string, b: string): { t: "same" | "del" | "add"; lin
 }
 
 /**
- * The agreement new sends use when no saved template is active: v1.17
- * (Insurance Included) = v1.16 with the luxury / premium minimum age at 23.
- * v1.16, v1.15 and v1.14 stay approved and selectable. Signed agreements keep
- * the text they were signed with. Sending v1.17 takes effect only when this
- * change is merged.
+ * The agreement new sends use when no saved template is active: v1.18
+ * (Insurance Included) = v1.17 with Section 13 GPS history and photos, and
+ * Section 15 remote-disable wording that does not describe engine-off or
+ * moving-vehicle timing. v1.17, v1.16, v1.15 and v1.14 stay approved and
+ * selectable. Signed agreements keep the text they were signed with. Sending
+ * v1.18 takes effect only when this change is merged.
  */
-export const DEFAULT_LIBRARY_KEY = "insurance_included_v117";
+export const DEFAULT_LIBRARY_KEY = "insurance_included_v118";
 /** Library families the Owner approved for sending (an Owner approval, not a legal review). */
 export const OWNER_APPROVED_LIBRARY: Record<string, { at: string; by: string }> = {
   insurance_included: { at: "2026-11-16", by: "Dolmar Cross (Owner), t319u" },
@@ -212,6 +224,8 @@ export const OWNER_APPROVED_LIBRARY: Record<string, { at: string; by: string }> 
   insurance_included_v116: { at: "2026-11-21", by: "Dolmar Cross (Owner), on merging the v1.16 PR" },
   // Takes effect only when Dolmar merges the PR that adds it.
   insurance_included_v117: { at: "2026-11-25", by: "Dolmar Cross (Owner), on merging the v1.17 PR" },
+  // Takes effect only when Dolmar merges the PR that adds it.
+  insurance_included_v118: { at: "2026-11-28", by: "Dolmar Cross (Owner), on merging the v1.18 PR" },
 };
 
 /** True when a library family is retired (previewable, never sendable). */

@@ -1,8 +1,10 @@
-// Florida 812.155 Addendum (v1.0) for current renters whose signed agreement
+// Florida 812.155 Addendum (v1.1) for current renters whose signed agreement
 // predates v1.14/v1.15 (or who signed on paper). Client-safe.
 //
-// It carries the eight v1.15 additions (agreement-v115.ts) word for word, each
-// with its own Renter Initials row, plus the line tying it to the renter's
+// It carries the v1.15 additions (agreement-v115.ts), each with its own
+// Renter Initials row, except the starter-interrupt wording matches v1.18
+// (remote disable is disclosed; engine-off and moving-vehicle timing are
+// not). Plus the line tying it to the renter's
 // Vehicle Rental Agreement number (auto-filled when we know it, "___" when we
 // do not, e.g. a paper agreement). Built Nov 19 2026 at Dolmar's direction
 // (relayed by FLEET, 9:04 PM ET). It is NOT approved for renters: nothing
@@ -17,7 +19,6 @@ import {
   CLAUSE_CONSENT_WITHDRAWN,
   CLAUSE_NOTICE_ADDRESS,
   CLAUSE_SERVICE_AREA_CONSENT,
-  CLAUSE_STARTER_INTERRUPT,
   PEST_FEE_ITEM,
   PEST_FEE_AMOUNT,
   LATE_FEE_ITEM,
@@ -25,8 +26,9 @@ import {
   CLAUSE_LICENSE_COPY,
 } from "@/lib/agreement-v115";
 import { V115_TERM_DEFAULTS } from "@/lib/agreement-v115";
+import { CLAUSE_STARTER_INTERRUPT_V118 } from "@/lib/agreement-v118";
 
-export const FL_ADDENDUM_VERSION = "1.0";
+export const FL_ADDENDUM_VERSION = "1.1";
 export const FL_ADDENDUM_TITLE = "Florida 812.155 Addendum";
 /** What prints when the renter's agreement number is not on file (paper agreements). */
 export const UNKNOWN_AGREEMENT_NUMBER = "___";
@@ -90,7 +92,7 @@ ${CLAUSE_NOTICE_ADDRESS}
 ${CLAUSE_SERVICE_AREA_CONSENT}
 
 ## 6. Starter-Interrupt Device
-${CLAUSE_STARTER_INTERRUPT}
+${CLAUSE_STARTER_INTERRUPT_V118}
 
 ## 7. Late Fee and Pest, Insect & Biohazard Infestation (Section 4)
 |#40 Item | Amount
