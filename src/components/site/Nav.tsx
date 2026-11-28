@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { isPublicSitePath, publicDashboardHref } from "./public-dashboard";
 
 const menuLinks = [
   { to: "/fleet", label: "Fleet" },
@@ -23,9 +24,13 @@ const menuLinks = [
   { to: "/contact", label: "Contact" },
 ];
 
+const headerCtaClass =
+  "inline-flex min-h-11 items-center rounded-lg bg-real-red px-4 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95";
+
 export function Nav() {
   const location = useLocation();
   const isCityPage = !!useMatch({ from: "/$slug", shouldThrow: false });
+  const publicHeader = isPublicSitePath(location.pathname);
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState<any>(null);
@@ -99,8 +104,9 @@ export function Nav() {
   const isDriver = roles.includes("driver");
   const isPartner = roles.includes("partner");
   const isAdmin = roles.includes("admin") || roles.includes("team");
-  const accountHref = isAdmin ? "/admin" : isPartner ? "/partner" : isDriver ? "/portal" : "/admin";
+  const accountHref = publicDashboardHref(roles);
   const accountLabel = isPartner ? "Partner Portal" : isDriver ? "Driver Portal" : "Account";
+  const showSiteMenu = !isCityPage && (!session || publicHeader);
 
   return (
     <header
@@ -136,6 +142,11 @@ export function Nav() {
         </div>
         <div className="flex items-center gap-3">
           {authReady && session ? (
+            publicHeader ? (
+              <Link to={accountHref} className={headerCtaClass}>
+                Dashboard
+              </Link>
+            ) : (
             <>
               {(isPartner || isDriver) && (
                 <DropdownMenu>
@@ -217,6 +228,7 @@ export function Nav() {
               </DropdownMenuContent>
             </DropdownMenu>
             </>
+            )
           ) : !session && !isCityPage ? (
             <Link
               to="/admin"
@@ -228,12 +240,12 @@ export function Nav() {
           {!session && (
             <Link
               to="/apply"
-              className="inline-flex min-h-11 items-center rounded-lg bg-real-red px-4 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
+              className={headerCtaClass}
             >
               Book Now
             </Link>
           )}
-          {!session && !isCityPage && (
+          {showSiteMenu && (
             <button
               className="inline-flex min-h-11 min-w-11 items-center justify-center"
               onClick={() => setOpen((o) => !o)}
@@ -244,7 +256,7 @@ export function Nav() {
           )}
         </div>
       </div>
-      {open && !isCityPage && (
+      {open && showSiteMenu && (
         <>
           <div
             className="fixed inset-0 z-40 bg-transparent"
