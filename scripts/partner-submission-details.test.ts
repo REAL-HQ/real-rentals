@@ -82,7 +82,7 @@ describe("legacy submission details", () => {
     const shared = readFileSync("src/components/admin/owner-vehicle-photos.tsx", "utf8");
     const partners = readFileSync("src/components/admin/PartnersPanel.tsx", "utf8");
     const fleet = readFileSync("src/components/admin/FleetOwnersPanel.tsx", "utf8");
-    assert.match(shared, /from\("owner-vehicle-photos"\)\.createSignedUrl/);
+    assert.match(shared, /from\("owner-vehicle-photos"\)\s*\.createSignedUrl/);
     assert.doesNotMatch(partners, /createSignedUrl/);
     assert.doesNotMatch(fleet, /createSignedUrl/);
     assert.match(partners, /OwnerVehiclePhotoThumb/);
@@ -99,6 +99,7 @@ describe("legacy submission details", () => {
     assert.match(rows[0], /data-testid="owner-photo-grid"/);
     assert.match(rows[0], /Open Photo 1/);
     assert.match(rows[0], /Open Photo 2/);
+    assert.doesNotMatch(rows[0], /owner-photo-lightbox/);
     for (const label of [
       "Phone",
       "VIN",
