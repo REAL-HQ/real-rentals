@@ -42,8 +42,9 @@ export const CONDITION_SECTIONS: Array<{
 
 export function sectionForPhase(phase: string | null | undefined): ConditionSectionKey {
   const p = String(phase ?? "").toLowerCase();
-  if (p === "checkout") return "pickup";
-  if (p === "checkin") return "return";
+  // Stored phases are checkout/checkin; also accept the UI names and "return".
+  if (p === "checkout" || p === "pickup") return "pickup";
+  if (p === "checkin" || p === "return") return "return";
   return "during";
 }
 
@@ -63,8 +64,34 @@ export function roleLabel(role: string | null | undefined): string {
   return "Photo";
 }
 
-/** Subsection titles — keep to one word. */
+/** Subsection titles, one word. Used in the driver portal. */
 export const ROLE_SUBSECTION = { staff: "Ours", driver: "Yours" } as const;
+
+/**
+ * Staff-facing subsection titles. "Yours" reads as the viewer's photos, so
+ * the admin booking view uses "Renter" instead.
+ */
+export const ADMIN_ROLE_SUBSECTION = { staff: "Ours", driver: "Renter" } as const;
+
+export type RoleAudience = "renter" | "staff";
+
+export function roleSubsection(
+  role: CapturedByRole,
+  audience: RoleAudience = "renter",
+): string {
+  return (audience === "staff" ? ADMIN_ROLE_SUBSECTION : ROLE_SUBSECTION)[role];
+}
+
+/** Staff-only GPS readout. Returns null when either value is missing. */
+export function formatGps(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): string | null {
+  if (lat == null || lng == null || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+    return null;
+  }
+  return `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
+}
 
 export function isStaffRole(role: string | null | undefined): boolean {
   return String(role ?? "").toLowerCase() === "staff";
