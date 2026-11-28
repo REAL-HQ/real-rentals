@@ -1,6 +1,6 @@
 // Bookings owes and the FLEET balance share reportedOwes.
 import { describe, expect, test } from "bun:test";
-import { reportedOwes } from "../src/lib/rental-owes";
+import { reportedOwes, unpaidLateFeeOnPayment } from "../src/lib/rental-owes";
 import { autopayBadge } from "../src/lib/bookings-list";
 import { rentStanding } from "../src/lib/rent-standing";
 import { buildActiveRentalRows, type PaymentFact } from "../src/lib/active-rentals";
@@ -61,5 +61,35 @@ describe("reported owes", () => {
     expect(reported.total_owed).toBe(450);
     expect(reported.overdue_owed).toBe(450);
     expect(reported.overdue_days).toBe(4);
+  });
+});
+
+describe("unpaid late fee on a payment row", () => {
+  test("an overdue rent row shows the unpaid late fees that sit in outstanding", () => {
+    // Dolmar's past booking: Amount $350, unpaid late fee $100, Outstanding $450.
+    const lateFee = unpaidLateFeeOnPayment({ status: "overdue", lateFees: 100 });
+    const outstanding = 450; // balance_due, unchanged
+    const amount = 350;
+    expect(lateFee).toBe(100);
+    expect(outstanding).toBe(amount + lateFee);
+  });
+
+  test("forgiven fees are already off late_fees, so they are not shown", () => {
+    // Late Fees card: Unpaid $100, Forgiven $350. The row keeps only the unpaid remainder.
+    expect(unpaidLateFeeOnPayment({ status: "overdue", lateFees: 100 })).toBe(100);
+    expect(unpaidLateFeeOnPayment({ status: "due", late_fees: 0 })).toBe(0);
+    expect(unpaidLateFeeOnPayment({ status: "due", lateFees: null })).toBe(0);
+    expect(unpaidLateFeeOnPayment({ status: "due" })).toBe(0);
+  });
+
+  test("a paid, waived, or voided row shows no unpaid late fee", () => {
+    expect(unpaidLateFeeOnPayment({ status: "paid", lateFees: 100 })).toBe(0);
+    expect(unpaidLateFeeOnPayment({ status: "waived", lateFees: 50 })).toBe(0);
+    expect(unpaidLateFeeOnPayment({ status: "void", lateFees: 50 })).toBe(0);
+    expect(unpaidLateFeeOnPayment({ status: "refunded", late_fees: 50 })).toBe(0);
+  });
+
+  test("only late fees left on a covered week still show the unpaid fee", () => {
+    expect(unpaidLateFeeOnPayment({ status: "overdue", lateFees: 100 })).toBe(100);
   });
 });

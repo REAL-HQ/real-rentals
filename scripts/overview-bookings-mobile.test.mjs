@@ -206,7 +206,7 @@ const pairs = [
   ],
   ["text-[13px] text-[#55555E] mt-1", "mt-1 break-words text-[13px] text-[#55555E] lg:break-normal", "booking subtitle at lg"],
   ["", "-mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0 lg:overflow-visible", "booking payments scroller at lg"],
-  ["w-full text-[12px]", "w-full min-w-[36rem] text-[12px] lg:min-w-[auto]", "booking payments table at lg"],
+  ["w-full text-[12px]", "w-full min-w-[42rem] text-[12px] lg:min-w-[auto]", "booking payments table at lg"],
 ];
 
 for (const [before, after, label] of pairs) {
@@ -252,7 +252,12 @@ check(bookings.includes("max-lg:flex-wrap max-lg:gap-x-3 max-lg:gap-y-2"), "the 
 check(bookings.includes("listBookings"), "bookings still loads through the list function");
 
 const payments = details.slice(details.indexOf('title="Payments"'), details.indexOf("</table>") + 8);
-check(payments.includes("overflow-x-auto") && payments.includes("min-w-[36rem]") && payments.includes('data-testid="booking-payments"'), "the payments table scrolls inside the booking");
+check(payments.includes("overflow-x-auto") && payments.includes("min-w-[42rem]") && payments.includes('data-testid="booking-payments"'), "the payments table scrolls inside the booking");
+const headerOrder = ["Type", "Due", "Paid", "Amount", "Late Fee", "Outstanding", "Status"].map((h) => payments.indexOf(`>${h}</th>`));
+check(headerOrder.every((i) => i >= 0) && headerOrder.join() === [...headerOrder].sort((a, b) => a - b).join(), "Payments columns are Type, Due, Paid, Amount, Late Fee, Outstanding, Status");
+check(payments.includes('pr-3 font-medium text-right">Outstanding') && payments.includes('pl-3 font-medium">Status'), "Outstanding and Status headers have padding so they do not run together");
+check(payments.includes("unpaidLateFeeOnPayment") && payments.includes('lateFee > 0 ? usd(lateFee) : "—"'), "Late Fee shows the unpaid fee on the row, or an em dash when none");
+check(payments.includes('p.status === "paid" ? "—" : usd(p.balanceDue ?? p.amount)'), "Outstanding is still balance due (or amount), unchanged");
 check(details.includes("min-w-0 w-full max-w-6xl"), "the booking drawer cannot grow past the screen");
 
 console.log(`${checks} overview and bookings mobile checks passed`);

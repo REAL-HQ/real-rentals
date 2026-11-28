@@ -19,6 +19,7 @@ import {
   Lock,
 } from "lucide-react";
 import { getBooking, type BookingDetail } from "@/lib/bookings.functions";
+import { unpaidLateFeeOnPayment } from "@/lib/rental-owes";
 import { BookingActions } from "@/components/admin/BookingActions";
 import { CloseoutPreview } from "@/components/admin/CloseoutPreview";
 import { CLOSEOUT_PREVIEW_ENABLED, showsCloseoutPreview } from "@/lib/closeout-preview-flag";
@@ -789,34 +790,41 @@ function Money({ d }: { d: BookingDetail }) {
           <p className="text-[13px] text-[#55555E]">No payment rows exist for this booking.</p>
         ) : (
           <div className="-mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0 lg:overflow-visible">
-          <table className="w-full min-w-[36rem] text-[12px] lg:min-w-[auto]" data-testid="booking-payments">
+          <table className="w-full min-w-[42rem] text-[12px] lg:min-w-[auto]" data-testid="booking-payments">
             <thead className="text-left text-[#9A9AA3]">
               <tr>
-                <th className="py-1 font-medium">Type</th>
-                <th className="py-1 font-medium">Due</th>
-                <th className="py-1 font-medium">Paid</th>
-                <th className="py-1 font-medium text-right">Amount</th>
-                <th className="py-1 font-medium text-right">Outstanding</th>
-                <th className="py-1 font-medium">Status</th>
+                <th className="py-1 pr-3 font-medium">Type</th>
+                <th className="py-1 pr-3 font-medium">Due</th>
+                <th className="py-1 pr-3 font-medium">Paid</th>
+                <th className="py-1 pr-3 font-medium text-right">Amount</th>
+                <th className="py-1 pr-3 font-medium text-right">Late Fee</th>
+                <th className="py-1 pr-3 font-medium text-right">Outstanding</th>
+                <th className="py-1 pl-3 font-medium">Status</th>
               </tr>
             </thead>
             <tbody>
-              {m.payments.map((p) => (
+              {m.payments.map((p) => {
+                const lateFee = unpaidLateFeeOnPayment({ status: p.status, lateFees: p.lateFees });
+                return (
                 <tr key={p.id} className="border-t border-[#F2F2F4]">
-                  <td className="py-1.5">{titleCase(p.type) ?? "—"}</td>
-                  <td className="py-1.5">{p.dueDate ? fmtDate(p.dueDate) : "—"}</td>
-                  <td className="py-1.5">{p.paidDate ? fmtDate(p.paidDate) : "—"}</td>
-                  <td className="py-1.5 text-right tabular-nums">{usd(p.amount)}</td>
-                  <td className="py-1.5 text-right tabular-nums">
+                  <td className="py-1.5 pr-3">{titleCase(p.type) ?? "—"}</td>
+                  <td className="py-1.5 pr-3">{p.dueDate ? fmtDate(p.dueDate) : "—"}</td>
+                  <td className="py-1.5 pr-3">{p.paidDate ? fmtDate(p.paidDate) : "—"}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{usd(p.amount)}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">
+                    {lateFee > 0 ? usd(lateFee) : "—"}
+                  </td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">
                     {p.status === "paid" ? "—" : usd(p.balanceDue ?? p.amount)}
                   </td>
-                  <td className="py-1.5">
+                  <td className="py-1.5 pl-3">
                     <StatusPill status={p.status ?? undefined}>
                       {titleCase(p.status) ?? "—"}
                     </StatusPill>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           </div>
