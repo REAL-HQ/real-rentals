@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { SectionCard, MicroLabel, EmptyState } from "./ui";
 import { listStudioMedia, setOriginalPhotoClass } from "@/lib/photo-studio-media.functions";
 import { generateMarketingShots, getPhotoStudioStatus, reviewMarketingShot, setCarMarketingPublished } from "@/lib/photo-studio.functions";
-import { SHOT_SLOTS, SLOT_LABELS, carSetStatus, type PhotoClass, type ShotSlot } from "@/lib/photo-studio";
+import { SHOT_SLOTS, SLOT_LABELS, carSetStatus, marketingShotNote, type PhotoClass, type ShotSlot } from "@/lib/photo-studio";
 import { PhotoClassLabel, PhotoClassSelect } from "./PhotoClassSelect";
 import { AutoLabelPhotos } from "./AutoLabelPhotos";
 import { PhotoStudioFleet } from "./PhotoStudioFleet";
@@ -128,11 +128,8 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
             <div key={slot} className="rounded border p-2">
               <MicroLabel>{SLOT_LABELS[slot]}</MicroLabel>
               {s ? (<>
-                <div className="relative">
-                  <img src={s.url ?? ""} alt={`${SLOT_LABELS[slot]} (AI-Generated)`} className="w-full aspect-[4/3] object-cover rounded" />
-                  <span className="absolute left-1 top-1 rounded bg-[#111114] px-1 text-[10px] text-white">AI-Generated</span>
-                  {s.studio_check?.inferred && <span className="absolute right-1 top-1 rounded bg-[#9A6A00] px-1 text-[10px] text-white">Angle Inferred</span>}
-                </div>
+                <img src={s.url ?? ""} alt={SLOT_LABELS[slot]} className="w-full aspect-[4/3] object-cover rounded" />
+                <p className="mt-1 text-[11px] leading-snug text-[#55555E]">{marketingShotNote(!!s.studio_check?.inferred)}</p>
                 <div className="mt-1 flex items-center gap-1 text-xs">
                   <Badge variant="outline">{formatStatusLabel(s.studio_review_status)}</Badge>
                   {canEdit && s.studio_review_status === "pending" && (<>
