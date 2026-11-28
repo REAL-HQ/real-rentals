@@ -49,7 +49,7 @@ for (const tier of ["coordinator", "manager", "owner"] as const) {
   ok(!visibleTabs(tier).some((t) => t.id === "fleet_calendar"), `${tier} nav has no Fleet Calendar tab while the flag is off`);
   ok(!railEntries(tier).some((t) => t.id === "fleet_calendar"), `${tier} rail has no Fleet Calendar tab while the flag is off`);
 }
-ok(visibleTabs("owner").filter((t) => t.id !== "owner_pnl").length === TABS.length && visibleTabs("owner").some((t) => t.id === "owner_pnl"), "owner still sees exactly the dark-build destinations plus Monthly Owner P&L");
+ok(visibleTabs("owner").filter((t) => t.id !== "owner_pnl" && t.id !== "fixed_costs").length === TABS.length && visibleTabs("owner").some((t) => t.id === "owner_pnl"), "owner still sees exactly the dark-build destinations plus Monthly Owner P&L");
 ok(admin.includes('FLEET_CALENDAR_ENABLED && tab === "fleet_calendar" && <FleetCalendar />'), "the panel mounts only while the flag is on");
 ok(panel.includes("if (!FLEET_CALENDAR_ENABLED) return null"), "the panel renders nothing while the flag is off");
 ok(

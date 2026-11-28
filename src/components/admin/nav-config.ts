@@ -71,6 +71,7 @@ import { STRIPE_MATCH_REPORT_ENABLED } from "@/lib/stripe-match-flag";
 import { COLLECTIONS_WATCH_ENABLED } from "@/lib/collections-watch-flag";
 import { DEPOSITS_LEDGER_ENABLED } from "@/lib/deposits-ledger-flag";
 import { WEEKLY_CASH_FLOW_ENABLED } from "@/lib/weekly-cash-flow-flag";
+import { FIXED_COSTS_ENABLED } from "@/lib/fixed-costs-flag";
 
 export type TabDef = {
   id: string;
@@ -82,7 +83,8 @@ export type TabDef = {
   description: string;
 };
 
-export const GROUP_ORDER = ["HOME", "PEOPLE", "RENTALS", "FLEET", "BUSINESS", "MANAGE"] as const;
+// ACCOUNTING (Dolmar, Nov 28): Owner-only money views, P&L and Fixed Costs. Listed after BUSINESS.
+export const GROUP_ORDER = ["HOME", "PEOPLE", "RENTALS", "FLEET", "BUSINESS", "ACCOUNTING", "MANAGE"] as const;
 export type Group = (typeof GROUP_ORDER)[number];
 
 export const TABS: readonly TabDef[] = [
@@ -133,6 +135,9 @@ export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter
   driver_issues: { tab: "issues", filter: "driver" },
   // Active Rentals folded into Bookings; keep old links working.
   active_rentals: { tab: "bookings" },
+  // Accounting section (Owner only). P&L keeps ?tab=owner_pnl; these short links resolve too.
+  accounting: { tab: "owner_pnl" },
+  pnl: { tab: "owner_pnl" },
 };
 
 /** Settings workspace menu. Only sections with real settings/functionality. */
@@ -481,9 +486,31 @@ const OWNER_PNL_TAB: TabDef = {
   label: "P&L",
   icon: Scale,
   minTier: "owner",
-  group: "BUSINESS",
+  group: "ACCOUNTING",
   description: "",
 };
+
+/** Accounting > Fixed Costs: monthly insurance and GPS tally. Owner only; kept out of TABS so a dark build cannot list it. */
+export const FIXED_COSTS_TAB: TabDef = {
+  id: "fixed_costs",
+  label: "Fixed Costs",
+  icon: CircleDollarSign,
+  minTier: "owner",
+  group: "ACCOUNTING",
+  description: "Monthly Insurance And GPS Costs For Every Renter And Vehicle",
+};
+
+/** Tab ids in the Owner-only Accounting section. A route guard sends anyone else to Overview. */
+export const ACCOUNTING_TAB_IDS = ["owner_pnl", "fixed_costs"] as const;
+
+function withFixedCosts<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string, enabled = FIXED_COSTS_ENABLED): T[] {
+  if (!enabled || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const pnl = next.findIndex((t) => t.id === "owner_pnl");
+  const entry = href ? { ...FIXED_COSTS_TAB, href } : FIXED_COSTS_TAB;
+  next.splice(pnl >= 0 ? pnl + 1 : next.length, 0, entry as T);
+  return next;
+}
 
 /** Shown only while Owner Expense Entry is compiled on. Kept out of TABS so a dark build cannot list it. */
 const EXPENSE_ENTRY_TAB: TabDef = {
@@ -610,10 +637,10 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push(OWNER_FINANCE_SNAPSHOT_TAB);
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_RISK_MONITOR_TAB);
   if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_PAYOUT_RECON_TAB);
-  if (!extra.length) return withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier);
+  if (!extra.length) return withFixedCosts(withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier);
+  return withFixedCosts(withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier), tier);
 }
 
 /**
@@ -707,11 +734,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_RISK_MONITOR_TAB, href: "stripe_risk_monitor" });
   if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_PAYOUT_RECON_TAB, href: "stripe_payout_recon" });
   if (!extra.length) {
-    return withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "expense_categories");
+    return withFixedCosts(withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "expense_categories"), tier, "fixed_costs");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "expense_categories");
+  return withFixedCosts(withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "expense_categories"), tier, "fixed_costs");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
@@ -758,6 +785,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "owner_pnl") {
     if (!OWNER_PNL_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "owner_pnl";
+  }
+  if (args.urlTab === "fixed_costs") {
+    if (!FIXED_COSTS_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "fixed_costs";
   }
   if (args.urlTab === "expense_entry") {
     if (!OWNER_EXPENSE_ENTRY_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";

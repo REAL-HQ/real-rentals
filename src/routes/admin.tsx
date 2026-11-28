@@ -113,6 +113,8 @@ import { PartnerStatementPanel } from "@/components/admin/PartnerStatementPanel"
 import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
 import { OwnerPnlPanel } from "@/components/admin/OwnerPnlPanel";
 import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
+import { FixedCostsPanel } from "@/components/admin/FixedCostsPanel";
+import { FIXED_COSTS_ENABLED } from "@/lib/fixed-costs-flag";
 import { OwnerExpenseEntryPanel } from "@/components/admin/OwnerExpenseEntryPanel";
 import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
 import { AccountantExportPanel } from "@/components/admin/AccountantExportPanel";
@@ -443,6 +445,12 @@ function Admin() {
     if (urlTab === "owner_pnl") {
       if (!OWNER_PNL_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "owner_pnl";
+    }
+    // Accounting > Fixed Costs: Owner only. Before the role lookup returns the
+    // panel is not rendered (see main below), and the server refuses non-owners.
+    if (urlTab === "fixed_costs") {
+      if (!FIXED_COSTS_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "fixed_costs";
     }
     if (urlTab === "expense_entry") {
       if (!OWNER_EXPENSE_ENTRY_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
@@ -1179,7 +1187,8 @@ function Admin() {
               <FleetAvailability canOpenWaitingList={tierAllows(tier, "manager")} />
             )}
             {PARTNER_STATEMENT_ENABLED && tab === "partner_statement" && <PartnerStatementPanel />}
-            {OWNER_PNL_ENABLED && tab === "owner_pnl" && <OwnerPnlPanel />}
+            {OWNER_PNL_ENABLED && tab === "owner_pnl" && tierAllows(tier, "owner") && <OwnerPnlPanel />}
+            {FIXED_COSTS_ENABLED && tab === "fixed_costs" && tierAllows(tier, "owner") && <FixedCostsPanel />}
             {OWNER_EXPENSE_ENTRY_ENABLED && tab === "expense_entry" && <OwnerExpenseEntryPanel />}
             {ACCOUNTANT_EXPORT_ENABLED && tab === "accountant_export" && <AccountantExportPanel />}
             {TAX_EXPORT_ENABLED && tab === "tax_export" && <TaxExportPanel />}
