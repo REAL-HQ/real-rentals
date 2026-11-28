@@ -53,6 +53,7 @@ describe("shared cell is used in every list", () => {
     ["BillingHealthPanel", "components/admin/BillingHealthPanel.tsx"],
     ["MaintenanceDue", "components/admin/MaintenanceDue.tsx"],
     ["MaintenanceSchedules", "components/admin/MaintenanceSchedules.tsx"],
+    ["OwnerPnlPanel By Car", "components/admin/OwnerPnlPanel.tsx"],
   ];
   for (const [name, file] of users) test(name, () => expect(src(file)).toMatch(/(Linked)?VehicleCell/));
 
@@ -74,6 +75,12 @@ describe("shared cell is used in every list", () => {
     expect(cell).toContain('tab: "vehicles"');
     expect(cell).toContain("setOpen(false)");
     expect(src("components/admin/ReservationsPanel.tsx")).toContain("vehicleId={row.vehicleId}");
+  });
+  test("Owner P&L keeps the car name and uses the small shared thumbnail", () => {
+    const panel = src("components/admin/OwnerPnlPanel.tsx");
+    expect(panel).toContain('<LinkedVehicleCell vehicleId={row.id} size="sm" thumbOnly fallback={{ label: row.label }} />');
+    expect(panel).toContain("<span>{row.label}</span>");
+    expect(panel).toContain("thumbOnly");
   });
   test("card endpoint is staff only and returns no full VIN", () => {
     const f = src("lib/vehicle-cards.functions.ts");
