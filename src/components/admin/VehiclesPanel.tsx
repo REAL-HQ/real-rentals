@@ -1,5 +1,5 @@
 import { AdminToolbar, TOOLBAR, TopSearchChip } from "./AdminToolbar";
-import { rowOpenProps } from "@/lib/row-click";
+import { rowOpenProps, rowHref } from "@/lib/row-click";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -25,7 +25,7 @@ import { VehiclePhotoViewer } from "./VehiclePhotos";
 import { AddVehicleDialog } from "./AddVehicleDialog";
 import { VehicleLifecycleDialog, type LifecycleMode } from "./VehicleLifecycleDialog";
 import { toast } from "sonner";
-import { Plus, Trash2, Car, ArrowRight, Copy, List, LayoutGrid, ChevronLeft, ChevronRight, Archive, RotateCcw, Wrench } from "lucide-react";
+import { Plus, Trash2, Car, Copy, List, LayoutGrid, ChevronLeft, ChevronRight, Archive, RotateCcw, Wrench } from "lucide-react";
 import { displayVehicleWord } from "@/lib/display-normalize";
 import { EmptyState } from "./ui";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
@@ -356,7 +356,7 @@ function FleetVehicles({
     <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-lg:min-w-0 ${view === "list" ? "md:hidden" : ""}`}>
       {rows.map((v, index) => {
         return (
-          <div key={v.id} {...rowOpenProps(() => setViewing(v.id))} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md max-lg:min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/40">
+          <div key={v.id} {...rowOpenProps(() => setViewing(v.id), rowHref({ tab: "vehicles", id: v.id }))} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md max-lg:min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/40">
             {view !== "list" && <div className="aspect-[4/3] bg-background flex items-center justify-center">
               <VehicleStaffPhoto path={v.thumbnailPath ?? null} name={vehicleName(v)} className="w-full h-full object-cover" />
             </div>}
@@ -375,9 +375,6 @@ function FleetVehicles({
               <div data-vehicle-status-row className="mt-2 flex items-center gap-1.5 whitespace-nowrap"><ReadinessPill v={v} /><Availability v={v} /></div>
               {v.swap_notice ? <div className="mt-1.5"><SwapNotice v={v} /></div> : null}
               <div className="mt-3 flex gap-2 max-lg:flex-wrap" onClick={(e) => e.stopPropagation()}>
-                <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
-                  Open Record <ArrowRight className="w-3.5 h-3.5" />
-                </button>
                 {v.status === "archived" ? (
                   <>
                     <button onClick={() => setLifecycle({ v, mode: "restore" })} aria-label="Restore Vehicle" title="Restore Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
@@ -591,12 +588,11 @@ function FleetVehicles({
                 <th className="px-3 py-2 font-medium">Readiness</th>
                 <th className="px-3 py-2 font-medium">Availability</th>
                 <th className="px-3 py-2 font-medium">Weekly Rate</th>
-                <th data-vehicles-open-col className="sticky right-0 z-[1] bg-[#FAFAFB] border-l border-border px-3 py-2 font-medium"><span className="sr-only">Open</span></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((v, index) => (
-                <tr key={v.id} className="group border-t border-border cursor-pointer hover:bg-[#FAFAFB] focus-visible:outline-none focus-visible:bg-[#FAFAFB] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D03020]/40 transition-colors" {...rowOpenProps(() => setViewing(v.id))}>
+                <tr key={v.id} className="group border-t border-border cursor-pointer hover:bg-[#FAFAFB] focus-visible:outline-none focus-visible:bg-[#FAFAFB] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D03020]/40 transition-colors" {...rowOpenProps(() => setViewing(v.id), rowHref({ tab: "vehicles", id: v.id }))}>
                   <td className="w-10 px-3 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
                   <td className="px-3 py-2 whitespace-nowrap"><VehicleListThumbnail vehicle={v} /></td>
                   <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}{v.swap_notice ? <div className="mt-1"><SwapNotice v={v} /></div> : null}</td>
@@ -606,11 +602,6 @@ function FleetVehicles({
                   <td className="px-3 py-2 whitespace-nowrap"><ReadinessPill v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Rate v={v} /></td>
-                  <td data-vehicles-open-col className="sticky right-0 z-[1] bg-white group-hover:bg-[#FAFAFB] border-l border-border px-3 py-2 text-right whitespace-nowrap">
-                    <button onClick={(e) => { e.stopPropagation(); setViewing(v.id); }} className="inline-flex items-center gap-1 rounded-md bg-black text-white px-2.5 py-1 text-xs">
-                      Open <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>

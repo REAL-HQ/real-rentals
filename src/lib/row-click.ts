@@ -20,22 +20,76 @@ export function shouldIgnoreRowEvent(target: unknown, row: unknown): boolean {
   return !!hit && hit !== r;
 }
 
-export function rowOpenProps(open: () => void) {
+/**
+ * `/admin?tab=bookings&id=...` for a record the row opens, so a row can behave
+ * like a link: Cmd/Ctrl-click and middle-click open it in a new tab. Only plain
+ * values are put in the URL; anything else returns null and the row simply has
+ * no new-tab behavior.
+ */
+export function rowHref(search: Record<string, unknown> | null | undefined, to = "/admin"): string | null {
+  if (!search) return null;
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(search)) {
+    if (value == null || value === "") continue;
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return null;
+    params.set(key, String(value));
+  }
+  const query = params.toString();
+  return query ? `${to}?${query}` : to;
+}
+
+type RowClickEvent = {
+  target: unknown;
+  currentTarget: unknown;
+  defaultPrevented?: boolean;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  button?: number;
+  preventDefault?: () => void;
+};
+
+function openInNewTab(href: string) {
+  if (typeof window !== "undefined") window.open(href, "_blank", "noopener");
+}
+
+export function rowOpenProps(open: () => void, href?: string | null) {
   return {
     tabIndex: 0,
     "data-row-open": "",
-    onClick: (e: { target: unknown; currentTarget: unknown; defaultPrevented?: boolean }) => {
+    ...(href ? { "data-row-href": href } : {}),
+    // Middle-click: open in a new tab when the row has a destination.
+    onAuxClick: (e: RowClickEvent) => {
+      if (!href || e.button !== 1) return;
       if (e.defaultPrevented) return;
       if (shouldIgnoreRowEvent(e.target, e.currentTarget)) return;
+      e.preventDefault?.();
+      openInNewTab(href);
+    },
+    // Stop the browser's middle-click autoscroll so the new tab opens cleanly.
+    onMouseDown: (e: RowClickEvent) => {
+      if (href && e.button === 1 && !shouldIgnoreRowEvent(e.target, e.currentTarget)) e.preventDefault?.();
+    },
+    onClick: (e: RowClickEvent) => {
+      if (e.defaultPrevented) return;
+      if (shouldIgnoreRowEvent(e.target, e.currentTarget)) return;
+      if (href && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault?.();
+        openInNewTab(href);
+        return;
+      }
       // Selecting text to copy is not a request to open the row.
       const sel = typeof window !== "undefined" ? window.getSelection?.()?.toString() : "";
       if (sel) return;
       open();
     },
-    onKeyDown: (e: { key: string; target: unknown; currentTarget: unknown; preventDefault: () => void }) => {
+    onKeyDown: (e: { key: string; target: unknown; currentTarget: unknown; metaKey?: boolean; ctrlKey?: boolean; preventDefault: () => void }) => {
       if (e.key !== "Enter" && e.key !== " ") return;
       if (e.target !== e.currentTarget) return;
       e.preventDefault();
+      if (href && e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        openInNewTab(href);
+        return;
+      }
       open();
     },
   };
@@ -56,7 +110,7 @@ export function rowNav(
 ): { className: string } & Partial<ReturnType<typeof rowOpenProps>> {
   if (!search) return { className: base };
   return {
-    ...rowOpenProps(() => void navigate({ to: "/admin", search } as never)),
+    ...rowOpenProps(() => void navigate({ to: "/admin", search } as never), rowHref(search)),
     className: `${base} ${ROW_OPEN_CLASS}`.trim(),
   };
 }

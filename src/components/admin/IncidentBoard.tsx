@@ -213,12 +213,16 @@ export function IncidentBoard() {
                 {claimsVisible && <th className="px-3 py-2 font-medium">Claim Number</th>}
                 {claimsVisible && <th className="px-3 py-2 font-medium">Estimated Cost</th>}
                 {claimsVisible && <th className="px-3 py-2 font-medium">Actual Cost</th>}
-                <th className="px-3 py-2 font-medium">Details</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id} className={`border-t border-border ${ROW_OPEN_CLASS}`} {...rowOpenProps(() => setOpenId(row.id))}>
+                <tr
+                  key={row.id}
+                  aria-expanded={row.id === openId}
+                  className={`border-t border-border ${ROW_OPEN_CLASS} ${row.id === openId ? "bg-[#FAFAFB]" : ""}`}
+                  {...rowOpenProps(() => setOpenId(row.id === openId ? null : row.id))}
+                >
                   <td className="px-3 py-2">{row.vehicle}</td>
                   <td className="px-3 py-2">{row.driver}</td>
                   <td className="px-3 py-2">{row.typeLabel}</td>
@@ -228,11 +232,6 @@ export function IncidentBoard() {
                   {claimsVisible && <td className="px-3 py-2">{row.claims?.claimNumber ?? "No Claim Number"}</td>}
                   {claimsVisible && <td className="px-3 py-2 whitespace-nowrap">{formatCents(row.claims?.estimatedCostCents ?? null)}</td>}
                   {claimsVisible && <td className="px-3 py-2 whitespace-nowrap">{formatCents(row.claims?.actualCostCents ?? null)}</td>}
-                  <td className="px-3 py-2">
-                    <button type="button" onClick={() => setOpenId(row.id === openId ? null : row.id)} className="text-xs font-semibold text-[#D03020]">
-                      {row.id === openId ? "Hide" : "Open"}
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -242,7 +241,10 @@ export function IncidentBoard() {
 
       {open && (
         <section className="rounded-xl border border-[#EDEDF0] bg-white p-4 space-y-3">
-          <h2 className="text-sm font-semibold">{open.typeLabel} · {open.vehicle}</h2>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="text-sm font-semibold">{open.typeLabel} · {open.vehicle}</h2>
+            <button type="button" onClick={() => setOpenId(null)} className="shrink-0 text-xs font-semibold text-[#D03020]">Close</button>
+          </div>
           <dl className="grid gap-2 sm:grid-cols-2 text-sm">
             <Fact label="Driver" value={open.driver} />
             <Fact label="Rental" value={open.rental} href={open.rentalHref} />
