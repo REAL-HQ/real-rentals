@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
-import { PhoneOff } from "lucide-react";
+import { MoreVertical, PhoneOff } from "lucide-react";
 import { getDncTriggerMessages, listDnc, resolveDncProfile } from "@/lib/dnc.functions";
 import { DNC_LIST_TITLE, REMOVE_FROM_DNC_LABEL, dncMatchesSearch, type DncEntry } from "@/lib/dnc";
+import { dncAddedByDisplay, type DncNameSource } from "@/lib/dnc-added-by";
 import {
   DNC_NO_MESSAGE_LABEL,
   DNC_TRIGGER_NOTE,
@@ -14,9 +15,15 @@ import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { displayPersonName } from "@/lib/display-normalize";
 import { formatPhoneForDisplay } from "@/lib/us-phone";
 import { AdminTableScroll } from "./AdminTableScroll";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AdminToolbar, TOOLBAR } from "./AdminToolbar";
 import { EmptyState } from "./ui";
-import { DncBadge, DNC_CHANGED_EVENT } from "./DncGuard";
+import { DNC_CHANGED_EVENT } from "./DncGuard";
 import { DncActionDialog } from "./DncControls";
 import { ModalBody, ModalButton, ModalFooter, ModalHeader, ModalShell } from "./modal";
 
@@ -33,10 +40,13 @@ export type DncPreview = {
   messages: Record<string, DncTriggerMessage | null>;
   openMessageId?: string | null;
   openDetail?: boolean;
+  /** Opens this row's options menu in a static fixture. */
+  openMenuId?: string | null;
+  nameSources?: DncNameSource[];
 };
 
 /**
- * Back office → DNC. Everyone on the internal Do Not Contact list: name, type,
+ * Back office → DNC. Everyone on the internal Do Not Contact list: name,
  * reason, the inbound message that led here, who added them and when, with search.
  * Manager / Owner can remove an entry (reason + confirmation); removed entries
  * stay visible under Removed.
@@ -56,10 +66,12 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
   const [view, setView] = useState<View>("active");
   const [removing, setRemoving] = useState<DncEntry | null>(null);
   const [messageId, setMessageId] = useState<string | null>(preview?.openMessageId ?? null);
+  const [menuId, setMenuId] = useState<string | null>(preview?.openMenuId ?? null);
   const [detail, setDetail] = useState<{ entry: DncEntry; extra: WaitlistDetail | null } | null>(
     preview?.openDetail && preview.entries[0] ? { entry: preview.entries[0], extra: null } : null,
   );
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [nameSources, setNameSources] = useState<DncNameSource[]>(preview?.nameSources ?? []);
 
   const refresh = useCallback(() => {
     if (preview) return;
@@ -67,6 +79,7 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
       .then((r) => {
         setInstalled(r.installed);
         setEntries(r.entries);
+        setNameSources(r.nameSources ?? []);
         setFailed(false);
       })
       .catch(() => setFailed(true));
@@ -108,7 +121,7 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
     () => (view === "active" ? active : removed).filter((e) => dncMatchesSearch(e, q)),
     [view, active, removed, q],
   );
-  const columns = view === "removed" ? 8 : 7;
+  const columns = view === "removed" ? 7 : 6;
 
   function openProfile(applicationId: string) {
     void navigate({ to: "/admin", search: { tab: "drivers", id: applicationId } });
@@ -190,7 +203,6 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
             <thead className="bg-soft text-[11px] tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Type</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Reason</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Message</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Added By</th>
@@ -238,21 +250,17 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
                       className="border-b border-border last:border-0 align-top"
                     >
                       <td className="px-4 py-2.5 font-medium">
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <button
-                            type="button"
-                            className="text-left text-[#111114] underline decoration-[#C4C4CB] underline-offset-2 hover:decoration-[#111114]"
-                            onClick={() => void openPerson(e)}
-                            disabled={openingId === e.id}
-                            data-testid="dnc-open-person"
-                            title="Open Profile"
-                          >
-                            {name}
-                          </button>
-                          {!e.removedAt ? <DncBadge entry={e} /> : null}
-                        </span>
+                        <button
+                          type="button"
+                          className="text-left text-[#111114] underline decoration-[#C4C4CB] underline-offset-2 hover:decoration-[#111114]"
+                          onClick={() => void openPerson(e)}
+                          disabled={openingId === e.id}
+                          data-testid="dnc-open-person"
+                          title="Open Profile"
+                        >
+                          {name}
+                        </button>
                       </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">{e.personTypeLabel}</td>
                       <td className="px-4 py-2.5 min-w-[12rem] max-w-md whitespace-pre-wrap break-words">
                         {e.reason}
                       </td>
@@ -261,14 +269,28 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
                           "…"
                         ) : message ? (
                           <div>
-                            <div className="truncate text-[#111114]" title={message.body}>{message.body}</div>
+                            <button
+                              type="button"
+                              className="block max-w-full cursor-pointer truncate text-left text-[#111114] hover:underline focus-visible:underline"
+                              title={message.body}
+                              onClick={() => setMessageId(e.id)}
+                              data-testid="dnc-open-message"
+                            >
+                              {message.body}
+                            </button>
                             <div className="text-[11px] text-[#9A9AA3]">{message.label}</div>
                           </div>
                         ) : (
                           <span data-testid="dnc-no-message">{DNC_NO_MESSAGE_LABEL}</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{e.addedBy}</td>
+                      <td
+                        className="px-4 py-2.5 whitespace-nowrap text-muted-foreground"
+                        title={e.addedBy || undefined}
+                        data-testid="dnc-added-by"
+                      >
+                        {dncAddedByDisplay(e.addedBy, nameSources, e.addedByUserId)}
+                      </td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
                         {e.createdAt ? fmtDate(e.createdAt) : "—"}
                       </td>
@@ -284,28 +306,32 @@ export function DncPanel({ canRemove, preview }: { canRemove: boolean; preview?:
                         </td>
                       ) : null}
                       <td className="px-2 py-2.5 text-right whitespace-nowrap">
-                        <span className="inline-flex items-center justify-end gap-2">
-                          {message ? (
-                            <button
-                              type="button"
-                              className={TOOLBAR.button}
-                              onClick={() => setMessageId(e.id)}
-                              data-testid="dnc-view-message"
-                            >
-                              View Message
-                            </button>
-                          ) : null}
-                          {canRemove && !e.removedAt ? (
-                            <button
-                              type="button"
-                              className={TOOLBAR.button}
-                              onClick={() => setRemoving(e)}
-                              data-testid="dnc-row-remove"
-                            >
-                              {REMOVE_FROM_DNC_LABEL}
-                            </button>
-                          ) : null}
-                        </span>
+                        {canRemove && !e.removedAt ? (
+                          <DropdownMenu
+                            open={menuId === e.id}
+                            onOpenChange={(open) => setMenuId(open ? e.id : null)}
+                          >
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label="Row Options"
+                                data-testid="dnc-row-options"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-soft hover:text-foreground"
+                              >
+                                <MoreVertical aria-hidden="true" className="h-4 w-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 bg-white">
+                              <DropdownMenuItem
+                                data-testid="dnc-row-remove"
+                                className="text-real-red focus:text-real-red"
+                                onSelect={() => setRemoving(e)}
+                              >
+                                {REMOVE_FROM_DNC_LABEL}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
                       </td>
                     </tr>
                   );

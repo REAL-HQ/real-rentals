@@ -35,6 +35,7 @@ mock.module("@/components/ui/alert-dialog", () => {
 
 const dnc = await import("../src/lib/dnc");
 const dncMessage = await import("../src/lib/dnc-message");
+const dncAddedBy = await import("../src/lib/dnc-added-by");
 const { DncBadge, DncWarningDialog } = await import("../src/components/admin/DncGuard");
 const { TABS, visibleTabs, navOwner, visibleWorkspaceTabs } = await import("../src/components/admin/nav-config");
 
@@ -352,6 +353,10 @@ describe("contact entry points", () => {
     expect(panel).toContain('data-testid="dnc-open-person"');
     expect(panel).toContain("Open Profile");
     expect(panel).toContain("View Message");
+    expect(panel).toContain('aria-label="Row Options"');
+    expect(panel).toContain('data-testid="dnc-open-message"');
+    expect(panel).not.toContain("<DncBadge");
+    expect(panel).not.toContain(">Type</th>");
     expect(panel).toContain("DNC_NO_MESSAGE_LABEL");
     expect(panel).not.toContain("e.applicationId ? (");
     const fns = read("src/lib/dnc.functions.ts");
@@ -427,6 +432,30 @@ describe("trigger message", () => {
     expect(dncE164("555-0100")).toBeNull();
     expect(isInboundMessageKind("inbound_other")).toBe(true);
     expect(isInboundMessageKind("staff_message")).toBe(false);
+  });
+});
+
+describe("added by display", () => {
+  const { dncAddedByDisplay } = dncAddedBy;
+  const dolmar = [{ staffKey: "dolmar", name: "Dolmar Cross" }];
+  const stored = "dolmarcross@gmail.com (Owner, approved t731u, via VIBE)";
+
+  test("a staff profile shortens the mailbox to a first name and ignores the notes", () => {
+    expect(dncAddedByDisplay(stored, dolmar)).toBe("Dolmar");
+  });
+
+  test("without a profile the mailbox name is Title Case, and a via-note is not the actor", () => {
+    expect(dncAddedByDisplay(stored, [])).toBe("Dolmarcross");
+  });
+
+  test("a bot that added the row keeps the bot name", () => {
+    expect(dncAddedByDisplay("Responder", [])).toBe("Responder");
+    expect(dncAddedByDisplay("VIBE (automation)", [])).toBe("VIBE");
+    expect(dncAddedByDisplay("vibe@internal.example", [])).toBe("VIBE");
+  });
+
+  test("a user id uses that account name", () => {
+    expect(dncAddedByDisplay("Owner", [{ userId: "user-1", name: "Dolmar Cross" }], "user-1")).toBe("Dolmar");
   });
 });
 
