@@ -10,6 +10,23 @@ import { linkPartnerLogin } from "@/lib/partner.functions";
 import { EmptyState } from "./ui";
 import { fmtDateTime } from "@/lib/date-format";
 import { OwnerVehiclePhotoGrid, OwnerVehiclePhotoThumb } from "./owner-vehicle-photos";
+import { MoreVertical } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const PARTNER_TYPES = ["vehicle_owner","capital_partner","private_lender","jv_partner","other"] as const;
 const PARTNER_STATUSES = ["prospect","active","paused","closed"] as const;
@@ -25,20 +42,38 @@ export function PartnersPanel({
     investors?: InvestorLead[];
     photoUrls?: Record<string, string>;
     expandedOwnerId?: string | null;
+    /** Opens one legacy row's menu. The detail test uses this. */
+    menuOwnerId?: string | null;
   };
 } = {}) {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [legacyOwners, setLegacyOwners] = useState<FleetOwner[]>(preview?.owners ?? []);
   const [legacyInvestors, setLegacyInvestors] = useState<InvestorLead[]>(preview?.investors ?? []);
   const [openOwnerId, setOpenOwnerId] = useState<string | null>(preview?.expandedOwnerId ?? null);
+  const [menuOwnerId, setMenuOwnerId] = useState<string | null>(preview?.menuOwnerId ?? null);
+  const [deleteOwner, setDeleteOwner] = useState<FleetOwner | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [filter, setFilter] = useState<string>("all");
   const [showAdd, setShowAdd] = useState(false);
+
+  function reloadLegacyOwners() {
+    return supabase
+      .from("fleet_owner_submissions")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          toast.error(error.message);
+          return;
+        }
+        setLegacyOwners(data || []);
+      });
+  }
 
   useEffect(() => {
     if (preview) return;
     refresh();
-    supabase.from("fleet_owner_submissions").select("*").order("created_at", { ascending: false })
-      .then(({ data }) => setLegacyOwners(data || []));
+    void reloadLegacyOwners();
     supabase.from("investor_leads").select("*").order("created_at", { ascending: false })
       .then(({ data }) => setLegacyInvestors(data || []));
   }, []);
@@ -68,6 +103,31 @@ export function PartnersPanel({
   }
   async function convertOwner(o: FleetOwner) {
     await add({ name: o.full_name, email: o.email, phone: o.phone, partner_type: "vehicle_owner", status: "prospect", vehicles_contributed: 1, notes: `Converted from fleet owner submission. Vehicle: ${o.year} ${o.make} ${o.model}` });
+  }
+  async function confirmDeleteOwner() {
+    const owner = deleteOwner;
+    if (!owner || deleting) return;
+    setDeleting(true);
+    const { data, error } = await supabase
+      .from("fleet_owner_submissions")
+      .delete()
+      .eq("id", owner.id)
+      .select("id");
+    setDeleting(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    if (!data?.length) {
+      toast.error("Could not delete this submission.");
+      return;
+    }
+    toast.success("Submission Deleted");
+    setDeleteOwner(null);
+    if (openOwnerId === owner.id) setOpenOwnerId(null);
+    setLegacyOwners((rows) => rows.filter((row) => row.id !== owner.id));
+    if (preview) return;
+    await reloadLegacyOwners();
   }
   async function convertInvestor(l: InvestorLead) {
     await add({ name: l.name, email: l.email, phone: l.phone || undefined, partner_type: "capital_partner", status: "prospect", notes: [l.capital_range && `Range: ${l.capital_range}`, l.message].filter(Boolean).join(" — ") || null });
@@ -138,9 +198,15 @@ export function PartnersPanel({
               key={o.id}
               owner={o}
               open={openOwnerId === o.id}
+              menuOpen={menuOwnerId === o.id}
               photoUrls={preview?.photoUrls}
               onToggle={() => setOpenOwnerId((current) => current === o.id ? null : o.id)}
               onConvert={() => convertOwner(o)}
+              onMenuOpenChange={(next) => setMenuOwnerId(next ? o.id : null)}
+              onDelete={() => {
+                setMenuOwnerId(null);
+                setDeleteOwner(o);
+              }}
             />
           ))}
           {legacyInvestors.map(l => (
@@ -159,22 +225,85 @@ export function PartnersPanel({
       </div>
 
       {showAdd && <AddPartner onClose={() => setShowAdd(false)} onSave={add} />}
+      <LegacyDeleteDialog
+        owner={deleteOwner}
+        deleting={deleting}
+        onCancel={() => {
+          if (!deleting) setDeleteOwner(null);
+        }}
+        onConfirm={() => void confirmDeleteOwner()}
+      />
     </div>
+  );
+}
+
+/** Sentence shown before a legacy fleet-owner row is removed. */
+export function legacySubmissionDeleteCopy(owner: Pick<FleetOwner, "full_name" | "year" | "make" | "model">) {
+  const name = owner.full_name.trim() || "This Submitter";
+  const vehicle = [owner.year, owner.make, owner.model]
+    .filter((part) => part != null && String(part).trim() !== "")
+    .join(" ");
+  return {
+    title: "Delete Submission?",
+    body: `This removes ${name}'s ${vehicle || "vehicle"} submission. This can't be undone.`,
+  };
+}
+
+function LegacyDeleteDialog({
+  owner,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  owner: FleetOwner | null;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const copy = owner ? legacySubmissionDeleteCopy(owner) : null;
+  return (
+    <AlertDialog open={owner !== null} onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <AlertDialogContent data-testid="legacy-submission-delete-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{copy?.title ?? "Delete Submission?"}</AlertDialogTitle>
+          <AlertDialogDescription>{copy?.body}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-[#D03020] text-white hover:bg-[#B82818]"
+            disabled={deleting}
+            onClick={(event) => {
+              event.preventDefault();
+              onConfirm();
+            }}
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
 function LegacyOwnerRow({
   owner,
   open,
+  menuOpen,
   photoUrls,
   onToggle,
   onConvert,
+  onMenuOpenChange,
+  onDelete,
 }: {
   owner: FleetOwner;
   open: boolean;
+  menuOpen: boolean;
   photoUrls?: Record<string, string>;
   onToggle: () => void;
   onConvert: () => void;
+  onMenuOpenChange: (open: boolean) => void;
+  onDelete: () => void;
 }) {
   const photos = owner.photo_urls ?? [];
   const first = photos[0] ?? null;
@@ -193,7 +322,30 @@ function LegacyOwnerRow({
             <div className="text-xs text-muted-foreground">{owner.email} · {owner.year} {owner.make} {owner.model}</div>
           </div>
         </button>
-        <button type="button" onClick={onConvert} className="rounded-md bg-black px-3 py-1.5 text-xs text-white">Convert To Partner</button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={onConvert} className="rounded-md bg-black px-3 py-1.5 text-xs text-white">Convert To Partner</button>
+          <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={`More Actions For ${owner.full_name}`}
+                data-testid="legacy-submission-menu"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-soft hover:text-foreground"
+              >
+                <MoreVertical aria-hidden="true" className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40 bg-white">
+              <DropdownMenuItem
+                data-testid="legacy-submission-delete"
+                className="text-real-red focus:text-real-red"
+                onSelect={() => onDelete()}
+              >
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
       {open && (
         <div className="mt-3 border-t border-[#EDEDF0] pt-3" data-testid="legacy-owner-details">
