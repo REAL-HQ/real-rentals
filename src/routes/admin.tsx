@@ -1106,6 +1106,11 @@ function Admin() {
                     <h1 className="shrink-0 text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
                     <div className="max-w-full shrink-0 overflow-x-auto">{sectionToggle}</div>
                   </div>
+                ) : tab === "owner_pnl" ? (
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                    <h1 className="shrink-0 text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
+                    <div id="owner-pnl-header-actions" className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2" />
+                  </div>
                 ) : (
                   <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
                 )}
