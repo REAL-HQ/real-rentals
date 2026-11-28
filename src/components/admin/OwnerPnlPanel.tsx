@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useServerFn } from "@tanstack/react-start";
 import { Download } from "lucide-react";
 import { AdminTableScroll } from "./AdminTableScroll";
+import { PnlRenterFilter } from "./PnlRenterFilter";
 import { LinkedVehicleCell } from "./VehicleCell";
 import { getOwnerPnlView } from "@/lib/owner-pnl.functions";
 import { ownerPnlViewCsv, type OwnerPnlView, type PnlCarRow, type PnlPreset } from "@/lib/owner-pnl-range";
@@ -109,50 +111,38 @@ export function OwnerPnlPanel() {
   return (
     <div className="owner-pnl space-y-5">
       <style>{PRINT_CSS}</style>
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <p className="text-sm text-[#55555E] max-w-3xl">
-          Stripe charges plus recorded Cash App, Zelle, Venmo, wire, and cash. A shared reference counts once. Deposits stay off the net. Stripe fees stay on the company net.
-        </p>
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <button type="button" onClick={() => window.print()} className={field}>Print</button>
-          <button type="button" disabled={!view} onClick={() => view && downloadCsv(view)} className={`${field} inline-flex items-center gap-1.5 disabled:opacity-50`}>
-            <Download className="w-4 h-4" strokeWidth={1.75} />
-            Download CSV
-          </button>
-        </div>
-      </div>
+      <PnlHeaderActions view={view} />
 
-      <div className="flex flex-wrap gap-2 print:hidden">
-        {PRESETS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setPreset(item.id)}
-            className={`rounded-lg border px-3 py-2 text-sm ${preset === item.id ? "border-[#111114] bg-[#111114] text-white" : "border-[#EDEDF0] bg-white text-[#111114]"}`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-      {preset === "custom" && (
-        <div className="flex flex-wrap gap-2 print:hidden">
-          <label className="text-sm text-[#55555E]">From
-            <input type="date" aria-label="From" value={from} onChange={(event) => setFrom(event.target.value)} className={`${field} ml-2`} />
-          </label>
-          <label className="text-sm text-[#55555E]">Through
-            <input type="date" aria-label="Through" value={through} onChange={(event) => setThrough(event.target.value)} className={`${field} ml-2`} />
-          </label>
+      <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+        <div className="flex flex-wrap gap-2">
+          {PRESETS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setPreset(item.id)}
+              className={`rounded-lg border px-3 py-2 text-sm ${preset === item.id ? "border-[#111114] bg-[#111114] text-white" : "border-[#EDEDF0] bg-white text-[#111114]"}`}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
-      )}
+        {preset === "custom" && (
+          <div className="flex max-w-full flex-wrap items-center gap-2">
+            <label className="min-w-0 max-w-full text-sm text-[#55555E]">From
+              <input type="date" aria-label="From" value={from} onChange={(event) => setFrom(event.target.value)} className={`${field} ml-2 max-w-full`} />
+            </label>
+            <label className="min-w-0 max-w-full text-sm text-[#55555E]">Through
+              <input type="date" aria-label="Through" value={through} onChange={(event) => setThrough(event.target.value)} className={`${field} ml-2 max-w-full`} />
+            </label>
+          </div>
+        )}
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 print:hidden">
         <select aria-label="Car" value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} className={field}>
           <option value="">All Cars</option>
           {(view?.options.cars ?? []).map((car) => <option key={car.id} value={car.id}>{car.label}</option>)}
         </select>
-        <select aria-label="Renter" value={driverId} onChange={(event) => setDriverId(event.target.value)} className={field}>
-          <option value="">All Renters</option>
-          {(view?.options.renters ?? []).map((renter) => <option key={renter.id} value={renter.id}>{renter.name}</option>)}
-        </select>
+        <PnlRenterFilter renters={view?.options.renters ?? []} value={driverId} onChange={setDriverId} />
         <select aria-label="Payment Source" value={source} onChange={(event) => setSource(event.target.value)} className={field}>
           <option value="">All Sources</option>
           {(view?.options.sources ?? []).map((row) => <option key={row.source} value={row.source}>{row.label}</option>)}
@@ -306,6 +296,24 @@ export function OwnerPnlPanel() {
         </div>
       )}
     </div>
+  );
+}
+
+function PnlHeaderActions({ view }: { view: OwnerPnlView | null }) {
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    setHost(document.getElementById("owner-pnl-header-actions"));
+  }, []);
+  if (!host) return null;
+  return createPortal(
+    <>
+      <button type="button" onClick={() => window.print()} className={`${field} print:hidden`}>Print</button>
+      <button type="button" disabled={!view} onClick={() => view && downloadCsv(view)} className={`${field} inline-flex items-center gap-1.5 print:hidden disabled:opacity-50`}>
+        <Download className="w-4 h-4" strokeWidth={1.75} />
+        Download CSV
+      </button>
+    </>,
+    host,
   );
 }
 

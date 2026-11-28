@@ -482,7 +482,7 @@ const OWNER_PNL_TAB: TabDef = {
   icon: Scale,
   minTier: "owner",
   group: "BUSINESS",
-  description: "One Month Of Revenue, Refunds, Expenses And Net",
+  description: "",
 };
 
 /** Shown only while Owner Expense Entry is compiled on. Kept out of TABS so a dark build cannot list it. */
