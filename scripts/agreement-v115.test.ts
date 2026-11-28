@@ -22,6 +22,7 @@ import { LIBRARY, libraryTemplate, acknowledgmentsOf, lineDiff, DEFAULT_LIBRARY_
 import { V114_SOURCE } from "../src/lib/agreement-v114";
 import * as V115 from "../src/lib/agreement-v115";
 import { FL_ADDENDUM_SOURCE, FL_ADDENDUM_OWNER_APPROVAL, renderFloridaAddendum, addendumBlockers, UNKNOWN_AGREEMENT_NUMBER } from "../src/lib/agreement-fl-addendum";
+import { CLAUSE_STARTER_INTERRUPT_V118 } from "../src/lib/agreement-v118";
 import { floridaAddendumFields } from "../src/lib/florida-addendum.functions";
 import { homeAddressMissing, missingHomeAddressParts, formatHomeAddress, HOME_ADDRESS_LABEL } from "../src/lib/agreement-home-address";
 import { parseLayout, layoutToText } from "../src/lib/agreement-layout";
@@ -88,8 +89,8 @@ const v115 = libraryTemplate("insurance_included_v115")!;
 const v115Text = plain(v115.body);
 
 describe("v1.15 contains every addition verbatim", () => {
-  it("stays Owner-approved and selectable; v1.17 is the default", () => {
-    expect(DEFAULT_LIBRARY_KEY).toBe("insurance_included_v117");
+  it("stays Owner-approved and selectable; v1.18 is the default", () => {
+    expect(DEFAULT_LIBRARY_KEY).toBe("insurance_included_v118");
     expect(AMENDMENT_TEMPLATE_KEY).toBe(DEFAULT_LIBRARY_KEY);
     expect(OWNER_APPROVED_LIBRARY.insurance_included_v115).toBeTruthy();
     expect(v115.displayVersion).toBe("1.15");
@@ -163,7 +164,10 @@ describe("v1.15 contains every addition verbatim", () => {
     expect(p.body).not.toContain("__________");
     expect(p.body).not.toMatch(/\{\{|\[\[/);
     const text = plain(p.body);
-    for (const c of V115.V115_ADDITIONS) expect(text).toContain(c);
+    for (const c of V115.V115_ADDITIONS) {
+      if (c === V115.CLAUSE_STARTER_INTERRUPT) expect(text).toContain(CLAUSE_STARTER_INTERRUPT_V118);
+      else expect(text).toContain(c);
+    }
     expect(text).toContain("The Home Address above is your address for all legal notices");
     expect(text).toContain("Home Address: 100 Sample St, Tampa, FL, 33602");
     const added = V115.V115_ADDITIONS.join(" ");
@@ -227,6 +231,7 @@ describe("older templates (v1.10, v1.10.2) are retired", () => {
     expect(isRetiredLibrary("insurance_included_v115")).toBe(false);
     expect(isRetiredLibrary("insurance_included_v116")).toBe(false);
     expect(isRetiredLibrary("insurance_included_v117")).toBe(false);
+    expect(isRetiredLibrary("insurance_included_v118")).toBe(false);
     for (const k of Object.keys(OWNER_APPROVED_LIBRARY)) expect(isRetiredLibrary(k)).toBe(false);
     expect(LIBRARY.filter((t) => t.retired).map((t) => t.key)).toEqual(["no_insurance", "insurance_required"]);
   });
@@ -257,7 +262,15 @@ describe("Florida 812.155 Addendum", () => {
   it("carries items 1-8 verbatim, the 'part of your agreement' line, and one initials row per item", () => {
     const body = renderFloridaAddendum(fields);
     const text = plain(body);
-    for (const c of V115.V115_ADDITIONS) expect(text).toContain(c);
+    for (const c of V115.V115_ADDITIONS) {
+      if (c === V115.CLAUSE_STARTER_INTERRUPT) {
+        expect(text).toContain(CLAUSE_STARTER_INTERRUPT_V118);
+        expect(text).not.toContain("engine is turned off");
+        expect(text).not.toContain("We will not activate it to stop a moving vehicle");
+      } else {
+        expect(text).toContain(c);
+      }
+    }
     expect(body).toContain(`| ${V115.PEST_FEE_ITEM} | ${V115.PEST_FEE_AMOUNT}`);
     expect(text).toContain("This addendum is part of your Vehicle Rental Agreement No. RRA-20261116-ABC123 and applies to the Vehicle and any replacement vehicle.");
     expect(acknowledgmentsOf(body)).toHaveLength(8);
