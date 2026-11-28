@@ -9,6 +9,8 @@ import {
   setNextServiceDue,
 } from "@/lib/maintenance.functions";
 import { fmtDate } from "@/lib/date-format";
+import { autoNextDueTooltip } from "@/lib/oil-next-due";
+import { OilChangePhotoNotice } from "./OilChangePhotoNotice";
 import { SectionCard } from "./ui";
 import {
   Field,
@@ -100,7 +102,18 @@ export function VehicleMaintenanceCards({
       >
         <div data-testid="next-service-due" className="space-y-2 text-[13px]">
           <div className="font-medium">Oil Change</div>
-          <div className="text-[#55555E]">Next Due Miles: {mi(oil.next_due_miles)}</div>
+          <div data-testid="next-due-miles" className="text-[#55555E]">
+            Next Due Miles: {mi(oil.effective_next_due_miles)}
+            {oil.next_due_source === "auto" && oil.auto_base_miles != null && oil.auto_interval_miles != null ? (
+              <span
+                data-testid="next-due-auto"
+                className="ml-1.5 inline-flex items-center rounded bg-[#EDEDF0] px-1.5 py-0.5 text-[11px] font-medium text-[#55555E]"
+                title={autoNextDueTooltip(oil.auto_base_miles, oil.auto_interval_miles)}
+              >
+                Auto
+              </span>
+            ) : null}
+          </div>
           <div className="text-[#55555E]">Next Due Date: {day(oil.next_due_on)}</div>
           {oil.interval_miles ? (
             <div className="text-[#55555E]">
@@ -110,6 +123,14 @@ export function VehicleMaintenanceCards({
           {oil.notes ? <div className="text-[#55555E]">Notes: {oil.notes}</div> : null}
           <ModalButton onClick={() => setDueOpen(true)}>Set Next Service Due</ModalButton>
         </div>
+        {data.oil_change_reminder ? (
+          <div className="mt-3">
+            <OilChangePhotoNotice
+              reasonLabel={data.oil_change_reminder.reasonLabel}
+              draft={data.oil_change_reminder.draft}
+            />
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard
@@ -177,12 +198,21 @@ function NextDueDialog({
   onSaved,
 }: {
   vehicleId: string;
-  oil: { next_due_miles: number | null; next_due_on: string | null; notes: string | null };
+  oil: {
+    next_due_miles: number | null;
+    effective_next_due_miles: number | null;
+    next_due_source: "explicit" | "auto" | "unset";
+    auto_base_miles: number | null;
+    auto_interval_miles: number | null;
+    next_due_on: string | null;
+    notes: string | null;
+  };
   onClose: () => void;
   onSaved: () => void;
 }) {
   const save = useServerFn(setNextServiceDue);
-  const [miles, setMiles] = useState(oil.next_due_miles != null ? String(oil.next_due_miles) : "");
+  const prefilled = oil.effective_next_due_miles ?? oil.next_due_miles;
+  const [miles, setMiles] = useState(prefilled != null ? String(prefilled) : "");
   const [date, setDate] = useState(oil.next_due_on ?? "");
   const [notes, setNotes] = useState(oil.notes ?? "");
   const [busy, setBusy] = useState(false);
@@ -211,12 +241,16 @@ function NextDueDialog({
         <FormGrid cols={2}>
           <Field label="Next Due Miles">
             <input
+              data-testid="next-due-miles-input"
               inputMode="numeric"
               className={inputCls}
               value={miles}
               onChange={(e) => setMiles(e.target.value)}
               placeholder="166869"
             />
+            {oil.next_due_source === "auto" && oil.auto_base_miles != null && oil.auto_interval_miles != null ? (
+              <span className="block text-[12px] text-[#55555E]">{autoNextDueTooltip(oil.auto_base_miles, oil.auto_interval_miles)}</span>
+            ) : null}
           </Field>
           <Field label="Next Due Date">
             <input

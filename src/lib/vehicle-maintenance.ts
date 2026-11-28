@@ -10,11 +10,22 @@
  */
 import { vinLast6 } from "@/lib/vehicle-label";
 import { SOURCE_LABELS } from "@/lib/maintenance-rules";
+import {
+  companyOilChangeIntervalMiles,
+  DEFAULT_OIL_CHANGE_INTERVAL_MILES,
+  effectiveOilNextDue,
+  lastCompletedOilServiceMiles,
+  parseOilMiles,
+  type OilServiceRecord,
+  type SettingsIntervalRow,
+} from "@/lib/oil-next-due";
 
+export { DEFAULT_OIL_CHANGE_INTERVAL_MILES };
 export const OIL_ITEM = "Oil Change";
 export const MONTHLY_ITEM = "Monthly Inspection";
 export const MONTHLY_INTERVAL_DAYS = 30;
-export const DEFAULT_OIL_INTERVAL_MILES = 5000;
+/** Same 5,000. Kept so existing imports still point at the one constant. */
+export const DEFAULT_OIL_INTERVAL_MILES = DEFAULT_OIL_CHANGE_INTERVAL_MILES;
 /** Same ceiling as the vehicle-docs bucket (20 MB). */
 export const MAINTENANCE_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
 export const MILEAGE_LOG_LIMIT = 100;
@@ -185,7 +196,14 @@ export type VehicleMaintenanceView = {
   next_service_due: {
     item: "Oil Change";
     schedule_id: string | null;
+    /** Saved miles only. Null when staff have not set one and no sticker wrote one. */
     next_due_miles: number | null;
+    /** Saved miles, or the read-time default. Never written back by this view. */
+    effective_next_due_miles: number | null;
+    next_due_source: "explicit" | "auto" | "unset";
+    auto_base_miles: number | null;
+    auto_base_kind: "service" | "odometer" | null;
+    auto_interval_miles: number | null;
     next_due_on: string | null;
     interval_miles: number | null;
     last_done_on: string | null;
@@ -230,6 +248,10 @@ export function shapeVehicleMaintenance(input: {
   schedules: ScheduleRow[];
   readings: ReadingRow[];
   records: InspectionRecordRow[];
+  /** Completed service rows. Used only to find the last oil change mileage. */
+  oilRecords?: OilServiceRecord[];
+  /** Company intervals from Settings. An Oil Change miles interval overrides 5,000. */
+  settingsIntervals?: SettingsIntervalRow[];
 }): VehicleMaintenanceView {
   const oil = input.schedules.find((row) => row.is_active !== false && isOilItem(row.item)) ?? null;
   const monthly =
@@ -239,6 +261,21 @@ export function shapeVehicleMaintenance(input: {
     (row) => row.schedule_id === monthly?.id || isMonthlyItem(row.item),
   );
   const history = historyAll.slice(0, INSPECTION_HISTORY_LIMIT);
+  const explicitMiles = parseMiles(oil?.next_due_miles);
+  const readingMiles = [...input.readings]
+    .filter((row) => (row.status ?? "valid") === "valid")
+    .sort((a, b) => {
+      const aOn = parseIsoDate(a.observed_on) ?? "";
+      const bOn = parseIsoDate(b.observed_on) ?? "";
+      if (aOn !== bOn) return aOn < bOn ? 1 : -1;
+      return (parseMiles(b.mileage) ?? 0) - (parseMiles(a.mileage) ?? 0);
+    })[0];
+  const due = effectiveOilNextDue({
+    explicitNextDueMiles: explicitMiles,
+    lastOilServiceMiles: lastCompletedOilServiceMiles(input.oilRecords ?? []),
+    latestOdometerMiles: parseMiles(input.vehicle.current_odometer) ?? parseOilMiles(readingMiles?.mileage),
+    settingsIntervalMiles: companyOilChangeIntervalMiles(input.settingsIntervals ?? []),
+  });
   return {
     vehicle: {
       id: input.vehicle.id,
@@ -267,7 +304,12 @@ export function shapeVehicleMaintenance(input: {
     next_service_due: {
       item: "Oil Change",
       schedule_id: oil?.id ?? null,
-      next_due_miles: parseMiles(oil?.next_due_miles),
+      next_due_miles: explicitMiles,
+      effective_next_due_miles: due.miles,
+      next_due_source: due.source,
+      auto_base_miles: due.source === "auto" ? due.baseMiles : null,
+      auto_base_kind: due.source === "auto" ? due.baseKind : null,
+      auto_interval_miles: due.source === "auto" ? due.intervalMiles : null,
       next_due_on: parseIsoDate(oil?.next_due_on),
       interval_miles: parseMiles(oil?.interval_miles),
       last_done_on: parseIsoDate(oil?.last_done_on),
