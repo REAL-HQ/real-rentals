@@ -17,6 +17,7 @@ import {
   oneOffRowType,
   pickRental,
   rentWeekFor,
+  supersedingRental,
   unmatchedBody,
   UNMATCHED_TITLE,
   type OneOffIdentity,
@@ -34,7 +35,7 @@ export type OneOffOutcome =
   | { status: "recorded"; rentalId: string; by: MatchBy; inserted: boolean }
   | { status: "unmatched"; why: "no_match" | "ambiguous"; identity: OneOffIdentity };
 
-const RENTAL_COLS = "id, application_id, vehicle_id, status, stripe_customer_id, weekly_rate, next_payment_due, payment_status";
+const RENTAL_COLS = "id, application_id, vehicle_id, status, stripe_customer_id, stripe_subscription_id, weekly_rate, next_payment_due, payment_status, start_date";
 // Rows in Collections ('collections') are left to the Collections tab: payments_apply_to_collections
 // settles their lines, so a one-off link never voids or re-dates them here.
 const OPEN_RENT = ["failed", "overdue", "past_due", "late", "unpaid", "current"];
@@ -97,7 +98,15 @@ async function matchRental(admin: Admin, id: OneOffIdentity): Promise<{ rental: 
   if (id.rentalId) {
     const found = await rows<RentalCandidate>(admin.from("rentals").select(RENTAL_COLS).eq("id", id.rentalId));
     const pick = pickRental(found, { explicit: true });
-    if (pick.rental) return { rental: pick.rental, by: "metadata", ambiguous: false };
+    if (pick.rental) {
+      // A reservation cancelled at pickup: the renter's active rental owns the payment.
+      if (pick.rental.status === "cancelled" && pick.rental.application_id) {
+        const same = await rows<RentalCandidate>(admin.from("rentals").select(RENTAL_COLS).eq("application_id", pick.rental.application_id).eq("status", "active"));
+        const active = supersedingRental(pick.rental, same);
+        if (active) return { rental: active, by: "lead", ambiguous: false };
+      }
+      return { rental: pick.rental, by: "metadata", ambiguous: false };
+    }
   }
   // Lead / application id on the link (lead_id): that renter's one active rental.
   if (id.applicationIds.length) {
@@ -222,6 +231,24 @@ export async function recordOneOffPayment(
 }
 
 /**
+ * The Reservation Fee credited to week 1 at activation (credited_week1:<rental>)
+ * counts toward week 1 for a manual payer, so a pickup-balance link for the
+ * rest of week 1 ($350 less $50) pays the week in full. Autopay renters get the
+ * credit on their Stripe invoice instead, so nothing is counted here for them.
+ */
+async function week1Credits(admin: Admin, r: any): Promise<Record<string, number>> {
+  const start = String(r?.start_date ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || r?.stripe_subscription_id) return {};
+  try {
+    const fees = await rows<{ amount: unknown; notes: string | null }>(admin.from("payments").select("amount, notes").eq("rental_id", r.id).eq("type", "reservation").eq("status", "paid"));
+    const total = fees.filter((f) => String(f.notes ?? "").includes(`credited_week1:${r.id}`)).reduce((s, f) => s + (Number(f.amount) || 0), 0);
+    return total > 0 ? { [start]: Math.round(total * 100) / 100 } : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Write one paid row for a charge that belongs to this rental, applied to the
  * oldest unpaid rent period. A second insert of the same payment intent is a
  * no-op (unique index). The renter is not emailed; Stripe already sent a receipt.
@@ -256,6 +283,7 @@ export async function insertMatchedOneOff(
       allocations = allocateRentPayment({
         amount, paidOn: day, weeklyRate: Number((r as any).weekly_rate ?? 0), openRows,
         weeks: id.weeks, nextPaymentDue: (r as any).next_payment_due ?? null,
+        credits: await week1Credits(admin, r),
       });
       if (allocations.length) dueOn = allocations[0].dueDate;
     }

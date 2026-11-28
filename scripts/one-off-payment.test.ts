@@ -582,3 +582,78 @@ describe("multi-week rent Payment Link", () => {
     assert.equal(st.nextDue, "2026-11-26");
   });
 });
+
+// Arielle and Lisette, Nov 27 2026: FLEET's pickup-balance Payment Links ($350
+// week 1 less the $50 Reservation Fee) were made before pickup, so they named
+// the reserved rental, and the session carried agreementId/applicationId. The
+// webhook treated that as an app flow and wrote nothing; activation had already
+// replaced the reservation with a new active rental that still read $350 owed.
+describe("pickup-balance Payment Link after activation", () => {
+  const NOV27_0948 = 1795790939;
+  const RESERVED = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const ACTIVE = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  const AGREEMENT = "99999999-9999-4999-8999-999999999999";
+  const reserved = (over: Row = {}) => rental({ id: RESERVED, status: "cancelled", stripe_customer_id: null, stripe_subscription_id: null, weekly_rate: 350, next_payment_due: null, start_date: "2026-11-27", ...over });
+  const active = (over: Row = {}) => rental({ id: ACTIVE, status: "active", stripe_subscription_id: null, weekly_rate: 350, next_payment_due: "2026-11-27", payment_status: "current", start_date: "2026-11-27", ...over });
+  const fee = (rentalId = ACTIVE) => ({ id: "fee-50", rental_id: rentalId, driver_id: APP, type: "reservation", reason: "reservation_fee", status: "paid", amount: 50, balance_due: 0, due_date: "2026-11-25", stripe_payment_intent_id: "pi_TESTfee", notes: `reservation_fee:${AGREEMENT} credited_week1:${rentalId}` });
+  const meta = { agreementId: AGREEMENT, applicationId: APP, lead_id: APP, rental_id: RESERVED, reason: "pickup_balance", for_date: "2026-11-27", plate: "FQJP48", renter: "Test Renter" };
+  const pickupLink = () => {
+    const s = session({ amount_total: 30000, created: NOV27_0948 - 30, metadata: meta });
+    const pi = intent({ amount: 30000, amount_received: 30000, created: NOV27_0948, description: "Week 1 rent balance due at pickup (applied $50 reservation fee)", metadata: { lead_id: APP, rental_id: RESERVED, reason: "pickup_balance", for_date: "2026-11-27", plate: "FQJP48", renter: "Test Renter" } });
+    const ch = charge({ amount: 30000, amount_captured: 30000, created: NOV27_0948, metadata: pi.metadata });
+    return { s, pi, ch, stripe: stripeStub({ session: s, pi, charge: ch }) };
+  };
+  const seed = (over: Record<string, Row[]> = {}) => fakeDb({ rentals: [reserved(), active()], applications: [app()], payments: [fee()], notifications: [], app_settings: [], rent_late_fee_waivers: [], ...over });
+
+  it("agreementId / applicationId alone do not make a Payment Link app-owned; paymentIds and reservation_fee still do", () => {
+    assert.equal(appOwnsPayment({ session: session({ metadata: meta }) }), false);
+    assert.equal(appOwnsPayment({ session: session({ metadata: meta }), paymentIntent: intent({ metadata: { paymentIds: "p1", applicationId: APP } }) }), true, "initial payment: paymentIds on the intent");
+    assert.equal(appOwnsPayment({ session: session({ metadata: { applicationId: APP, reason: "reservation_fee" } }) }), true);
+    assert.equal(oneOffRowType("pickup_balance"), "rent");
+  });
+
+  it("a cancelled reservation resolves to the renter's one active rental; ended rentals and two actives do not", async () => {
+    const { supersedingRental } = await import("../src/lib/one-off-payment.ts");
+    const named = reserved() as any;
+    assert.equal(supersedingRental(named, [active() as any])?.id, ACTIVE);
+    assert.equal(supersedingRental({ ...named, status: "ended" }, [active() as any]), null, "a payment for an ended rental stays on it");
+    assert.equal(supersedingRental(named, [active() as any, active({ id: RENTAL2 }) as any]), null, "two active rentals: keep the explicit id");
+    assert.equal(supersedingRental(named, [active({ application_id: APP2 }) as any]), null, "another renter's rental never counts");
+  });
+
+  it("records the $300 once on the active rental, counts the credited $50 toward week 1 and moves next due to Dec 4", async () => {
+    const db = seed();
+    const { s, pi, ch, stripe } = pickupLink();
+    assert.equal((await send("checkout.session.completed", s, db, stripe)).status, 200);
+    await send("payment_intent.succeeded", pi, db, stripe);
+    await send("charge.succeeded", ch, db, stripe);
+    const rows = paymentsFor(db);
+    assert.equal(rows.length, 1, "one row per charge");
+    assert.equal(rows[0].rental_id, ACTIVE, "not the cancelled reservation");
+    assert.equal(rows[0].type, "rent");
+    assert.equal(rows[0].amount, 300);
+    assert.equal(rows[0].status, "paid");
+    assert.equal(rows[0].due_date, "2026-11-27");
+    assert.match(rows[0].notes, /matched by lead/);
+    const r = db._state.rentals.find((x: Row) => x.id === ACTIVE);
+    assert.equal(r.next_payment_due, "2026-12-04", "week 1 paid ($300 + $50 credited fee)");
+    assert.equal(db._state.rentals.find((x: Row) => x.id === RESERVED).next_payment_due, null, "the cancelled reservation is untouched");
+    assert.equal(unmatched(db).length, 0);
+  });
+
+  it("without a credited fee the $300 is a partial week: next due stays", async () => {
+    const db = seed({ payments: [] });
+    const { s, stripe } = pickupLink();
+    await send("checkout.session.completed", s, db, stripe);
+    assert.equal(paymentsFor(db)[0].rental_id, ACTIVE);
+    assert.equal(db._state.rentals.find((x: Row) => x.id === ACTIVE).next_payment_due, "2026-11-27");
+  });
+
+  it("an autopay renter gets the credit on Stripe, so it is not counted here", async () => {
+    const db = seed({ rentals: [reserved(), active({ stripe_subscription_id: "sub_TEST1" })] });
+    const { s, stripe } = pickupLink();
+    await send("checkout.session.completed", s, db, stripe);
+    assert.equal(paymentsFor(db)[0].rental_id, ACTIVE);
+    assert.equal(db._state.rentals.find((x: Row) => x.id === ACTIVE).next_payment_due, "2026-11-27");
+  });
+});
