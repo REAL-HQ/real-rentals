@@ -16,6 +16,7 @@ import {
   isFinanceField, isPhotoClass, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
 } from "@/lib/fleet-inbox";
 import { documentExpiryFrom } from "@/lib/vehicle-doc-upload";
+import { vehicleDocSource } from "@/lib/suggestion-source-file";
 import { fmtDate } from "@/lib/date-format";
 
 const BUCKET = "vehicle-docs";
@@ -861,9 +862,11 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
     // at it. Only the private vehicle-photos bucket is surfaced, and only as a
     // path: the browser fetches the bytes itself through the staff storage
     // policy, so nothing here widens who can see an unpublished photo.
+    // Paperwork in vehicle-docs is the same idea: a storage path, never a
+    // signed URL. The browser signs it with the staff session.
     const docIds = [...new Set((items ?? []).map((i: any) => i.document_id).filter(Boolean))];
     const { data: docRows } = docIds.length
-      ? await sb.from("documents").select("id,storage_bucket,storage_path").in("id", docIds)
+      ? await sb.from("documents").select("id,storage_bucket,storage_path,mime_type").in("id", docIds)
       : { data: [] as any[] };
     const docBy = Object.fromEntries((docRows ?? []).map((d: any) => [d.id, d]));
     const prov = await loadProvenance(sb, [target.id]);
@@ -880,7 +883,8 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
       const exact = (!!vin && pVin === vin) || (!pVin && p.match_vehicle_id === target.id);
       const doc = docBy[it.document_id];
       const photoPath = doc?.storage_bucket === "vehicle-photos" ? (doc.storage_path as string) : null;
-      const source = { proposalId: p.id, batchId: p.batch_id, documentId: it.document_id, fileName: it.file_name, docClass: it.doc_class, page: p.page, analyzedAt: it.analyzed_at, photoPath, fromPhoto: isPhotoClass(it.doc_class) };
+      const file = vehicleDocSource(doc);
+      const source = { proposalId: p.id, batchId: p.batch_id, documentId: it.document_id, fileName: it.file_name, docClass: it.doc_class, page: p.page, analyzedAt: it.analyzed_at, photoPath, fromPhoto: isPhotoClass(it.doc_class), storageBucket: file.storageBucket, storagePath: file.storagePath, mimeType: file.mimeType };
       if (!exact) {
         // Ambiguous evidence: report why, never its values.
         const pPlate = String((p.fields as any)?.license_plate?.value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
