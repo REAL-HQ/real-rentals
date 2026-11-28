@@ -2,9 +2,13 @@
 // The key is read from the GEMINI_API_KEY secret and is never logged,
 // returned or stored. No key → the provider refuses; nothing falls back to a
 // paid alternative.
+import { IDENTITY_READ_PROMPT, IDENTITY_REREAD_FAILED, parseIdentityRead, type PlateBox } from "@/lib/photo-studio";
+
 export type GenInput = { prompt: string; images: { bytes: Uint8Array; mime: string }[] };
 export type GenResult = { ok: true; bytes: Uint8Array; mime: string } | { ok: false; error: string; status?: number };
-export type ReadResult = { ok: true; plates: string[]; vins: string[] } | { ok: false; error: string; status?: number };
+export type ReadResult =
+  | { ok: true; plates: string[]; vins: string[]; plateBoxes: PlateBox[] }
+  | { ok: false; error: string; status?: number };
 
 export interface StudioProvider {
   name: string;
@@ -15,6 +19,7 @@ export interface StudioProvider {
 const b64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 export const READ_MODEL = "gemini-3.5-flash";
+const READ_TIMEOUT_MS = 20_000;
 
 export function geminiProvider(apiKey: string, fetchImpl: typeof fetch = fetch): StudioProvider {
   const call = async (model: string, parts: unknown[], extra: Record<string, unknown> = {}) => {
@@ -38,29 +43,50 @@ export function geminiProvider(apiKey: string, fetchImpl: typeof fetch = fetch):
       return { ok: true, bytes: new Uint8Array(Buffer.from(d.data, "base64")), mime: d.mimeType ?? d.mime_type ?? "image/png" };
     },
     async readIdentity(image) {
-      const r = await call(READ_MODEL, [
-        { inline_data: { mime_type: image.mime, data: b64(image.bytes) } },
-        { text: 'List every license plate text and every VIN legible in this image. Reply only JSON: {"plates":[],"vins":[]}. Empty arrays if none are legible.' },
-      ], { generationConfig: { responseMimeType: "application/json" } });
-      if (!r.ok) return r;
+      let res: Response;
       try {
-        const t = r.json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-        const j = JSON.parse(t);
-        return { ok: true, plates: Array.isArray(j.plates) ? j.plates.map(String) : [], vins: Array.isArray(j.vins) ? j.vins.map(String) : [] };
-      } catch { return { ok: false, error: "Could not parse identity read." }; }
+        res = await fetchImpl(`${ENDPOINT}/${encodeURIComponent(READ_MODEL)}:generateContent`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+          body: JSON.stringify({
+            contents: [{
+              role: "user",
+              parts: [
+                { inline_data: { mime_type: image.mime, data: b64(image.bytes) } },
+                { text: IDENTITY_READ_PROMPT },
+              ],
+            }],
+            generationConfig: { responseMimeType: "application/json" },
+          }),
+          signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+        });
+      } catch {
+        return { ok: false, error: IDENTITY_REREAD_FAILED };
+      }
+      if (!res.ok) return { ok: false, status: res.status, error: IDENTITY_REREAD_FAILED };
+      let json: { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+      try {
+        json = await res.json();
+      } catch {
+        return { ok: false, error: IDENTITY_REREAD_FAILED };
+      }
+      const text = json.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+      const parsed = parseIdentityRead(text);
+      if (!parsed) return { ok: false, error: IDENTITY_REREAD_FAILED };
+      return { ok: true, plates: parsed.plates, vins: parsed.vins, plateBoxes: parsed.plateBoxes };
     },
   };
 }
 
 /** Deterministic, free. Returns the first reference image unchanged. */
-export function mockProvider(opts: { plates?: string[]; vins?: string[]; fail?: boolean } = {}): StudioProvider {
+export function mockProvider(opts: { plates?: string[]; vins?: string[]; plateBoxes?: PlateBox[]; fail?: boolean } = {}): StudioProvider {
   return {
     name: "mock",
     async generate(_m, input) {
       if (opts.fail || input.images.length === 0) return { ok: false, error: "mock failure", status: 500 };
       return { ok: true, bytes: input.images[0].bytes, mime: input.images[0].mime };
     },
-    async readIdentity() { return { ok: true, plates: opts.plates ?? [], vins: opts.vins ?? [] }; },
+    async readIdentity() { return { ok: true, plates: opts.plates ?? [], vins: opts.vins ?? [], plateBoxes: opts.plateBoxes ?? [] }; },
   };
 }
 

@@ -9,7 +9,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireManager, requireStaff } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
-import { ORIGINALS_BUCKET, isMissingPhotoClassColumn, type PhotoClass, type ShotSlot } from "@/lib/photo-studio";
+import { ORIGINALS_BUCKET, isMissingPhotoClassColumn, slotReasonsFromAudits, type PhotoClass, type ShotSlot } from "@/lib/photo-studio";
 import { classifyStudioGaps, type StudioFailure } from "@/lib/photo-studio-fleet";
 import { isMissingDbColumn } from "@/lib/photo-class-label";
 
@@ -120,7 +120,7 @@ export const listStudioMedia = createServerFn({ method: "POST" })
       rows = again.data;
       error = again.error;
     }
-    if (error) return { items: [] as any[], photoClassAvailable: false, attentionSlots: [] as ShotSlot[] };
+    if (error) return { items: [] as any[], photoClassAvailable: false, attentionSlots: [] as ShotSlot[], slotReasons: {} as Record<string, string> };
     const out = [];
     for (const r of (rows ?? []) as any[]) {
       const { data: s } = await sb.storage.from(r.storage_bucket).createSignedUrl(r.storage_path, SIGNED_URL_SECONDS);
@@ -149,5 +149,13 @@ export const listStudioMedia = createServerFn({ method: "POST" })
       })),
       failures,
     );
-    return { items: out, photoClassAvailable, attentionSlots: gaps.held };
+    const { data: audits } = await sb.from("audit_log")
+      .select("created_at,metadata")
+      .eq("action", "photo_studio.generate")
+      .eq("entity_type", "vehicle")
+      .eq("entity_id", data.vehicleId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    const slotReasons = slotReasonsFromAudits((audits ?? []) as { created_at: string; metadata: unknown }[]);
+    return { items: out, photoClassAvailable, attentionSlots: gaps.held, slotReasons };
   });

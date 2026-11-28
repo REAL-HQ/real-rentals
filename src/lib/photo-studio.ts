@@ -264,6 +264,16 @@ export function costCentsFor(model: string): number {
   return GEMINI_MODELS[model as keyof typeof GEMINI_MODELS]?.costCents ?? 10;
 }
 
+/**
+ * An image that was actually generated counts toward the daily cap.
+ * A provider error with no image (cost 0) does not. A paid image whose
+ * re-read failed still does, so a retry cannot slip past the cap.
+ */
+export function countsTowardDailyImage(outcome: string, costCents: number): boolean {
+  if (outcome !== "provider_error") return true;
+  return Number(costCents) > 0;
+}
+
 /** Fails closed. Returns why a run of `images` generations may not start. */
 export function spendRefusal(
   s: PhotoStudioSettings, usage: { todayImages: number; monthCents: number }, images: number, model: string,
@@ -280,24 +290,153 @@ export function spendRefusal(
 
 const norm = (s: string | null | undefined) => (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
+/** Staff-facing reasons. They never include a plate or a VIN. */
+export const PLATE_MISMATCH_REASON = "Generated Plate Did Not Match";
+export const VIN_MISMATCH_REASON = "Generated VIN Did Not Match";
+export const IDENTITY_REREAD_FAILED = "Identity Re-Read Failed";
+
+/** Whole-plate box as fractions of the image, origin top-left. */
+export type PlateBox = { x: number; y: number; w: number; h: number };
+
 /**
- * After generation the image is read again. A shot that shows a plate or VIN
- * belonging to a different car — or a garbled plate — is rejected and never
- * stored. A shot where nothing is legible passes (most side/interior views).
+ * Black bar over the characters: the middle 75% of the plate width and 80%
+ * of its height, centered, so the plate frame stays visible.
+ */
+export const PLATE_BAR_WIDTH = 0.75;
+export const PLATE_BAR_HEIGHT = 0.8;
+
+export function plateBar(box: PlateBox): PlateBox {
+  const w = box.w * PLATE_BAR_WIDTH;
+  const h = box.h * PLATE_BAR_HEIGHT;
+  return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
+}
+
+export function pointInBox(x: number, y: number, box: PlateBox): boolean {
+  return x >= box.x && y >= box.y && x < box.x + box.w && y < box.y + box.h;
+}
+
+/** A token sits inside a redaction when the center of its box is on a bar. */
+export function tokenInsideRedaction(box: PlateBox | undefined, bars: PlateBox[]): boolean {
+  if (!box || bars.length === 0) return false;
+  return bars.some((bar) => pointInBox(box.x + box.w / 2, box.y + box.h / 2, bar));
+}
+
+export const IDENTITY_READ_PROMPT = [
+  "List every license plate text and every VIN legible in this image.",
+  "For each plate, include one bounding box around the whole plate.",
+  'Reply only JSON: {"plates":[],"vins":[],"plate_boxes":[{"x":0,"y":0,"w":0,"h":0}]}.',
+  "x, y, w, and h are fractions of the image width and height, origin at the top-left, each from 0 to 1.",
+  "Use empty arrays when nothing is legible. Do not guess a box.",
+].join(" ");
+
+export type IdentityRead = { plates: string[]; vins: string[]; plateBoxes: PlateBox[] };
+
+function finiteUnit(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parsePlateBox(value: unknown): PlateBox | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const o = value as Record<string, unknown>;
+  const x = finiteUnit(o.x);
+  const y = finiteUnit(o.y);
+  const w = finiteUnit(o.w ?? o.width);
+  const h = finiteUnit(o.h ?? o.height);
+  if (x == null || y == null || w == null || h == null) return null;
+  if (w <= 0 || h <= 0 || x < 0 || y < 0 || x >= 1 || y >= 1) return null;
+  if (w > 1 || h > 1 || x + w > 1.001 || y + h > 1.001) return null;
+  return { x, y, w: Math.min(w, 1 - x), h: Math.min(h, 1 - y) };
+}
+
+/** Join-and-fence parsing is the caller's job, matching the photo labeler. */
+export function parseIdentityRead(raw: string): IdentityRead | null {
+  let text = raw.trim();
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const o = value as Record<string, unknown>;
+  if ("plates" in o && !Array.isArray(o.plates)) return null;
+  if ("vins" in o && !Array.isArray(o.vins)) return null;
+  const rawBoxes = o.plate_boxes ?? o.plateBoxes;
+  if (rawBoxes !== undefined && !Array.isArray(rawBoxes)) return null;
+  const plates = Array.isArray(o.plates) ? o.plates.map((item) => String(item)) : [];
+  const vins = Array.isArray(o.vins) ? o.vins.map((item) => String(item)) : [];
+  const plateBoxes = Array.isArray(rawBoxes) ? rawBoxes.map(parsePlateBox).filter((box): box is PlateBox => !!box) : [];
+  return { plates, vins, plateBoxes };
+}
+
+/**
+ * After the plate bar is painted, plate text whose box sits on that bar is
+ * ignored. Readable plate text outside a redaction is rejected. With no box
+ * and no legible plate, the shot passes. A VIN that is not this car's is
+ * always rejected. Reasons never contain the plate or the VIN.
  */
 export function identityCheck(
   car: { plate?: string | null; vin?: string | null },
-  read: { plates: string[]; vins: string[] },
+  read: { plates: string[]; vins: string[]; plateBoxes?: PlateBox[] },
+  redacted: PlateBox[] = [],
 ): { ok: true } | { ok: false; reason: string } {
-  const plate = norm(car.plate);
   const vin = norm(car.vin);
-  for (const p of read.plates.map(norm).filter((x) => x.length >= 4)) {
-    if (!plate || p !== plate) return { ok: false, reason: `Generated plate "${p}" does not match ${plate || "the car (no plate on file)"}` };
+  for (const v of (read.vins ?? []).map(norm).filter((x) => x.length >= 11)) {
+    if (!vin || (v.length === 17 ? v !== vin : !vin.endsWith(v))) return { ok: false, reason: VIN_MISMATCH_REASON };
   }
-  for (const v of read.vins.map(norm).filter((x) => x.length >= 11)) {
-    if (!vin || (v.length === 17 ? v !== vin : !vin.endsWith(v))) return { ok: false, reason: "Generated VIN does not match the car" };
+  const plates = read.plates ?? [];
+  const boxes = read.plateBoxes ?? [];
+  for (let i = 0; i < plates.length; i++) {
+    const p = norm(plates[i]);
+    if (p.length < 4) continue;
+    if (tokenInsideRedaction(boxes[i], redacted)) continue;
+    return { ok: false, reason: PLATE_MISMATCH_REASON };
   }
   return { ok: true };
+}
+
+/** A reason safe to show and to store. Anything else is dropped so a plate or VIN cannot leak. */
+export function publicFailureReason(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  const r = reason.trim();
+  if (r === PLATE_MISMATCH_REASON || r === VIN_MISMATCH_REASON || r === IDENTITY_REREAD_FAILED) return r;
+  if (/plate/i.test(r)) return PLATE_MISMATCH_REASON;
+  if (/\bvin\b/i.test(r)) return VIN_MISMATCH_REASON;
+  if (/identity re-read|could not parse identity/i.test(r)) return IDENTITY_REREAD_FAILED;
+  if (/^daily limit reached/i.test(r)) return "Daily Limit Reached";
+  if (/^monthly cap/i.test(r)) return "Monthly Cap Reached";
+  if (/^provider returned \d+$/i.test(r)) return "Provider Error";
+  if (/^photo studio is off/i.test(r)) return "Photo Studio Is Off";
+  if (/source missing/i.test(r)) return "Source Missing";
+  if (/no image returned/i.test(r)) return "No Image Returned";
+  return null;
+}
+
+export type AuditOutcome = { slot?: unknown; status?: unknown; reason?: unknown };
+
+/** Latest safe reason for each slot, oldest audit first so a later pass clears it. */
+export function slotReasonsFromAudits(rows: { created_at: string; metadata: unknown }[]): Record<string, string> {
+  const ordered = [...rows].sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+  const out: Record<string, string> = {};
+  for (const row of ordered) {
+    const metadata = row.metadata;
+    if (!metadata || typeof metadata !== "object") continue;
+    const outcomes = (metadata as { outcomes?: unknown }).outcomes;
+    if (!Array.isArray(outcomes)) continue;
+    for (const item of outcomes as AuditOutcome[]) {
+      if (!item || typeof item !== "object") continue;
+      if (typeof item.slot !== "string" || !item.slot) continue;
+      if (item.status === "saved") {
+        delete out[item.slot];
+        continue;
+      }
+      const label = publicFailureReason(typeof item.reason === "string" ? item.reason : null);
+      if (label) out[item.slot] = label;
+    }
+  }
+  return out;
 }
 
 // ------------------------------------------------------------- approval

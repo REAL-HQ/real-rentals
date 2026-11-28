@@ -7,7 +7,7 @@ import { z } from "zod";
 import { requireManager, requireOwner, requireStaff, type Actor } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
 import {
-  MARKETING_BUCKET, ORIGINALS_BUCKET, PHOTO_STUDIO_KEY, SHOT_SLOTS, SLOT_LABELS, carSetStatus, effectiveModel,
+  MARKETING_BUCKET, ORIGINALS_BUCKET, PHOTO_STUDIO_KEY, SHOT_SLOTS, SLOT_LABELS, carSetStatus, countsTowardDailyImage, effectiveModel,
   isMissingPhotoClassColumn, leadMarketingShotId, readStudioSettings,
   type Original, type PhotoClass, type ShotSlot,
 } from "@/lib/photo-studio";
@@ -29,7 +29,7 @@ async function usage(sb: any) {
   let monthCents = 0, todayImages = 0;
   for (const r of (data ?? []) as any[]) {
     monthCents += Number(r.cost_cents) || 0;
-    if (r.created_at >= dayStart && r.outcome !== "provider_error") todayImages++;
+    if (r.created_at >= dayStart && countsTowardDailyImage(String(r.outcome), Number(r.cost_cents) || 0)) todayImages++;
   }
   return { monthCents, todayImages };
 }
@@ -73,7 +73,7 @@ export async function generateVehicleShots(actor: Actor, vehicleId: string, slot
     const { resolveProvider } = await import("@/lib/photo-studio-provider.server");
     const provider = resolveProvider(settings.provider);
     if ("error" in provider) return { ok: false as const, error: provider.error };
-    const { runCar } = await import("@/lib/photo-studio-run");
+    const { runCar } = await import("@/lib/photo-studio-run.server");
 
     const { data: car } = await sb.from("vehicles").select("id,year,make,model,color,license_plate,vin").eq("id", vehicleId).maybeSingle();
     if (!car) return { ok: false as const, error: "Car not found." };

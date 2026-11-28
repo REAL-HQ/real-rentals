@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 import {
   planShots, spendRefusal, identityCheck, carSetStatus, readStudioSettings, effectiveModel,
+  PLATE_MISMATCH_REASON, VIN_MISMATCH_REASON, IDENTITY_REREAD_FAILED, plateBar, countsTowardDailyImage,
+  publicFailureReason, slotReasonsFromAudits, parseIdentityRead, IDENTITY_READ_PROMPT,
   buildIsolationPrompt, buildPrompt, PHOTO_STUDIO_DEFAULTS, PHOTO_STUDIO_GENERATIONS_PER_SHOT, PHOTO_STUDIO_SCENES, pickScene, NEVER_GENERATE, vinLast6, PHOTO_CLASS_OPTIONS, photoClassLabel,
   isMissingPhotoClassColumn, marketingPublishBlock, RETIRE_LIVE_SHOT, leadMarketingShotId, marketingShotNote,
 } from "../src/lib/photo-studio";
@@ -63,15 +65,67 @@ describe("model migration", () => {
 
 describe("identity re-read", () => {
   const car = { plate: "CZ07DA", vin: "1FA6P0H74F5118769" };
-  test("matching plate passes", () => expect(identityCheck(car, { plates: ["CZ0 7DA"], vins: [] }).ok).toBe(true));
+  const secret = /CZ07|XLK331|1FA6|3FA6|F5118769/;
   test("nothing legible passes", () => expect(identityCheck(car, { plates: [], vins: [] }).ok).toBe(true));
-  test("invented plate rejected", () => {
-    const result = identityCheck(car, { plates: ["XLK331"], vins: [] });
+  test("a readable plate outside a redaction is rejected without echoing it", () => {
+    const result = identityCheck(car, { plates: ["CZ0 7DA"], vins: [], plateBoxes: [{ x: 0.1, y: 0.6, w: 0.2, h: 0.08 }] });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toMatch(/does not match/);
+    if (!result.ok) {
+      expect(result.reason).toBe(PLATE_MISMATCH_REASON);
+      expect(result.reason).not.toMatch(secret);
+    }
   });
-  test("wrong VIN rejected", () => expect(identityCheck(car, { plates: [], vins: ["3FA6P0HRXDR153036"] }).ok).toBe(false));
+  test("a plate token centered on the black bar passes", () => {
+    const box = { x: 0.4, y: 0.7, w: 0.2, h: 0.1 };
+    const result = identityCheck(car, { plates: ["XLK331"], vins: [], plateBoxes: [box] }, [plateBar(box)]);
+    expect(result.ok).toBe(true);
+  });
+  test("text that remains beside the bar is rejected", () => {
+    const plate = { x: 0.4, y: 0.7, w: 0.2, h: 0.1 };
+    const edge = { x: 0.4, y: 0.7, w: 0.02, h: 0.1 };
+    const result = identityCheck(car, { plates: ["XLK331"], vins: [], plateBoxes: [edge] }, [plateBar(plate)]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe(PLATE_MISMATCH_REASON);
+  });
+  test("wrong VIN rejected without echoing it", () => {
+    const result = identityCheck(car, { plates: [], vins: ["3FA6P0HRXDR153036"] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe(VIN_MISMATCH_REASON);
+      expect(result.reason).not.toMatch(secret);
+    }
+  });
   test("partial VIN must be the tail", () => expect(identityCheck(car, { plates: [], vins: ["F5118769"] }).ok).toBe(true));
+  test("a stored reason never keeps the plate text", () => {
+    const legacy = 'Generated plate "XLK331" does not match CZ07DA';
+    expect(publicFailureReason(legacy)).toBe(PLATE_MISMATCH_REASON);
+    expect(publicFailureReason(legacy)).not.toMatch(secret);
+    expect(publicFailureReason("Could not parse identity read.")).toBe(IDENTITY_REREAD_FAILED);
+    expect(publicFailureReason("Daily limit reached (60 images).")).toBe("Daily Limit Reached");
+    expect(publicFailureReason("surprise CZ07DA")).toBeNull();
+  });
+  test("the latest safe reason wins, and a later save clears it", () => {
+    const reasons = slotReasonsFromAudits([
+      { created_at: "2026-11-01T00:00:00.000Z", metadata: { outcomes: [{ slot: "rear", status: "rejected", reason: 'Generated plate "XLK331" does not match CZ07DA' }] } },
+      { created_at: "2026-11-02T00:00:00.000Z", metadata: { outcomes: [{ slot: "rear", status: "saved" }] } },
+      { created_at: "2026-11-03T00:00:00.000Z", metadata: { outcomes: [{ slot: "front", status: "failed", reason: IDENTITY_REREAD_FAILED }] } },
+    ]);
+    expect(reasons.rear).toBeUndefined();
+    expect(reasons.front).toBe(IDENTITY_REREAD_FAILED);
+    expect(JSON.stringify(reasons)).not.toMatch(secret);
+  });
+  test("the read prompt asks for plate boxes and joins like the labeler", () => {
+    expect(IDENTITY_READ_PROMPT).toMatch(/plate_boxes/);
+    const fenced = '```json\n{"plates":[],"vins":[],"plate_boxes":[{"x":0.2,"y":0.6,"w":0.3,"h":0.1}]}\n```';
+    expect(parseIdentityRead(fenced)?.plateBoxes).toEqual([{ x: 0.2, y: 0.6, w: 0.3, h: 0.1 }]);
+    expect(parseIdentityRead("not json")).toBeNull();
+  });
+  test("daily cap still counts a paid image and ignores an empty provider error", () => {
+    expect(countsTowardDailyImage("ok", 3.9)).toBe(true);
+    expect(countsTowardDailyImage("rejected_check", 3.9)).toBe(true);
+    expect(countsTowardDailyImage("provider_error", 0)).toBe(false);
+    expect(countsTowardDailyImage("provider_error", 3.9)).toBe(true);
+  });
 });
 
 describe("approval", () => {
@@ -176,6 +230,11 @@ describe("marketing shot notes stay off the photo", () => {
 
   test("the studio panel prints the note under the image and does not overlay it", () => {
     const panel = readFileSync(new URL("../src/components/admin/PhotoStudioPanel.tsx", import.meta.url), "utf8");
+    expect(panel).toContain("slotReasons");
+    expect(panel).toContain("{reason || FAILED_CHECK_ATTENTION}");
+    expect(panel).toContain('bg-[#F4F4F6]');
+    expect(panel).not.toContain("bg-gradient");
+    expect(panel).not.toContain("border-l-");
     expect(panel).toContain("marketingShotNote(");
     expect(panel).not.toContain("absolute left-1 top-1");
     expect(panel).not.toContain("absolute right-1 top-1");
