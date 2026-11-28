@@ -583,6 +583,7 @@ export type BookingDetail = {
       type: string | null;
       status: string | null;
       amount: number;
+      lateFees: number | null;
       balanceDue: number | null;
       dueDate: string | null;
       paidDate: string | null;
@@ -821,7 +822,7 @@ export const getBooking = createServerFn({ method: "POST" })
       const [pay, charges] = await Promise.all([
         sb
           .from("payments")
-          .select("id,type,status,amount,balance_due,due_date,paid_date,net_collected,rental_id,driver_id")
+          .select("id,type,status,amount,late_fees,balance_due,due_date,paid_date,net_collected,rental_id,driver_id")
           // payments.driver_id is the applications id; a fee paid before the
           // reservation existed has no rental_id yet.
           .or(
@@ -849,6 +850,7 @@ export const getBooking = createServerFn({ method: "POST" })
         type: (p.type as string | null) ?? null,
         status: (p.status as string | null) ?? null,
         amount: Number(p.amount ?? 0),
+        lateFees: p.late_fees == null ? null : Number(p.late_fees),
         balanceDue: p.balance_due == null ? null : Number(p.balance_due),
         dueDate: (p.due_date as string | null) ?? null,
         paidDate: (p.paid_date as string | null) ?? null,
