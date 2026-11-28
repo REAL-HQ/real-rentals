@@ -115,7 +115,7 @@ export const TABS: readonly TabDef[] = [
   { id: "issues", label: "Issues", icon: ShieldAlert, minTier: "manager", group: "FLEET", description: "Accidents, Claims, Breakdowns And Driver Reports" },
   { id: "expenses", label: "Expenses", icon: Wallet, minTier: "manager", group: "BUSINESS", description: "Every Cost Against Every Car, And What Each One Earns" },
   { id: "vendors", label: "Vendors", icon: Truck, minTier: "coordinator", description: "Every Vendor We Work With — Repair Shops, Towing, GPS, Insurance" },
-  { id: "partners", label: "Partners", icon: Handshake, minTier: "manager", group: "BUSINESS", description: "Vehicle Owners, Lenders And Vendors" },
+  { id: "partners", label: "Partners", icon: Handshake, minTier: "manager", group: "BUSINESS", description: "Lenders And JV Partners" },
   // Settings is opened from the profile dropdown, not the rail — the tab stays reachable (deep links / LEGACY_TABS).
 ];
 

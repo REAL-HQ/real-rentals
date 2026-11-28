@@ -28,8 +28,86 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const PARTNER_TYPES = ["vehicle_owner","capital_partner","private_lender","jv_partner","other"] as const;
 const PARTNER_STATUSES = ["prospect","active","paused","closed"] as const;
+
+/**
+ * Lender groups the two capital-providing stored types.
+ *
+ * private_lender is labeled "Private Lender" — a lender by name.
+ * capital_partner is labeled "Capital Partner". It is its own check-constraint
+ * value, not an alias of private_lender. The only writer is Convert To Partner
+ * on an investor lead, which stores a capital range. It is included because it
+ * is the other money-in type beside private_lender (not a vehicle owner, not a
+ * JV partner, and not other).
+ *
+ * The database still allows vehicle_owner, capital_partner, private_lender,
+ * jv_partner, and other. Nothing here adds a value or rewrites a row.
+ */
+export const LENDER_PARTNER_TYPES = ["private_lender", "capital_partner"] as const;
+
+export const PARTNER_FILTERS = [
+  { id: "all", label: "All" },
+  { id: "lender", label: "Lender" },
+  { id: "jv_partner", label: "JV Partner" },
+] as const;
+
+export function isLenderPartnerType(partnerType: string | null | undefined): boolean {
+  return partnerType === "private_lender" || partnerType === "capital_partner";
+}
+
+/** All matches every stored type, including ones outside Lender and JV Partner. */
+export function partnerMatchesFilter(partnerType: string | null | undefined, filter: string): boolean {
+  if (filter === "all") return true;
+  if (filter === "lender") return isLenderPartnerType(partnerType);
+  if (filter === "jv_partner") return partnerType === "jv_partner";
+  return false;
+}
+
+export function partnerFilterCount(partners: { partner_type: string }[], filter: string): number {
+  return partners.filter((p) => partnerMatchesFilter(p.partner_type, filter)).length;
+}
+
+/** Form choices. `stored` is the check-constraint value a new choice writes. */
+export const PARTNER_FORM_TYPES = [
+  { value: "lender", label: "Lender", stored: "private_lender" },
+  { value: "jv_partner", label: "JV Partner", stored: "jv_partner" },
+] as const;
+
+/** Lender types share one option so the control can say "Lender" without a new stored value. */
+export function partnerFormValue(stored: string | null | undefined): string {
+  if (isLenderPartnerType(stored)) return "lender";
+  if (stored === "jv_partner") return "jv_partner";
+  return stored ?? "";
+}
+
+/**
+ * Add and edit offer Lender and JV Partner.
+ * A stored type outside those two stays as an extra selected option so the
+ * control is not blank and opening it does not rewrite the row.
+ */
+export function partnerFormChoices(stored: string | null | undefined): { value: string; label: string }[] {
+  const choices = PARTNER_FORM_TYPES.map((c) => ({ value: c.value, label: c.label }));
+  if (!stored || isLenderPartnerType(stored) || stored === "jv_partner") return choices;
+  return [{ value: stored, label: enumDisplayLabel(stored) }, ...choices];
+}
+
+/**
+ * Stored type to write when staff pick a choice.
+ * Null leaves the row unchanged — choosing Lender again on a capital_partner
+ * must not turn it into private_lender.
+ */
+export function partnerTypeToStore(choice: string, current: string | null | undefined): string | null {
+  if (choice === "lender") {
+    if (isLenderPartnerType(current)) return null;
+    return "private_lender";
+  }
+  if (choice === "jv_partner") {
+    if (current === "jv_partner") return null;
+    return "jv_partner";
+  }
+  if (current && choice === current) return null;
+  return null;
+}
 
 export function PartnersPanel({
   externalSearch = "",
@@ -44,17 +122,23 @@ export function PartnersPanel({
     expandedOwnerId?: string | null;
     /** Opens one legacy row's menu. The detail test uses this. */
     menuOwnerId?: string | null;
+    /** Skip the partners read and render these rows. Filter tests use this. */
+    partners?: Partner[];
+    filter?: string;
+    showAdd?: boolean;
+    /** Opens the add-form type menu. The screenshot uses this. */
+    typeMenuOpen?: boolean;
   };
 } = {}) {
-  const [partners, setPartners] = useState<Partner[]>([]);
+  const [partners, setPartners] = useState<Partner[]>(preview?.partners ?? []);
   const [legacyOwners, setLegacyOwners] = useState<FleetOwner[]>(preview?.owners ?? []);
   const [legacyInvestors, setLegacyInvestors] = useState<InvestorLead[]>(preview?.investors ?? []);
   const [openOwnerId, setOpenOwnerId] = useState<string | null>(preview?.expandedOwnerId ?? null);
   const [menuOwnerId, setMenuOwnerId] = useState<string | null>(preview?.menuOwnerId ?? null);
   const [deleteOwner, setDeleteOwner] = useState<FleetOwner | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [filter, setFilter] = useState<string>("all");
-  const [showAdd, setShowAdd] = useState(false);
+  const [filter, setFilter] = useState<string>(preview?.filter ?? "all");
+  const [showAdd, setShowAdd] = useState(preview?.showAdd ?? false);
 
   function reloadLegacyOwners() {
     return supabase
@@ -134,7 +218,7 @@ export function PartnersPanel({
   }
 
   const q = externalSearch.trim().toLowerCase();
-  const filtered = (filter === "all" ? partners : partners.filter(p => p.partner_type === filter))
+  const filtered = partners.filter((p) => partnerMatchesFilter(p.partner_type, filter))
     .filter(p => {
       if (!q) return true;
       const hay = `${p.name ?? ""} ${p.email ?? ""} ${p.phone ?? ""} ${p.partner_type ?? ""}`.toLowerCase();
@@ -144,11 +228,12 @@ export function PartnersPanel({
   return (
     <div>
       <div className="admin-sticky-bar flex flex-wrap items-center gap-2 mb-4">
-        <div className="flex flex-wrap gap-2 text-xs">
-          {(["all", ...PARTNER_TYPES] as const).map(s => (
-            <button key={s} onClick={() => setFilter(s)}
-              className={`px-3 py-1.5 rounded-md ${filter === s ? "bg-black text-white" : "bg-white border border-border"}`}>
-              {enumDisplayLabel(s)} {s !== "all" && `(${partners.filter(p => p.partner_type === s).length})`}
+        <div className="flex flex-wrap gap-2 text-xs" data-testid="partner-type-filters">
+          {PARTNER_FILTERS.map((s) => (
+            <button key={s.id} type="button" onClick={() => setFilter(s.id)}
+              data-testid={`partner-filter-${s.id}`}
+              className={`px-3 py-1.5 rounded-md ${filter === s.id ? "bg-black text-white" : "bg-white border border-border"}`}>
+              {s.label}{s.id !== "all" && ` (${partnerFilterCount(partners, s.id)})`}
             </button>
           ))}
         </div>
@@ -170,10 +255,11 @@ export function PartnersPanel({
                 <SelectTrigger className="h-8 w-28 bg-white text-foreground"><SelectValue /></SelectTrigger>
                 <SelectContent>{PARTNER_STATUSES.map(s => <SelectItem key={s} value={s}>{formatStatusLabel(s)}</SelectItem>)}</SelectContent>
               </Select>
-              <Select value={p.partner_type} onValueChange={(partner_type) => update(p.id, { partner_type })}>
-                <SelectTrigger className="h-8 w-36 bg-white text-foreground"><SelectValue /></SelectTrigger>
-                <SelectContent>{PARTNER_TYPES.map(s => <SelectItem key={s} value={s}>{enumDisplayLabel(s)}</SelectItem>)}</SelectContent>
-              </Select>
+              <PartnerTypeSelect
+                stored={p.partner_type}
+                onStored={(partner_type) => update(p.id, { partner_type })}
+                triggerClassName="h-8 w-36 bg-white text-foreground"
+              />
               <button onClick={() => remove(p.id)} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-real-red hover:text-white hover:border-real-red">Delete</button>
             </div>
             <LinkLoginRow partner={p} onLinked={refresh} />
@@ -224,7 +310,7 @@ export function PartnersPanel({
         </div>
       </div>
 
-      {showAdd && <AddPartner onClose={() => setShowAdd(false)} onSave={add} />}
+      {showAdd && <AddPartner onClose={() => setShowAdd(false)} onSave={add} typeMenuOpen={preview?.typeMenuOpen} />}
       <LegacyDeleteDialog
         owner={deleteOwner}
         deleting={deleting}
@@ -402,20 +488,23 @@ function NumInput({ label, value, onSave }: { label: string; value: number | nul
   );
 }
 
-function AddPartner({ onClose, onSave }: { onClose: () => void; onSave: (p: Partial<Partner>) => void }) {
-  const [form, setForm] = useState<Partial<Partner>>({ name: "", email: "", phone: "", partner_type: "vehicle_owner", status: "prospect" });
+function AddPartner({ onClose, onSave, typeMenuOpen = false }: { onClose: () => void; onSave: (p: Partial<Partner>) => void; typeMenuOpen?: boolean }) {
+  const [form, setForm] = useState<Partial<Partner>>({ name: "", email: "", phone: "", partner_type: "private_lender", status: "prospect" });
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()} data-testid="add-partner-dialog">
         <h2 className="text-lg font-semibold mb-4">Add Partner</h2>
         <div className="space-y-3 text-sm">
           <input placeholder="Name" value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-soft rounded-md px-3 py-2" />
           <input placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full bg-soft rounded-md px-3 py-2" />
           <PhoneInput placeholder="Phone" value={form.phone || ""} onValueChange={(phone) => setForm({ ...form, phone })} className="w-full bg-soft rounded-md px-3 py-2" />
-          <Select value={form.partner_type} onValueChange={(v) => setForm({ ...form, partner_type: v })}>
-            <SelectTrigger className="bg-white text-foreground"><SelectValue /></SelectTrigger>
-            <SelectContent>{PARTNER_TYPES.map(s => <SelectItem key={s} value={s}>{enumDisplayLabel(s)}</SelectItem>)}</SelectContent>
-          </Select>
+          <PartnerTypeSelect
+            stored={form.partner_type || "private_lender"}
+            onStored={(partner_type) => setForm({ ...form, partner_type })}
+            open={typeMenuOpen}
+            triggerClassName="bg-white text-foreground"
+            testId="add-partner-type"
+          />
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm">Cancel</button>
@@ -423,6 +512,39 @@ function AddPartner({ onClose, onSave }: { onClose: () => void; onSave: (p: Part
         </div>
       </div>
     </div>
+  );
+}
+
+function PartnerTypeSelect({
+  stored,
+  onStored,
+  open = false,
+  triggerClassName,
+  testId,
+}: {
+  stored: string;
+  onStored: (next: string) => void;
+  /** Force the menu open. Only the fixture screenshot passes true. */
+  open?: boolean;
+  triggerClassName?: string;
+  testId?: string;
+}) {
+  return (
+    <Select
+      {...(open ? { open: true as const } : {})}
+      value={partnerFormValue(stored)}
+      onValueChange={(choice) => {
+        const next = partnerTypeToStore(choice, stored);
+        if (next && next !== stored) onStored(next);
+      }}
+    >
+      <SelectTrigger data-testid={testId ?? "partner-type"} className={triggerClassName}><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {partnerFormChoices(stored).map((c) => (
+          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
