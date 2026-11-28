@@ -18,6 +18,11 @@ export const SLOT_LABELS: Record<ShotSlot, string> = {
   interior_1: "Dashboard", interior_2: "Front Seats", interior_3: "Rear Seats",
 };
 
+/** Staff note under a marketing shot. Never drawn on the photo. */
+export function marketingShotNote(inferred: boolean): string {
+  return inferred ? "AI-Generated · Angle Inferred" : "AI-Generated";
+}
+
 /** The fixed template. Every car is framed the same way. */
 export const SLOT_TEMPLATE: Record<ShotSlot, string> = {
   front: "front three-quarter view from the driver-side front corner, camera at headlight height, 35mm lens, whole car in frame",

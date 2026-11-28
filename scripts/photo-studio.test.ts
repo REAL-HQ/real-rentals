@@ -1,8 +1,9 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 import {
   planShots, spendRefusal, identityCheck, carSetStatus, readStudioSettings, effectiveModel,
   buildIsolationPrompt, buildPrompt, PHOTO_STUDIO_DEFAULTS, PHOTO_STUDIO_GENERATIONS_PER_SHOT, PHOTO_STUDIO_SCENES, pickScene, NEVER_GENERATE, vinLast6, PHOTO_CLASS_OPTIONS, photoClassLabel,
-  isMissingPhotoClassColumn, marketingPublishBlock, RETIRE_LIVE_SHOT, leadMarketingShotId,
+  isMissingPhotoClassColumn, marketingPublishBlock, RETIRE_LIVE_SHOT, leadMarketingShotId, marketingShotNote,
 } from "../src/lib/photo-studio";
 
 const on = { ...PHOTO_STUDIO_DEFAULTS, enabled: true };
@@ -166,3 +167,36 @@ test("one car keeps one scene, and all 25 scenes are reachable", () => {
   expect(pickScene(different).id).not.toBe(scene.id);
 });
 test("vinLast6", () => expect(vinLast6("1FA6P0H74F5118769")).toBe("118769"));
+
+describe("marketing shot notes stay off the photo", () => {
+  test("the note is plain text, and Angle Inferred is added only when the angle was inferred", () => {
+    expect(marketingShotNote(false)).toBe("AI-Generated");
+    expect(marketingShotNote(true)).toBe("AI-Generated · Angle Inferred");
+  });
+
+  test("the studio panel prints the note under the image and does not overlay it", () => {
+    const panel = readFileSync(new URL("../src/components/admin/PhotoStudioPanel.tsx", import.meta.url), "utf8");
+    expect(panel).toContain("marketingShotNote(");
+    expect(panel).not.toContain("absolute left-1 top-1");
+    expect(panel).not.toContain("absolute right-1 top-1");
+    expect(panel).not.toMatch(/<span[^>]*absolute[^>]*>\s*AI-Generated/);
+    expect(panel).not.toMatch(/<span[^>]*absolute[^>]*>\s*\{?Angle Inferred/);
+  });
+
+  test("public, driver, and fleet photo views do not render those labels", () => {
+    const files = [
+      "../src/components/site/VehicleCard.tsx",
+      "../src/components/site/VehicleDetailView.tsx",
+      "../src/components/portal/MyCarCard.tsx",
+      "../src/components/portal/DriverStaffPhotos.tsx",
+      "../src/components/admin/AvailableCarsBoard.tsx",
+      "../src/components/admin/PhotoStudioFleet.tsx",
+      "../src/routes/api/public/vehicle-photos/$.ts",
+    ];
+    for (const file of files) {
+      const text = readFileSync(new URL(file, import.meta.url), "utf8");
+      expect(text).not.toContain("AI-Generated");
+      expect(text).not.toContain("Angle Inferred");
+    }
+  });
+});
